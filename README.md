@@ -1,8 +1,16 @@
 # Treadmill feedback game (прототип)
 
-Проектор на стену/пол + камера (Orbbec RGB по USB2, часто `/dev/video2`, MJPEG 1920×1080 ~3 fps). Калибровка AprilTag → `config/calibration.json` → игра по окклюзии.
+Проектор на стену/пол + камера. Актуальная конфигурация: **Frbby P40 Pro** + **Intel RealSense D435**. Текущий MVP ещё RGB-only (`/dev/video*`), но целевой трекинг для дорожки — по depth через RealSense SDK. Калибровка AprilTag → `config/calibration.json` → игра по окклюзии.
 
 **Окклюзия, тень и планы под дорожку** (почему в RGB попадает тень, зачем depth, свет и установка): [docs/occlusion-and-treadmill.md](docs/occlusion-and-treadmill.md).
+
+**Актуальные спеки железа и план миграции на D435**: [docs/system-spec.md](docs/system-spec.md).
+
+## Текущее железо (май 2026)
+
+- **Проектор**: `Frbby P40 Pro` (FHD 1920x1080, LED, vertical/horizontal keystone, motorized focus/zoom/lens shift по данным поставщика).
+- **Камера (целевая)**: `Intel RealSense D435` (stereo depth + RGB).
+- **Практический вывод**: проектор под углом к ленте требует pre-warp (см. `scripts/adjust_projection_quad.py`), а стабильный трекинг стоп/ног лучше строить по depth, не по яркости RGB.
 
 ## Зависимости
 
@@ -30,6 +38,25 @@ poetry run python scripts/adjust_projection_quad.py -d 1
 
 Сохранение не затирает поля от AprilTag‑калибровки — в тот же JSON добавляются `proj_quad`, `proj_quad_resolution`, `logical_size`.
 
+## RealSense debug (без проектора)
+
+Пока нет проектора, можно отдельно проверить depth/RGB потоки D435 и baseline depth-сегментацию «пол vs человек».
+
+```bash
+# 1) Просмотр color + depth, FPS, USB режима
+poetry run python scripts/realsense_depth_preview.py --align-to-color
+
+# 2) Сегментация по глубине: SPACE = снять пустой пол, дальше маска "ближе пола"
+poetry run python scripts/realsense_floor_debug.py --align-to-color --lift-mm 70
+
+# Если видите "Couldn't resolve requests", стартуйте c USB2-профилем явно:
+poetry run python scripts/realsense_depth_preview.py --align-to-color --depth-width 640 --depth-height 480 --depth-fps 15 --color-width 640 --color-height 480 --color-fps 15
+```
+
+Примечание: если в HUD/логе видно `USB: 2.x`, камера в режиме USB 2.0 (ограничения по throughput). Для стабильного depth+RGB лучше USB 3.x.
+Если OpenCV падает с ошибкой Qt/Wayland, запускайте с `QT_QPA_PLATFORM=xcb` (или скрипт подставит это автоматически):
+`QT_QPA_PLATFORM=xcb poetry run python scripts/realsense_depth_preview.py --align-to-color`.
+
 ## Игра (HUD: score + fps)
 
 ```bash
@@ -48,9 +75,12 @@ SPACE — фон без человека, затем игра: зелёное к
 ```
 config/calibration.json   # после калибровки
 docs/occlusion-and-treadmill.md
+docs/system-spec.md
 src/calibration.py
 scripts/calibrate_apriltag.py
 scripts/adjust_projection_quad.py
+scripts/realsense_depth_preview.py
+scripts/realsense_floor_debug.py
 scripts/occlusion_game.py
 scripts/display_utils.py
 ```
