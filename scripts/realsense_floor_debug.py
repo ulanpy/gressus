@@ -24,12 +24,12 @@ except ImportError as e:  # pragma: no cover
 
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Debug floor-vs-person segmentation by depth.")
-    p.add_argument("--depth-width", type=int, default=848)
+    p.add_argument("--depth-width", type=int, default=640)
     p.add_argument("--depth-height", type=int, default=480)
-    p.add_argument("--depth-fps", type=int, default=30)
-    p.add_argument("--color-width", type=int, default=1280)
-    p.add_argument("--color-height", type=int, default=720)
-    p.add_argument("--color-fps", type=int, default=30)
+    p.add_argument("--depth-fps", type=int, default=15)
+    p.add_argument("--color-width", type=int, default=640)
+    p.add_argument("--color-height", type=int, default=480)
+    p.add_argument("--color-fps", type=int, default=15)
     p.add_argument(
         "--lift-mm",
         type=float,
@@ -64,11 +64,6 @@ def parse_args() -> argparse.Namespace:
         type=float,
         default=3.0,
         help="Depth colormap clip distance in meters.",
-    )
-    p.add_argument(
-        "--no-auto-fallback",
-        action="store_true",
-        help="Do not try fallback stream profiles if requested profile fails.",
     )
     return p.parse_args()
 
@@ -105,61 +100,28 @@ def largest_centroid(mask: np.ndarray, min_area: int) -> tuple[int, int] | None:
     return best
 
 
-def _build_candidate_profiles(args: argparse.Namespace) -> list[tuple[int, int, int, int, int, int]]:
-    candidates = [
-        (
-            args.depth_width,
-            args.depth_height,
-            args.depth_fps,
-            args.color_width,
-            args.color_height,
-            args.color_fps,
-        ),
-    ]
-    if args.no_auto_fallback:
-        return candidates
-    candidates.extend(
-        [
-            (640, 480, 30, 640, 480, 30),
-            (640, 480, 15, 640, 480, 15),
-            (640, 480, 6, 640, 480, 6),
-            (848, 480, 30, 640, 480, 30),
-            (848, 480, 15, 640, 480, 15),
-            (424, 240, 30, 640, 480, 30),
-            (424, 240, 15, 640, 480, 15),
-        ]
-    )
-    uniq: list[tuple[int, int, int, int, int, int]] = []
-    for c in candidates:
-        if c not in uniq:
-            uniq.append(c)
-    return uniq
-
-
-def _start_with_fallback(
+def _start_pipeline(
     pipe: rs.pipeline,
     args: argparse.Namespace,
 ) -> tuple[rs.pipeline_profile, tuple[int, int, int, int, int, int]]:
-    errors: list[str] = []
-    for dw, dh, dfps, cw, ch, cfps in _build_candidate_profiles(args):
-        cfg = rs.config()
-        cfg.enable_stream(rs.stream.depth, dw, dh, rs.format.z16, dfps)
-        cfg.enable_stream(rs.stream.color, cw, ch, rs.format.bgr8, cfps)
-        try:
-            profile = pipe.start(cfg)
-            return profile, (dw, dh, dfps, cw, ch, cfps)
-        except RuntimeError as e:
-            errors.append(
-                f"depth {dw}x{dh}@{dfps}, color {cw}x{ch}@{cfps}: {e}"
-            )
-    raise RuntimeError("\n".join(errors))
+    dw = args.depth_width
+    dh = args.depth_height
+    dfps = args.depth_fps
+    cw = args.color_width
+    ch = args.color_height
+    cfps = args.color_fps
+    cfg = rs.config()
+    cfg.enable_stream(rs.stream.depth, dw, dh, rs.format.z16, dfps)
+    cfg.enable_stream(rs.stream.color, cw, ch, rs.format.bgr8, cfps)
+    profile = pipe.start(cfg)
+    return profile, (dw, dh, dfps, cw, ch, cfps)
 
 
 def main() -> None:
     args = parse_args()
 
     pipe = rs.pipeline()
-    profile, used = _start_with_fallback(pipe, args)
+    profile, used = _start_pipeline(pipe, args)
     dev = profile.get_device()
     depth_scale_m = float(dev.first_depth_sensor().get_depth_scale())
     align = rs.align(rs.stream.color) if args.align_to_color else None
@@ -179,7 +141,6 @@ def main() -> None:
     floor_model_mm: np.ndarray | None = None
     fps_ema = 0.0
     t_prev = time.perf_counter()
-
     try:
         while True:
             frames = pipe.wait_for_frames(timeout_ms=5000)
@@ -279,7 +240,10 @@ def main() -> None:
                 samples: list[np.ndarray] = []
                 print(f"capturing floor model: {args.calib_frames} frames")
                 for _ in range(args.calib_frames):
-                    frs = pipe.wait_for_frames(timeout_ms=5000)
+                    try:
+                        frs = pipe.wait_for_frames(timeout_ms=5000)
+                    except RuntimeError:
+                        continue
                     if align is not None:
                         frs = align.process(frs)
                     d = frs.get_depth_frame()

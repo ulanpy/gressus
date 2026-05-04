@@ -20,8 +20,17 @@ poetry install
 
 ## Калибровка (HUD с FPS по центру экрана)
 
+Для RealSense D435 важно выбрать **RGB node** (обычно `/dev/video4` в текущей конфигурации, но может отличаться после переподключения). Проверка:
+
 ```bash
-poetry run python scripts/calibrate_apriltag.py -c /dev/video2 --width 1920 --height 1080 --display 1 -o config/calibration.json
+v4l2-ctl --list-devices
+v4l2-ctl -d /dev/video4 --list-formats-ext
+```
+
+Если в списке есть `YUYV`/`MJPG` для color-режимов — это правильный RGB-поток для AprilTag.
+
+```bash
+poetry run python scripts/calibrate_apriltag.py -c /dev/video4 --width 640 --height 480 --no-mjpeg --display 1 -o config/calibration.json
 ```
 
 Enter — сохранить, Esc — выход, S — снимок `calibrate_debug.jpg`.
@@ -44,23 +53,32 @@ poetry run python scripts/adjust_projection_quad.py -d 1
 
 ```bash
 # 1) Просмотр color + depth, FPS, USB режима
-poetry run python scripts/realsense_depth_preview.py --align-to-color
+QT_QPA_PLATFORM=xcb poetry run python scripts/realsense_depth_preview.py --align-to-color
 
 # 2) Сегментация по глубине: SPACE = снять пустой пол, дальше маска "ближе пола"
-poetry run python scripts/realsense_floor_debug.py --align-to-color --lift-mm 70
+QT_QPA_PLATFORM=xcb poetry run python scripts/realsense_floor_debug.py --align-to-color --lift-mm 70
 
-# Если видите "Couldn't resolve requests", стартуйте c USB2-профилем явно:
+# Если видите "Couldn't resolve requests" или "Frame didn't arrive within 5000",
+# задайте более лёгкий профиль вручную (без авто-fallback):
 poetry run python scripts/realsense_depth_preview.py --align-to-color --depth-width 640 --depth-height 480 --depth-fps 15 --color-width 640 --color-height 480 --color-fps 15
 ```
 
 Примечание: если в HUD/логе видно `USB: 2.x`, камера в режиме USB 2.0 (ограничения по throughput). Для стабильного depth+RGB лучше USB 3.x.
+Дефолтный профиль в скриптах выставлен в `640x480@15` для depth и color (более совместимый стартовый режим).
+Если ошибка вида `Frame didn't arrive within 5000`, это обычно не баг Qt/OpenCV, а stall потока из-за USB 2.0 bandwidth/power.
+Отдельно проверьте USB autosuspend (частая причина «вчера работало, сегодня timeout»):
+`cat /sys/bus/usb/devices/3-1/power/control` и `cat /sys/bus/usb/devices/3-1/power/runtime_status`.
+Если там `auto` / `suspended`, временно отключите autosuspend:
+`echo on | sudo tee /sys/bus/usb/devices/3-1/power/control`
+и при необходимости
+`echo -1 | sudo tee /sys/bus/usb/devices/3-1/power/autosuspend_delay_ms`.
 Если OpenCV падает с ошибкой Qt/Wayland, запускайте с `QT_QPA_PLATFORM=xcb` (или скрипт подставит это автоматически):
 `QT_QPA_PLATFORM=xcb poetry run python scripts/realsense_depth_preview.py --align-to-color`.
 
 ## Игра (HUD: score + fps)
 
 ```bash
-poetry run python scripts/occlusion_game.py --calibration config/calibration.json -c /dev/video2 -d 1 --width 1920 --height 1080
+poetry run python scripts/occlusion_game.py --calibration config/calibration.json -c /dev/video4 -d 1 --width 640 --height 480 --no-mjpeg
 ```
 
 SPACE — фон без человека, затем игра: зелёное кольцо = вы, красное = цель.

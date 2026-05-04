@@ -24,12 +24,12 @@ except ImportError as e:  # pragma: no cover
 
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Preview Intel RealSense color + depth.")
-    p.add_argument("--depth-width", type=int, default=848)
+    p.add_argument("--depth-width", type=int, default=640)
     p.add_argument("--depth-height", type=int, default=480)
-    p.add_argument("--depth-fps", type=int, default=30)
-    p.add_argument("--color-width", type=int, default=1280)
-    p.add_argument("--color-height", type=int, default=720)
-    p.add_argument("--color-fps", type=int, default=30)
+    p.add_argument("--depth-fps", type=int, default=15)
+    p.add_argument("--color-width", type=int, default=640)
+    p.add_argument("--color-height", type=int, default=480)
+    p.add_argument("--color-fps", type=int, default=15)
     p.add_argument(
         "--align-to-color",
         action="store_true",
@@ -40,11 +40,6 @@ def parse_args() -> argparse.Namespace:
         type=float,
         default=3.0,
         help="Depth colormap clip distance in meters.",
-    )
-    p.add_argument(
-        "--no-auto-fallback",
-        action="store_true",
-        help="Do not try fallback stream profiles if requested profile fails.",
     )
     return p.parse_args()
 
@@ -127,54 +122,21 @@ def _print_supported_profiles(dev: rs.device) -> None:
                 continue
 
 
-def _build_candidate_profiles(args: argparse.Namespace) -> list[tuple[int, int, int, int, int, int]]:
-    candidates = [
-        (
-            args.depth_width,
-            args.depth_height,
-            args.depth_fps,
-            args.color_width,
-            args.color_height,
-            args.color_fps,
-        ),
-    ]
-    if args.no_auto_fallback:
-        return candidates
-    candidates.extend(
-        [
-            (640, 480, 30, 640, 480, 30),
-            (640, 480, 15, 640, 480, 15),
-            (640, 480, 6, 640, 480, 6),
-            (848, 480, 30, 640, 480, 30),
-            (848, 480, 15, 640, 480, 15),
-            (424, 240, 30, 640, 480, 30),
-            (424, 240, 15, 640, 480, 15),
-        ]
-    )
-    uniq: list[tuple[int, int, int, int, int, int]] = []
-    for c in candidates:
-        if c not in uniq:
-            uniq.append(c)
-    return uniq
-
-
-def _start_with_fallback(
+def _start_pipeline(
     pipe: rs.pipeline,
     args: argparse.Namespace,
 ) -> tuple[rs.pipeline_profile, tuple[int, int, int, int, int, int]]:
-    errors: list[str] = []
-    for dw, dh, dfps, cw, ch, cfps in _build_candidate_profiles(args):
-        cfg = rs.config()
-        cfg.enable_stream(rs.stream.depth, dw, dh, rs.format.z16, dfps)
-        cfg.enable_stream(rs.stream.color, cw, ch, rs.format.bgr8, cfps)
-        try:
-            profile = pipe.start(cfg)
-            return profile, (dw, dh, dfps, cw, ch, cfps)
-        except RuntimeError as e:
-            errors.append(
-                f"depth {dw}x{dh}@{dfps}, color {cw}x{ch}@{cfps}: {e}"
-            )
-    raise RuntimeError("\n".join(errors))
+    dw = args.depth_width
+    dh = args.depth_height
+    dfps = args.depth_fps
+    cw = args.color_width
+    ch = args.color_height
+    cfps = args.color_fps
+    cfg = rs.config()
+    cfg.enable_stream(rs.stream.depth, dw, dh, rs.format.z16, dfps)
+    cfg.enable_stream(rs.stream.color, cw, ch, rs.format.bgr8, cfps)
+    profile = pipe.start(cfg)
+    return profile, (dw, dh, dfps, cw, ch, cfps)
 
 
 def main() -> None:
@@ -183,11 +145,16 @@ def main() -> None:
     pipe = rs.pipeline()
     started = False
     try:
-        profile, used = _start_with_fallback(pipe, args)
+        profile, used = _start_pipeline(pipe, args)
         started = True
         dev = profile.get_device()
     except RuntimeError as e:
-        print("failed to start pipeline with requested/fallback profiles.", file=sys.stderr)
+        print("failed to start pipeline with requested profile.", file=sys.stderr)
+        print(
+            f"requested: depth {args.depth_width}x{args.depth_height}@{args.depth_fps}, "
+            f"color {args.color_width}x{args.color_height}@{args.color_fps}",
+            file=sys.stderr,
+        )
         print(str(e), file=sys.stderr)
         ctx = rs.context()
         devs = ctx.query_devices()
@@ -209,8 +176,6 @@ def main() -> None:
         "active profile: "
         f"depth {used[0]}x{used[1]}@{used[2]}, color {used[3]}x{used[4]}@{used[5]}"
     )
-    if info["usb"].startswith("2"):
-        print("warning: camera is on USB2.x, depth+color throughput may be limited.")
     print("keys: q/esc - quit, s - save snapshot")
 
     fps_ema = 0.0
