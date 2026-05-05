@@ -50,7 +50,8 @@ def _hud_surface(lines: list[str]) -> pygame.Surface:
         max_w = max(max_w, tw)
     h = pad * 2 + len(lines) * th
     w = max(320, pad * 2 + max_w + 8)
-    img = np.full((h, w, 3), (35, 40, 55), dtype=np.uint8)
+    img = np.full((h, w, 3), (0, 0, 0), dtype=np.uint8)
+    cv2.rectangle(img, (0, 0), (w - 1, h - 1), (255, 255, 255), 1)
     for i, line in enumerate(lines):
         cv2.putText(
             img,
@@ -58,7 +59,7 @@ def _hud_surface(lines: list[str]) -> pygame.Surface:
             (pad, pad + 16 + i * th),
             cv2.FONT_HERSHEY_SIMPLEX,
             fs,
-            (220, 220, 230),
+            (255, 255, 255),
             1,
             cv2.LINE_AA,
         )
@@ -154,7 +155,7 @@ def main() -> None:
     try:
         running = True
         while running:
-            screen.fill((28, 32, 48))
+            screen.fill((0, 0, 0))
 
             ok, frame = cap.read()
             player_screen: tuple[int, int] | None = None
@@ -185,10 +186,17 @@ def main() -> None:
                             new_target()
 
             if state == "wait_bg":
-                pygame.draw.circle(screen, (90, 95, 120), (scr_w // 2, scr_h // 2), 18)
-            pygame.draw.circle(screen, (200, 90, 90), (target_px, target_py), 50, 4)
+                pygame.draw.circle(screen, (255, 255, 255), (scr_w // 2, scr_h // 2), 22, 3)
+                pygame.draw.circle(screen, (255, 255, 255), (scr_w // 2, scr_h // 2), 6)
+
+            # High-contrast target for dark treadmill fabric.
+            pygame.draw.circle(screen, (255, 220, 0), (target_px, target_py), 52)
+            pygame.draw.circle(screen, (255, 255, 255), (target_px, target_py), 52, 5)
+            pygame.draw.circle(screen, (255, 255, 255), (target_px, target_py), 16, 3)
             if player_screen is not None:
-                pygame.draw.circle(screen, (80, 200, 120), player_screen, 45, 5)
+                pygame.draw.circle(screen, (0, 255, 255), player_screen, 46)
+                pygame.draw.circle(screen, (255, 255, 255), player_screen, 46, 5)
+                pygame.draw.circle(screen, (255, 255, 255), player_screen, 14, 3)
 
             dt = time.perf_counter() - last_flip
             if dt > 1e-6:

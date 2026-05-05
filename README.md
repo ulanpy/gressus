@@ -30,7 +30,7 @@ v4l2-ctl -d /dev/video4 --list-formats-ext
 Если в списке есть `YUYV`/`MJPG` для color-режимов — это правильный RGB-поток для AprilTag.
 
 ```bash
-poetry run python scripts/calibrate_apriltag.py -c /dev/video4 --width 640 --height 480 --no-mjpeg --display 1 -o config/calibration.json
+poetry run python scripts/calibrate_apriltag.py -c /dev/video4 --width 640 --height 480 --no-mjpeg --display 0 -o config/calibration.json
 ```
 
 Enter — сохранить, Esc — выход, S — снимок `calibrate_debug.jpg`.
@@ -75,13 +75,33 @@ poetry run python scripts/realsense_depth_preview.py --align-to-color --depth-wi
 Если OpenCV падает с ошибкой Qt/Wayland, запускайте с `QT_QPA_PLATFORM=xcb` (или скрипт подставит это автоматически):
 `QT_QPA_PLATFORM=xcb poetry run python scripts/realsense_depth_preview.py --align-to-color`.
 
-## Игра (HUD: score + fps)
+## Игра по плиткам (4 плитки + ноты, через depth)
+
+Основная игра: 4 плитки 2×2, активная плитка светится; шаг в её зону → проигрывается нота (C/D/E/G), активная плитка меняется. Трекинг через **RealSense depth** (надёжнее на тёмной ленте, чем RGB absdiff).
+
+```bash
+QT_QPA_PLATFORM=xcb poetry run python scripts/tile_game.py --calibration config/calibration.json -d 1
+```
+
+Шаги:
+- встаньте вне зоны проекции;
+- `SPACE` — снять модель пустого пола (depth background);
+- дальше: наступайте в подсвеченную плитку — попадание = нота + новая активная плитка;
+- `R` — принудительно сменить активную плитку, `Esc/Q` — выход.
+
+Тонкая настройка:
+- `--lift-mm 70` — насколько выше пола считается «стопой» (увеличить → меньше шума, уменьшить → выше чувствительность);
+- `--min-area 1500` — минимальная площадь сегмента;
+- `--hit-cooldown-s 0.45` — пауза между попаданиями;
+- `--volume 0.5` — громкость нот.
+
+## Старая RGB-игра (MVP, центроид по absdiff)
 
 ```bash
 poetry run python scripts/occlusion_game.py --calibration config/calibration.json -c /dev/video4 -d 1 --width 640 --height 480 --no-mjpeg
 ```
 
-SPACE — фон без человека, затем игра: зелёное кольцо = вы, красное = цель.
+SPACE — фон без человека, затем игра: cyan-кольцо = вы, жёлтый круг = цель. На тёмной ленте RGB absdiff даёт мало контраста — для дорожки используйте `tile_game.py`.
 
 ### Разрешение: калибровка и игра
 
@@ -99,6 +119,7 @@ scripts/calibrate_apriltag.py
 scripts/adjust_projection_quad.py
 scripts/realsense_depth_preview.py
 scripts/realsense_floor_debug.py
+scripts/tile_game.py
 scripts/occlusion_game.py
 scripts/display_utils.py
 ```
