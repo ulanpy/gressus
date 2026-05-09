@@ -30,7 +30,7 @@ v4l2-ctl -d /dev/video4 --list-formats-ext
 Если в списке есть `YUYV`/`MJPG` для color-режимов — это правильный RGB-поток для AprilTag.
 
 ```bash
-poetry run python scripts/calibrate_apriltag.py -c /dev/video4 --width 640 --height 480 --no-mjpeg --display 0 -o config/calibration.json
+QT_QPA_PLATFORM=xcb poetry run python scripts/calibrate_apriltag.py -c /dev/video4 --width 640 --height 480 --no-mjpeg --display 0 -o config/calibration.json
 ```
 
 Enter — сохранить, Esc — выход, S — снимок `calibrate_debug.jpg`.
@@ -77,23 +77,26 @@ poetry run python scripts/realsense_depth_preview.py --align-to-color --depth-wi
 
 ## Игра по плиткам (4 плитки + ноты, через depth)
 
-Основная игра: 4 плитки 2×2, активная плитка светится; шаг в её зону → проигрывается нота (C/D/E/G), активная плитка меняется. Трекинг через **RealSense depth** (надёжнее на тёмной ленте, чем RGB absdiff).
+Основная игра: 2 дорожки (левая/правая), по ним сверху вниз падают плитки (имитация скорости беговой дорожки). Экран повёрнут на 180°; попадание ногой в линию хита по нужной дорожке засчитывает очко и проигрывает ноту плитки. Трекинг через **RealSense depth** (надёжнее на тёмной ленте, чем RGB absdiff).
 
 ```bash
-QT_QPA_PLATFORM=xcb poetry run python scripts/tile_game.py --calibration config/calibration.json -d 1
+QT_QPA_PLATFORM=xcb poetry run python scripts/tile_game.py --calibration config/calibration.json -d 1 --treadmill-speed-mps 0.22 --bpm 64
 ```
 
 Шаги:
 - встаньте вне зоны проекции;
-- `SPACE` — снять модель пустого пола (depth background);
-- дальше: наступайте в подсвеченную плитку — попадание = нота + новая активная плитка;
-- `R` — принудительно сменить активную плитку, `Esc/Q` — выход.
+- `SPACE` — снять модель пустого пола (depth background) и начать раунд;
+- наступайте поочерёдно левой/правой ногой в момент, когда плитка доходит до линии хита внизу;
+- `R` — сброс очков/промахов, `Esc/Q` — выход.
 
 Тонкая настройка:
+- `--treadmill-speed-mps 0.22` — скорость падения плиток (по умолчанию медленно для детей с ДЦП);
+- `--bpm 64` — темп мелодии (Hot Cross Buns, упрощённый фрагмент);
 - `--lift-mm 70` — насколько выше пола считается «стопой» (увеличить → меньше шума, уменьшить → выше чувствительность);
 - `--min-area 1500` — минимальная площадь сегмента;
-- `--hit-cooldown-s 0.45` — пауза между попаданиями;
-- `--volume 0.5` — громкость нот.
+- `--proj-bias-y 60` — компенсирует систематическое смещение попаданий;
+- `--hit-cooldown-s 0.25` — пауза между попаданиями;
+- `--volume 0.45` — громкость нот.
 
 ## Старая RGB-игра (MVP, центроид по absdiff)
 
