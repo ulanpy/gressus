@@ -443,6 +443,7 @@ def main() -> None:
     all_four = False
     frame_i = 0
     last_frame: np.ndarray | None = None
+    last_frame_shape: tuple[int, int] | None = None
     smoothed_wall_fps = 0.0
     last_instant_fps = 0.0
     prev_flip_t: float | None = None
@@ -456,6 +457,8 @@ def main() -> None:
             ok, frame = cap.read()
             if ok:
                 last_frame = frame
+                fh, fw = frame.shape[:2]
+                last_frame_shape = (fw, fh)
                 if args.backend == "pupil":
                     assert pupil_detector is not None
                     last_centers = _detect_tag_centers_pupil(
@@ -476,7 +479,6 @@ def main() -> None:
                 found = set(last_centers.keys())
                 all_four = found == set(TAG_IDS)
                 if args.verbose and frame_i % 30 == 0:
-                    fh, fw = frame.shape[:2]
                     print(
                         f"[calib] backend={args.backend} frame {fw}x{fh} "
                         f"tags={len(found)} ids={sorted(found)}",
@@ -497,6 +499,10 @@ def main() -> None:
                 hud_lines = [
                     f"wall dt fps: inst {last_instant_fps:.2f}  avg {smoothed_wall_fps:.2f}",
                     grab_line,
+                    f"camera: {last_frame_shape[0]}x{last_frame_shape[1]}"
+                    if last_frame_shape is not None
+                    else "camera: no frames",
+                    f"found ids: {sorted(last_centers.keys())}  need: {list(TAG_IDS)}",
                 ]
                 hud = _hud_overlay_surface(hud_lines)
                 screen.blit(
@@ -559,6 +565,7 @@ def main() -> None:
                             "camera_index": args.camera
                             if isinstance(args.camera, int)
                             else str(args.camera),
+                            "camera_resolution": [aw, ah],
                             "flip_horizontal": args.flip,
                             "margin_px": margin,
                             "tag_size_px": tag_sz,
