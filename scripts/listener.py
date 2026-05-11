@@ -32,8 +32,8 @@
 
 Запуск
 ------
-  python3 receive_jsonl_server.py 0.0.0.0 9100
-  python3 receive_jsonl_server.py 100.75.108.87 9100
+  poetry run python scripts/listener.py 0.0.0.0 9100
+  poetry run python scripts/listener.py 100.75.108.87 9100
 
 Второй адрес — только выбранный интерфейс (например Tailscale).
 

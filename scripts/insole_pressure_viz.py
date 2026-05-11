@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """
-Визуализация давления Insolex/WaveX: JSONL как у listener.py; координаты — см. `--size`
+Визуализация давления Insolex/WaveX: JSONL как у `scripts/listener.py`; координаты — см. `--size`
 (`src/insole_sensors_m.py` или `src/insole_sensors_s.py`).
 
 Запуск (после того как Windows-bridge уже шлёт в listener):
-    poetry run python listener.py 0.0.0.0 9100 \\
+    poetry run python scripts/listener.py 0.0.0.0 9100 \\
       | QT_QPA_PLATFORM=xcb poetry run python scripts/insole_pressure_viz.py
 
 Или из файла:
@@ -13,7 +13,7 @@
 
 Пакеты: только numpy + pygame (уже в pyproject.toml). json — stdlib.
 
-Поля JSON ожидаются как в listener.py docstring (L/R: list[list[float]] кПа, 64 точки за скан).
+Поля JSON ожидаются как в docstring `scripts/listener.py` (L/R: list[list[float]] кПа, 64 точки за скан).
 """
 
 from __future__ import annotations

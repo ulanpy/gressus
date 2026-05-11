@@ -8,12 +8,12 @@
 
 **Координаты сенсоров стельки размера M** (лев/прав): [docs/insole-sensors-m.md](docs/insole-sensors-m.md).
 
-**Приём давления со стороны Windows (TCP JSONL)** — см. docstring [`listener.py`](listener.py).
+**Приём давления со стороны Windows (TCP JSONL)** — см. docstring [`scripts/listener.py`](scripts/listener.py).
 
 **Режим только визуализации давления (stdin JSONL)**
 
 ```bash
-poetry run python listener.py 0.0.0.0 9100 \
+poetry run python scripts/listener.py 0.0.0.0 9100 \
   | QT_QPA_PLATFORM=xcb poetry run python scripts/insole_pressure_viz.py --size m
 ```
 
@@ -111,7 +111,7 @@ QT_QPA_PLATFORM=xcb poetry run python scripts/tile_game.py \
 - `R` — сброс очков/промахов, `Esc/Q` — выход.
 
 Тонкая настройка (см. также `--help`):
-- `--treadmill-speed-mps` — скорость падения плиток;
+- `-S` / `--speed` / `--treadmill-speed-mps` — скорость падения плиток (одно и то же);
 - `--step-time-s` — интервал между шагами/плитками;
 - `--tile-height-frac` / `--same-lane-gap-frac` — размер плитки и зазор в одной дорожке;
 - `--lift-mm`, `--min-area` — сегментация стопы;
@@ -127,7 +127,7 @@ QT_QPA_PLATFORM=xcb poetry run python scripts/tile_game.py \
 
 | Путь | Назначение |
 |------|------------|
-| `listener.py` | TCP-сервер: принимает JSONL от Windows WaveX-bridge, печатает компактный JSON в stdout (для пайпа в визуализатор или лог). |
+| `scripts/listener.py` | TCP-сервер: принимает JSONL от Windows WaveX-bridge, печатает компактный JSON в stdout (для пайпа в визуализатор или лог). |
 | `config/calibration.json` | Результат калибровки: гомография камера→проектор, разрешения, опционально `proj_quad`. Локальная машина — коммитить по желанию. |
 | `src/calibration.py` | Загрузка JSON и `cam_to_proj(x, y, frame_w)` для проекции точки кадра в координаты проектора. Используется в `tile_game.py`, `calibrate_apriltag.py`, `adjust_projection_quad.py`. |
 | `src/insole_stream.py` | Общий приём Insolex: парсинг последнего кадра L/R, статистика давления, TCP receiver в фоне. Используется в `tile_game.py` и `insole_pressure_viz.py`. |
