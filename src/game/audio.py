@@ -210,8 +210,8 @@ class GameAudio:
         self,
         *,
         assets_dir: Path,
-        music_volume: float,
-        sfx_volume: float,
+        music_volume: float = 0.32,
+        sfx_volume: float = 0.85,
     ) -> None:
         assets_dir = assets_dir.resolve()
         music_path = assets_dir / MUSIC_LOOP_FILENAME

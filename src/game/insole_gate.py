@@ -14,19 +14,40 @@ def insole_allows_lane(
     max_age_s: float,
     *,
     swap_lanes: bool,
+    dominance_kpa: float = 15.0,
 ) -> bool:
-    """Fail open while debugging; require pressure only when fresh insole data exists."""
+    """Lane's foot must (a) be above threshold and (b) dominate the other foot.
+
+    Both feet usually rest on the treadmill, so an absolute threshold alone
+    fires on the supporting foot too. Requiring dominance over the other side
+    identifies the actively-stepping foot.
+
+    Fail-open semantics: returns True when there is no fresh insole data at
+    all, so depth/RGB gates remain the source of truth while debugging.
+    """
     if snapshot is None or not snapshot.has_recent_data:
         return True
     if snapshot.age_s is not None and snapshot.age_s > max_age_s:
         return True
-    stats = insole_stats_for_lane(lane, snapshot, swap_lanes)
-    if not stats.has_data:
+    own = insole_stats_for_lane(lane, snapshot, swap_lanes)
+    other = insole_stats_for_lane(1 - lane, snapshot, swap_lanes)
+    if not own.has_data:
         return False
-    return stats.pressed
+    if not other.has_data:
+        return own.pressed
+    if not own.pressed:
+        return False
+    return (own.max_kpa - other.max_kpa) >= dominance_kpa
 
 
-def insole_hud_line(snapshot: InsoleSnapshot | None, threshold_kpa: float, max_age_s: float) -> str:
+def insole_hud_line(
+    snapshot: InsoleSnapshot | None,
+    threshold_kpa: float,
+    max_age_s: float,
+    *,
+    dominance_kpa: float = 15.0,
+    swap_lanes: bool = False,
+) -> str:
     if snapshot is None:
         return "insole: disabled"
     age_txt = "?" if snapshot.age_s is None else f"{snapshot.age_s:.2f}s"
@@ -34,11 +55,20 @@ def insole_hud_line(snapshot: InsoleSnapshot | None, threshold_kpa: float, max_a
         return f"insole: offline ({snapshot.error})  fail-open"
     if snapshot.age_s is None or snapshot.age_s > max_age_s:
         return f"insole: waiting/stale age={age_txt}  fail-open"
-    left = "DOWN" if snapshot.left_stats.pressed else "up"
-    right = "DOWN" if snapshot.right_stats.pressed else "up"
+    l_stats = insole_stats_for_lane(0, snapshot, swap_lanes)
+    r_stats = insole_stats_for_lane(1, snapshot, swap_lanes)
+    diff = l_stats.max_kpa - r_stats.max_kpa
+    if diff >= dominance_kpa:
+        dom = "L>R"
+    elif -diff >= dominance_kpa:
+        dom = "R>L"
+    else:
+        dom = "tie"
+    left = "DOWN" if l_stats.pressed else "up"
+    right = "DOWN" if r_stats.pressed else "up"
     return (
-        f"insole: L {snapshot.left_stats.max_kpa:.0f}kPa {left} | "
-        f"R {snapshot.right_stats.max_kpa:.0f}kPa {right} | "
-        f"thr {threshold_kpa:.0f} age {age_txt}"
+        f"insole: L {l_stats.max_kpa:.0f}kPa {left} | "
+        f"R {r_stats.max_kpa:.0f}kPa {right} | "
+        f"thr {threshold_kpa:.0f}  dom {dominance_kpa:.0f} → {dom}({diff:+.0f})  age {age_txt}"
     )
 

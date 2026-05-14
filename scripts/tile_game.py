@@ -1,9 +1,15 @@
 #!/usr/bin/env python3
-"""Two-lane treadmill game: falling tiles + depth foot hits; looped BGM + SFX on hit."""
+"""Two-lane treadmill tile game.
+
+Per-tile hit gate: depth-lift AND rgb-occlusion AND insole-pressure.
+Foot-plane offset is stored in calibration.json (`hit_shift_canvas`).
+Live tuning: arrows (Shift = x5). Press S to save the current shift.
+"""
 
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import sys
 import time
@@ -12,13 +18,14 @@ from pathlib import Path
 if os.environ.get("WAYLAND_DISPLAY") and not os.environ.get("QT_QPA_PLATFORM"):
     os.environ["QT_QPA_PLATFORM"] = "xcb"
 
+import cv2
 import numpy as np
 import pygame
 
 try:
     import pyrealsense2 as rs
 except ImportError as e:
-    print("pyrealsense2 is not installed. Run: poetry add pyrealsense2", file=sys.stderr)
+    print("pyrealsense2 is not installed. Run: poetry install", file=sys.stderr)
     raise SystemExit(1) from e
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -26,80 +33,127 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import display_utils  # noqa: E402
 from src.calibration import CameraCalibration, load_calibration  # noqa: E402
 from src.game.audio import GameAudio, default_assets_dir  # noqa: E402
-from src.game.hit_logic import (  # noqa: E402
-    lane_ready_for_tile,
-    point_inside_tile_center_radius,
-    screen_lane_of_point,
-)
-from src.game.insole_gate import insole_allows_lane, insole_hud_line  # noqa: E402
+from src.game.hit_logic import lane_ready_for_tile  # noqa: E402
+from src.game.insole_gate import insole_hud_line  # noqa: E402
 from src.game.models import FallingTile  # noqa: E402
-from src.game.realsense_depth import capture_floor, detect_foot_points, start_realsense  # noqa: E402
+from src.game.realsense_depth import (  # noqa: E402
+    capture_floor_and_color,
+    start_realsense,
+    tile_signals,
+)
 from src.game.render import draw_scene, hud_surface, lane_rects  # noqa: E402
-from src.insole_stream import InsoleTcpReceiver  # noqa: E402
+from src.insole_stream import InsoleSnapshot, InsoleTcpReceiver  # noqa: E402
 
 LANE_NAMES = ("LEFT", "RIGHT")
-TILE_LABEL = ""  # white center-circle already marks the hit zone, no glyph needed
 LANE_COLORS = ((60, 150, 255), (255, 220, 60))
 BG_COLOR = (0, 0, 0)
 FG_COLOR = (255, 255, 255)
 
+# Per-tile gates (no CLI knobs; tuned in code).
+LIFT_MM_MIN = 40.0
+LIFT_MM_MAX = 250.0
+DEPTH_FILL_THRESH = 0.30
+RGB_FILL_THRESH = 0.40
+RGB_LIT_DELTA = 30
+HIT_COOLDOWN_S = 0.18
+INSOLE_MAX_AGE_S = 0.40
 
-def output_canvas_size(screen_w: int, screen_h: int, rotation_degrees: int) -> tuple[int, int]:
-    if rotation_degrees in (90, 270):
-        return screen_h, screen_w
-    return screen_w, screen_h
+# Tile / lane geometry.
+TILE_HEIGHT_FRAC = 0.42
+SAME_LANE_GAP_FRAC = 0.08
+FLOOR_CAPTURE_FRAMES = 45
 
 
-def inverse_output_point(
-    x: float,
-    y: float,
+def output_canvas_size(scr_w: int, scr_h: int, rot: int) -> tuple[int, int]:
+    return (scr_h, scr_w) if rot in (90, 270) else (scr_w, scr_h)
+
+
+def forward_output_point(cx: float, cy: float, *, cw: int, ch: int, rot: int) -> tuple[float, float]:
+    if rot == 0:
+        return cx, cy
+    if rot == 90:
+        return cy, cw - 1 - cx
+    if rot == 180:
+        return cw - 1 - cx, ch - 1 - cy
+    if rot == 270:
+        return ch - 1 - cy, cx
+    raise ValueError(f"Unsupported rotation: {rot}")
+
+
+def tile_cam_poly(
+    tile: FallingTile,
+    lane_rect: pygame.Rect,
     *,
-    screen_w: int,
-    screen_h: int,
-    rotation_degrees: int,
-) -> tuple[float, float]:
-    """Map physical projector pixels back into the unrotated game canvas."""
-    canvas_w, canvas_h = output_canvas_size(screen_w, screen_h, rotation_degrees)
-    if rotation_degrees == 0:
-        return x, y
-    if rotation_degrees == 90:
-        return float(canvas_w - 1 - y), x
-    if rotation_degrees == 180:
-        return float(canvas_w - 1 - x), float(canvas_h - 1 - y)
-    if rotation_degrees == 270:
-        return y, float(canvas_h - 1 - x)
-    raise ValueError(f"Unsupported rotation: {rotation_degrees}")
+    cw: int,
+    ch: int,
+    sx: float,
+    sy: float,
+    rot: int,
+    H_proj_to_cam: np.ndarray,
+    shift_x: int,
+    shift_y: int,
+) -> np.ndarray:
+    pad_x = max(8, lane_rect.width // 12)
+    l = lane_rect.left + pad_x + shift_x
+    r = lane_rect.right - pad_x + shift_x
+    t = int(tile.y) + shift_y
+    b = int(tile.y + tile.h) + shift_y
+    canvas_corners = [(l, t), (r, t), (r, b), (l, b)]
+    screen_pts = np.array(
+        [forward_output_point(cx, cy, cw=cw, ch=ch, rot=rot) for cx, cy in canvas_corners],
+        dtype=np.float32,
+    )
+    proj_pts = screen_pts.copy()
+    proj_pts[:, 0] /= sx
+    proj_pts[:, 1] /= sy
+    cam_pts = cv2.perspectiveTransform(proj_pts.reshape(-1, 1, 2), H_proj_to_cam).reshape(-1, 2)
+    return cam_pts
+
+
+def pressure_ok(
+    lane: int,
+    snapshot: InsoleSnapshot | None,
+    insole_enabled: bool,
+) -> bool:
+    """STRICT gate. Returns True only if we have a fresh, pressed reading for THIS lane."""
+    if not insole_enabled:
+        return True
+    if snapshot is None or not snapshot.has_recent_data:
+        return False
+    if snapshot.age_s is None or snapshot.age_s > INSOLE_MAX_AGE_S:
+        return False
+    stats = snapshot.left_stats if lane == 0 else snapshot.right_stats
+    return stats.has_data and stats.pressed
+
+
+def load_shift(cal_path: Path) -> tuple[int, int]:
+    try:
+        with open(cal_path, encoding="utf-8") as f:
+            raw = json.load(f)
+        v = raw.get("hit_shift_canvas")
+        if isinstance(v, (list, tuple)) and len(v) == 2:
+            return int(v[0]), int(v[1])
+    except Exception:
+        pass
+    return 0, 0
+
+
+def save_shift(cal_path: Path, shift: tuple[int, int]) -> None:
+    with open(cal_path, encoding="utf-8") as f:
+        raw = json.load(f)
+    raw["hit_shift_canvas"] = [int(shift[0]), int(shift[1])]
+    with open(cal_path, "w", encoding="utf-8") as f:
+        json.dump(raw, f, indent=2, ensure_ascii=False)
 
 
 def parse_args() -> argparse.Namespace:
-    p = argparse.ArgumentParser(description="2-lane treadmill feedback game (RealSense depth).")
+    p = argparse.ArgumentParser(description="2-lane treadmill tile game.")
     p.add_argument("--calibration", type=Path, default=Path("config/calibration.json"))
     p.add_argument("-d", "--display", type=int, default=None)
-    p.add_argument(
-        "--output-rotation",
-        type=int,
-        choices=(0, 90, 180, 270),
-        default=180,
-        help="Поворот финального изображения на проектор.",
-    )
-    p.add_argument("--depth-width", type=int, default=640)
-    p.add_argument("--depth-height", type=int, default=480)
-    p.add_argument("--depth-fps", type=int, default=15)
-    p.add_argument("--color-width", type=int, default=640)
-    p.add_argument("--color-height", type=int, default=480)
-    p.add_argument("--color-fps", type=int, default=15)
-    p.add_argument("--lift-mm", type=float, default=70.0)
-    p.add_argument("--min-area", type=int, default=1500)
-    p.add_argument("--calib-frames", type=int, default=45)
-    p.add_argument("--hit-cooldown-s", type=float, default=0.25)
-    p.add_argument("--hit-window-frac", type=float, default=0.09)
-    p.add_argument("--proj-bias-y", type=float, default=60.0)
-    p.add_argument("--no-insole", action="store_true", help="Disable Insolex pressure confirmation.")
-    p.add_argument("--insole-host", default="0.0.0.0", help="TCP host for the Windows WaveX bridge.")
-    p.add_argument("--insole-port", type=int, default=9100, help="TCP port for the Windows WaveX bridge.")
-    p.add_argument("--insole-thresh-kpa", type=float, default=8.0, help="Max pressure needed to confirm a step.")
-    p.add_argument("--swap-insole-lanes", action="store_true")
-    p.add_argument("--insole-max-age-s", type=float, default=0.75)
+    p.add_argument("--output-rotation", type=int, choices=(0, 90, 180, 270), default=270)
+    p.add_argument("--no-insole", action="store_true")
+    p.add_argument("--insole-port", type=int, default=9100)
+    p.add_argument("--insole-thresh-kpa", type=float, default=8.0)
     p.add_argument(
         "-S",
         "--speed",
@@ -107,60 +161,40 @@ def parse_args() -> argparse.Namespace:
         type=float,
         default=0.22,
         metavar="MPS",
-        dest="treadmill_speed_mps",
-        help="Скорость падения плиток (условные м/с вдоль «ленты»). Равносильно -S / --speed / --treadmill-speed-mps.",
+        dest="tile_speed_mps",
+        help="Скорость падения плиток: условные «м/с» вдоль ленты (0.05–1.5). "
+        "Внутри переводится в px/s и ограничивается ~620 px/s.",
     )
-    p.add_argument("--step-time-s", type=float, default=1.45)
-    p.add_argument("--tile-height-frac", type=float, default=0.42)
-    p.add_argument("--same-lane-gap-frac", type=float, default=0.08)
     p.add_argument(
-        "--center-hit-radius-frac",
+        "--step-time-s",
         type=float,
-        default=0.28,
-        help="Радиус активной зоны попадания, доля от меньшей стороны плитки.",
+        default=1.45,
+        help="Интервал между появлением плиток (сек).",
     )
-    p.add_argument(
-        "--assets-dir",
-        type=Path,
-        default=None,
-        help="Folder with BGM + hit WAV (default: <repo>/assets).",
-    )
-    p.add_argument("--music-volume", type=float, default=0.32, help="Looped BGM volume 0..1.")
-    p.add_argument("--sfx-volume", type=float, default=0.85, help="Hit sound volume 0..1.")
     return p.parse_args()
 
 
 def main() -> None:
     args = parse_args()
-    output_rotation = args.output_rotation
+    rot = args.output_rotation
+    insole_enabled = not args.no_insole
 
     cal: CameraCalibration = load_calibration(args.calibration)
     screen, scr_w, scr_h, _ = display_utils.open_fullscreen(args.display, "Treadmill tile rhythm")
-    canvas_w, canvas_h = output_canvas_size(scr_w, scr_h, output_rotation)
-    assets_dir = args.assets_dir if args.assets_dir is not None else default_assets_dir()
-    game_audio = GameAudio(
-        assets_dir=assets_dir,
-        music_volume=args.music_volume,
-        sfx_volume=args.sfx_volume,
-    )
+    cw, ch = output_canvas_size(scr_w, scr_h, rot)
+    audio = GameAudio(assets_dir=default_assets_dir())
 
     insole_rx: InsoleTcpReceiver | None = None
     try:
-        if not args.no_insole:
-            insole_rx = InsoleTcpReceiver(args.insole_host, args.insole_port)
+        if insole_enabled:
+            insole_rx = InsoleTcpReceiver("0.0.0.0", args.insole_port)
             insole_rx.start()
-
         pipe, align, depth_scale_m = start_realsense(
-            rs,
-            depth_width=args.depth_width,
-            depth_height=args.depth_height,
-            depth_fps=args.depth_fps,
-            color_width=args.color_width,
-            color_height=args.color_height,
-            color_fps=args.color_fps,
+            rs, depth_width=640, depth_height=480, depth_fps=15,
+            color_width=640, color_height=480, color_fps=15,
         )
     except Exception:
-        game_audio.stop()
+        audio.stop()
         if insole_rx is not None:
             insole_rx.stop()
         raise
@@ -171,28 +205,33 @@ def main() -> None:
 
     state = "wait_floor"
     floor_mm: np.ndarray | None = None
+    baseline_gray: np.ndarray | None = None
     score = 0
     misses = 0
 
-    play_top = int(canvas_h * 0.16)
-    play_bottom = canvas_h - 8
+    play_top = int(ch * 0.16)
+    play_bottom = ch - 8
     play_h = play_bottom - play_top
     hit_y = int(play_top + play_h * 0.82)
-    hit_window = max(18, int(play_h * float(np.clip(args.hit_window_frac, 0.03, 0.20))))
+    hit_window = max(60, int(play_h * 0.15))
 
+    tile_speed_mps = float(np.clip(args.tile_speed_mps, 0.05, 1.5))
+    tile_speed_px_s = float(np.clip(tile_speed_mps * 420.0, 45.0, 620.0))
     step_time_s = float(np.clip(args.step_time_s, 0.75, 2.8))
-    speed_mps = float(np.clip(args.treadmill_speed_mps, 0.05, 1.5))
-    center_hit_radius_frac = float(np.clip(args.center_hit_radius_frac, 0.05, 0.6))
-    tile_speed_px_s = float(np.clip(speed_mps * 420.0, 45.0, 620.0))
-    step_pitch_px = tile_speed_px_s * step_time_s
-    tile_height_frac = float(np.clip(args.tile_height_frac, 0.18, 0.48))
-    tile_h = int(np.clip(play_h * tile_height_frac, play_h * 0.18, play_h * 0.48))
-    same_lane_gap_px = int(play_h * float(np.clip(args.same_lane_gap_frac, 0.02, 0.25)))
+    tile_h = int(play_h * TILE_HEIGHT_FRAC)
+    same_lane_gap_px = int(play_h * SAME_LANE_GAP_FRAC)
 
     tiles: list[FallingTile] = []
+    tile_d: dict[int, float] = {}
+    tile_r: dict[int, float] = {}
+    tile_p: dict[int, bool] = {}
     next_lane = 0
     next_spawn_t = time.perf_counter() + 1.0
     last_hit_t = -1e9
+
+    shift_x, shift_y = load_shift(args.calibration)
+    shift_dirty = False
+    shift_saved_msg_t = -1e9
 
     fps_ema = 0.0
     t_prev = time.perf_counter()
@@ -204,179 +243,151 @@ def main() -> None:
             now = time.perf_counter()
             dt = max(1e-6, now - t_prev)
             t_prev = now
-            fps = 1.0 / dt
-            fps_ema = fps if fps_ema <= 0.0 else (0.9 * fps_ema + 0.1 * fps)
-            insole_snapshot = None if insole_rx is None else insole_rx.latest_snapshot(args.insole_thresh_kpa)
+            fps_ema = 1.0 / dt if fps_ema <= 0.0 else 0.9 * fps_ema + 0.1 / dt
+
+            insole_snap = (
+                insole_rx.latest_snapshot(args.insole_thresh_kpa) if insole_rx else None
+            )
 
             try:
                 frames = pipe.wait_for_frames(timeout_ms=5000)
             except RuntimeError:
                 frames = None
-
             depth_mm: np.ndarray | None = None
-            color_w = args.color_width
-            color_h = args.color_height
+            color_gray: np.ndarray | None = None
             if frames is not None:
                 frames = align.process(frames)
                 d = frames.get_depth_frame()
                 c = frames.get_color_frame()
                 if d:
-                    depth_mm = np.asanyarray(d.get_data()).astype(np.float32) * depth_scale_m * 1000.0
-                if c is not None:
-                    color_img = np.asanyarray(c.get_data())
-                    color_h, color_w = int(color_img.shape[0]), int(color_img.shape[1])
-
-            rects = lane_rects(canvas_w, play_top, play_bottom)
-            lane_bounds = [(float(r.left), float(r.right)) for r in rects]
-            foot_points = 0
-            projected_points: list[tuple[float, float, int | None, bool]] = []
-            lane_points: dict[int, list[tuple[float, float]]] = {0: [], 1: []}
-            if state == "play" and depth_mm is not None and floor_mm is not None:
-                for cx, cy in detect_foot_points(depth_mm, floor_mm, args.lift_mm, args.min_area):
-                    foot_points += 1
-                    px, py = cal.cam_to_proj(cx, cy, color_w)
-                    sxp = px * sx
-                    syp = py * sy
-                    sxp, syp = inverse_output_point(
-                        sxp,
-                        syp,
-                        screen_w=scr_w,
-                        screen_h=scr_h,
-                        rotation_degrees=output_rotation,
+                    depth_mm = (
+                        np.asanyarray(d.get_data()).astype(np.float32) * depth_scale_m * 1000.0
                     )
-                    syp += args.proj_bias_y
-                    lane = screen_lane_of_point(sxp, lane_bounds)
-                    in_hit_band = hit_y - hit_window <= syp <= hit_y + hit_window
-                    projected_points.append((sxp, syp, lane, in_hit_band))
-                    if lane is not None:
-                        lane_points[lane].append((sxp, syp))
+                if c is not None:
+                    color_gray = cv2.cvtColor(np.asanyarray(c.get_data()), cv2.COLOR_BGR2GRAY)
+
+            rects = lane_rects(cw, play_top, play_bottom)
+            tile_d.clear()
+            tile_r.clear()
+            tile_p.clear()
 
             if state == "play":
                 while now >= next_spawn_t:
-                    lane = next_lane
-                    if not lane_ready_for_tile(lane, tiles, play_top, tile_h, same_lane_gap_px):
+                    if not lane_ready_for_tile(next_lane, tiles, play_top, tile_h, same_lane_gap_px):
                         next_spawn_t = now + 0.05
                         break
+                    tiles.append(FallingTile(lane=next_lane, note="", y=float(play_top - tile_h), h=tile_h))
                     next_lane = 1 - next_lane
-                    tiles.append(
-                        FallingTile(lane=lane, note=TILE_LABEL, y=float(play_top - tile_h), h=tile_h)
-                    )
                     next_spawn_t += step_time_s
 
-                for tile in tiles:
-                    if not tile.hit:
-                        tile.y += tile_speed_px_s * dt
+                for t in tiles:
+                    if not t.hit:
+                        t.y += tile_speed_px_s * dt
 
-                pressure_lanes = {
-                    lane
-                    for lane, points in lane_points.items()
-                    if points
-                    and insole_allows_lane(
-                        lane,
-                        insole_snapshot,
-                        args.insole_max_age_s,
-                        swap_lanes=args.swap_insole_lanes,
-                    )
-                }
-                if (now - last_hit_t) >= args.hit_cooldown_s and pressure_lanes:
-                    for lane in sorted(pressure_lanes):
-                        candidates = [
-                            t
-                            for t in tiles
-                            if (not t.hit)
-                            and t.lane == lane
-                            and abs((t.y + t.h * 0.5) - hit_y) <= (t.h * 0.5 + hit_window)
-                            and any(
-                                point_inside_tile_center_radius(
-                                    px,
-                                    py,
-                                    t,
-                                    lane_bounds[lane],
-                                    center_hit_radius_frac,
-                                )
-                                for px, py in lane_points[lane]
-                            )
-                        ]
-                        if not candidates:
+                if depth_mm is not None and floor_mm is not None:
+                    for i, t in enumerate(tiles):
+                        if t.hit:
                             continue
-                        chosen = min(candidates, key=lambda t: abs((t.y + t.h * 0.5) - hit_y))
-                        chosen.hit = True
-                        score += 1
-                        last_hit_t = now
-                        game_audio.play_hit()
-                        break
+                        if t.y < play_top or t.y + t.h > play_bottom:
+                            continue
+                        poly = tile_cam_poly(
+                            t, rects[t.lane],
+                            cw=cw, ch=ch, sx=sx, sy=sy, rot=rot,
+                            H_proj_to_cam=cal.H_proj_to_cam,
+                            shift_x=shift_x, shift_y=shift_y,
+                        )
+                        d_score, r_score, _area = tile_signals(
+                            poly, depth_mm, floor_mm, color_gray, baseline_gray,
+                            LIFT_MM_MIN, LIFT_MM_MAX, RGB_LIT_DELTA,
+                        )
+                        tile_d[i] = d_score
+                        tile_r[i] = r_score
+                        tile_p[i] = pressure_ok(t.lane, insole_snap, insole_enabled)
+
+                if (now - last_hit_t) >= HIT_COOLDOWN_S:
+                    for i, t in enumerate(tiles):
+                        if t.hit or i not in tile_p:
+                            continue
+                        if (
+                            tile_d.get(i, 0.0) >= DEPTH_FILL_THRESH
+                            and tile_r.get(i, 0.0) >= RGB_FILL_THRESH
+                            and tile_p[i]
+                        ):
+                            t.hit = True
+                            score += 1
+                            last_hit_t = now
+                            audio.play_hit()
+                            break
 
                 kept: list[FallingTile] = []
                 for t in tiles:
                     if t.hit:
-                        if (now - last_hit_t) < 0.12:
+                        if (now - last_hit_t) < 0.18:
                             kept.append(t)
                         continue
-                    if t.y > (play_bottom + t.h):
+                    if t.y > play_bottom + t.h:
                         misses += 1
                         continue
                     kept.append(t)
                 tiles = kept
 
-            frame = pygame.Surface((canvas_w, canvas_h))
+            frame = pygame.Surface((cw, ch))
             draw_scene(
                 frame,
-                scr_w=canvas_w,
-                play_top=play_top,
-                play_bottom=play_bottom,
-                hit_y=hit_y,
-                hit_window=hit_window,
-                tiles=tiles,
-                lane_names=LANE_NAMES,
-                lane_colors=LANE_COLORS,
-                bg_color=BG_COLOR,
-                fg_color=FG_COLOR,
-                center_hit_radius_frac=center_hit_radius_frac,
+                scr_w=cw, play_top=play_top, play_bottom=play_bottom,
+                hit_y=hit_y, hit_window=hit_window, tiles=tiles,
+                lane_names=LANE_NAMES, lane_colors=LANE_COLORS,
+                bg_color=BG_COLOR, fg_color=FG_COLOR,
+                center_hit_radius_frac=0.28,
             )
 
-            depth_lanes = {lane for lane, points in lane_points.items() if points}
-            gated_lanes = {
-                lane
-                for lane in depth_lanes
-                if insole_allows_lane(
-                    lane,
-                    insole_snapshot,
-                    args.insole_max_age_s,
-                    swap_lanes=args.swap_insole_lanes,
-                )
-            }
-            for sxp, syp, lane, in_hit_band in projected_points:
-                on_tile = lane is not None and any(
-                    (not t.hit)
-                    and t.lane == lane
-                    and point_inside_tile_center_radius(
-                        sxp,
-                        syp,
-                        t,
-                        lane_bounds[lane],
-                        center_hit_radius_frac,
+            # Sample-rect outline + D/R/P dots per tile.
+            for i, t in enumerate(tiles):
+                if t.hit:
+                    continue
+                if t.y < play_top or t.y + t.h > play_bottom:
+                    continue
+                r_lane = rects[t.lane]
+                pad_x = max(8, r_lane.width // 12)
+                if shift_x or shift_y:
+                    sx_left = r_lane.left + pad_x + shift_x
+                    sx_right = r_lane.right - pad_x + shift_x
+                    sy_top = int(t.y) + shift_y
+                    sy_bot = int(t.y + t.h) + shift_y
+                    pygame.draw.rect(
+                        frame, (255, 0, 255),
+                        pygame.Rect(sx_left, sy_top, sx_right - sx_left, sy_bot - sy_top),
+                        width=2,
                     )
-                    for t in tiles
+                gx0 = r_lane.left + pad_x + 16
+                gy = int(t.y) + 18
+                gates = (
+                    tile_d.get(i, 0.0) >= DEPTH_FILL_THRESH,
+                    tile_r.get(i, 0.0) >= RGB_FILL_THRESH,
+                    tile_p.get(i, False),
                 )
-                col = (80, 255, 120) if on_tile else (255, 90, 90)
-                pygame.draw.circle(frame, col, (int(sxp), int(syp)), 14, width=4)
+                for j, ok in enumerate(gates):
+                    col = (40, 240, 80) if ok else (60, 60, 60)
+                    pygame.draw.circle(frame, col, (gx0 + j * 22, gy), 8)
 
+            shift_str = f"shift=({shift_x},{shift_y})"
+            if shift_dirty:
+                shift_str += " *unsaved (S to save)"
+            if (now - shift_saved_msg_t) < 1.2:
+                shift_str += "  SAVED"
             hud_lines = [
-                f"state: {state}  score: {score}  miss: {misses}  fps: {fps_ema:.1f}",
-                f"speed: {tile_speed_px_s:.0f}px/s (~{speed_mps:.2f} m/s)  step interval: {step_time_s:.2f}s",
-                f"step pitch: {step_pitch_px:.0f}px  tile-h: {tile_h}px ({tile_height_frac:.0%})  same-lane gap: {same_lane_gap_px}px",
-                f"center-hit radius: {center_hit_radius_frac:.0%}  cooldown: {args.hit_cooldown_s:.2f}s",
-                f"depth feet: {foot_points}  depth lanes: {sorted(depth_lanes)}  gated lanes: {sorted(gated_lanes)}",
-                f"camera: {color_w}x{color_h}  calib: {cal.raw.get('camera_resolution', '?')}  rotation: {output_rotation}",
-                f"lift-mm: {args.lift_mm:.0f}  min-area: {args.min_area}  bias-y: {args.proj_bias_y:.0f}",
-                f"insole lane map: {'swapped R/L' if args.swap_insole_lanes else 'normal L/R'}",
-                insole_hud_line(insole_snapshot, args.insole_thresh_kpa, args.insole_max_age_s),
-                "SPACE: capture empty floor | R: reset score | ESC/Q: quit",
+                f"score: {score}  miss: {misses}  fps: {fps_ema:.1f}  state: {state}",
+                f"speed: {tile_speed_px_s:.0f}px/s (~{tile_speed_mps:.2f} m/s)  step: {step_time_s:.2f}s",
+                f"lift: [{LIFT_MM_MIN:.0f}..{LIFT_MM_MAX:.0f}]mm  D≥{DEPTH_FILL_THRESH:.0%}  R≥{RGB_FILL_THRESH:.0%}  Δlit:{RGB_LIT_DELTA}  hit=D AND R AND P",
+                shift_str + "   arrows tune (Shift=x5)",
+                insole_hud_line(insole_snap, args.insole_thresh_kpa, INSOLE_MAX_AGE_S)
+                if insole_enabled else "insole: --no-insole (P=True)",
+                "SPACE: capture floor  S: save shift  R: reset score  ESC/Q: quit",
             ]
             hud = hud_surface(hud_lines, fg_color=FG_COLOR)
-            frame.blit(hud, (canvas_w // 2 - hud.get_width() // 2, 12))
-            if output_rotation:
-                frame = pygame.transform.rotate(frame, output_rotation)
+            frame.blit(hud, (cw // 2 - hud.get_width() // 2, 12))
+            if rot:
+                frame = pygame.transform.rotate(frame, rot)
             screen.fill(BG_COLOR)
             screen.blit(frame, ((scr_w - frame.get_width()) // 2, (scr_h - frame.get_height()) // 2))
             pygame.display.flip()
@@ -388,9 +399,12 @@ def main() -> None:
                     if e.key in (pygame.K_ESCAPE, pygame.K_q):
                         running = False
                     elif e.key == pygame.K_SPACE:
-                        new_floor = capture_floor(pipe, align, depth_scale_m, args.calib_frames)
+                        new_floor, new_gray = capture_floor_and_color(
+                            pipe, align, depth_scale_m, FLOOR_CAPTURE_FRAMES,
+                        )
                         if new_floor is not None:
                             floor_mm = new_floor
+                            baseline_gray = new_gray
                             state = "play"
                             tiles.clear()
                             next_lane = 0
@@ -398,10 +412,30 @@ def main() -> None:
                     elif e.key == pygame.K_r:
                         score = 0
                         misses = 0
+                    elif e.key == pygame.K_s:
+                        try:
+                            save_shift(args.calibration, (shift_x, shift_y))
+                            shift_dirty = False
+                            shift_saved_msg_t = now
+                        except Exception as exc:
+                            print(f"[tile_game] save shift failed: {exc}", file=sys.stderr)
+                    elif e.key in (
+                        pygame.K_LEFT, pygame.K_RIGHT, pygame.K_UP, pygame.K_DOWN
+                    ):
+                        step = 50 if (pygame.key.get_mods() & pygame.KMOD_SHIFT) else 10
+                        if e.key == pygame.K_LEFT:
+                            shift_x -= step
+                        elif e.key == pygame.K_RIGHT:
+                            shift_x += step
+                        elif e.key == pygame.K_UP:
+                            shift_y -= step
+                        elif e.key == pygame.K_DOWN:
+                            shift_y += step
+                        shift_dirty = True
 
             clock.tick(60)
     finally:
-        game_audio.stop()
+        audio.stop()
         try:
             pipe.stop()
         except Exception:
