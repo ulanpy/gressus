@@ -28,9 +28,8 @@ from src.calibration import CameraCalibration, load_calibration  # noqa: E402
 from src.game.audio import GameAudio, default_assets_dir  # noqa: E402
 from src.game.hit_logic import (  # noqa: E402
     lane_ready_for_tile,
-    point_inside_tile_y,
+    point_inside_tile_center_radius,
     screen_lane_of_point,
-    tile_overlaps_hit_zone,
 )
 from src.game.insole_gate import insole_allows_lane, insole_hud_line  # noqa: E402
 from src.game.models import FallingTile  # noqa: E402
@@ -39,22 +38,50 @@ from src.game.render import draw_scene, hud_surface, lane_rects  # noqa: E402
 from src.insole_stream import InsoleTcpReceiver  # noqa: E402
 
 LANE_NAMES = ("LEFT", "RIGHT")
-TILE_LABEL = "\u2605"  # star on tile (audio is asset SFX, not note names)
+TILE_LABEL = ""  # white center-circle already marks the hit zone, no glyph needed
 LANE_COLORS = ((60, 150, 255), (255, 220, 60))
 BG_COLOR = (0, 0, 0)
 FG_COLOR = (255, 255, 255)
 
 
-def maybe_rotate_point(x: float, y: float, w: int, h: int, rotate_180: bool) -> tuple[float, float]:
-    if not rotate_180:
+def output_canvas_size(screen_w: int, screen_h: int, rotation_degrees: int) -> tuple[int, int]:
+    if rotation_degrees in (90, 270):
+        return screen_h, screen_w
+    return screen_w, screen_h
+
+
+def inverse_output_point(
+    x: float,
+    y: float,
+    *,
+    screen_w: int,
+    screen_h: int,
+    rotation_degrees: int,
+) -> tuple[float, float]:
+    """Map physical projector pixels back into the unrotated game canvas."""
+    canvas_w, canvas_h = output_canvas_size(screen_w, screen_h, rotation_degrees)
+    if rotation_degrees == 0:
         return x, y
-    return float(w - 1 - x), float(h - 1 - y)
+    if rotation_degrees == 90:
+        return float(canvas_w - 1 - y), x
+    if rotation_degrees == 180:
+        return float(canvas_w - 1 - x), float(canvas_h - 1 - y)
+    if rotation_degrees == 270:
+        return y, float(canvas_h - 1 - x)
+    raise ValueError(f"Unsupported rotation: {rotation_degrees}")
 
 
 def parse_args() -> argparse.Namespace:
-    p = argparse.ArgumentParser(description="4-lane treadmill rhythm game (RealSense depth).")
+    p = argparse.ArgumentParser(description="2-lane treadmill feedback game (RealSense depth).")
     p.add_argument("--calibration", type=Path, default=Path("config/calibration.json"))
     p.add_argument("-d", "--display", type=int, default=None)
+    p.add_argument(
+        "--output-rotation",
+        type=int,
+        choices=(0, 90, 180, 270),
+        default=180,
+        help="Поворот финального изображения на проектор.",
+    )
     p.add_argument("--depth-width", type=int, default=640)
     p.add_argument("--depth-height", type=int, default=480)
     p.add_argument("--depth-fps", type=int, default=15)
@@ -87,6 +114,12 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--tile-height-frac", type=float, default=0.42)
     p.add_argument("--same-lane-gap-frac", type=float, default=0.08)
     p.add_argument(
+        "--center-hit-radius-frac",
+        type=float,
+        default=0.28,
+        help="Радиус активной зоны попадания, доля от меньшей стороны плитки.",
+    )
+    p.add_argument(
         "--assets-dir",
         type=Path,
         default=None,
@@ -99,10 +132,11 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = parse_args()
-    rotate_180 = True
+    output_rotation = args.output_rotation
 
     cal: CameraCalibration = load_calibration(args.calibration)
     screen, scr_w, scr_h, _ = display_utils.open_fullscreen(args.display, "Treadmill tile rhythm")
+    canvas_w, canvas_h = output_canvas_size(scr_w, scr_h, output_rotation)
     assets_dir = args.assets_dir if args.assets_dir is not None else default_assets_dir()
     game_audio = GameAudio(
         assets_dir=assets_dir,
@@ -140,14 +174,15 @@ def main() -> None:
     score = 0
     misses = 0
 
-    play_top = int(scr_h * 0.16)
-    play_bottom = scr_h - 8
+    play_top = int(canvas_h * 0.16)
+    play_bottom = canvas_h - 8
     play_h = play_bottom - play_top
     hit_y = int(play_top + play_h * 0.82)
     hit_window = max(18, int(play_h * float(np.clip(args.hit_window_frac, 0.03, 0.20))))
 
     step_time_s = float(np.clip(args.step_time_s, 0.75, 2.8))
     speed_mps = float(np.clip(args.treadmill_speed_mps, 0.05, 1.5))
+    center_hit_radius_frac = float(np.clip(args.center_hit_radius_frac, 0.05, 0.6))
     tile_speed_px_s = float(np.clip(speed_mps * 420.0, 45.0, 620.0))
     step_pitch_px = tile_speed_px_s * step_time_s
     tile_height_frac = float(np.clip(args.tile_height_frac, 0.18, 0.48))
@@ -191,7 +226,7 @@ def main() -> None:
                     color_img = np.asanyarray(c.get_data())
                     color_h, color_w = int(color_img.shape[0]), int(color_img.shape[1])
 
-            rects = lane_rects(scr_w, play_top, play_bottom)
+            rects = lane_rects(canvas_w, play_top, play_bottom)
             lane_bounds = [(float(r.left), float(r.right)) for r in rects]
             foot_points = 0
             projected_points: list[tuple[float, float, int | None, bool]] = []
@@ -201,8 +236,15 @@ def main() -> None:
                     foot_points += 1
                     px, py = cal.cam_to_proj(cx, cy, color_w)
                     sxp = px * sx
-                    syp = py * sy + args.proj_bias_y
-                    sxp, syp = maybe_rotate_point(sxp, syp, scr_w, scr_h, rotate_180)
+                    syp = py * sy
+                    sxp, syp = inverse_output_point(
+                        sxp,
+                        syp,
+                        screen_w=scr_w,
+                        screen_h=scr_h,
+                        rotation_degrees=output_rotation,
+                    )
+                    syp += args.proj_bias_y
                     lane = screen_lane_of_point(sxp, lane_bounds)
                     in_hit_band = hit_y - hit_window <= syp <= hit_y + hit_window
                     projected_points.append((sxp, syp, lane, in_hit_band))
@@ -243,9 +285,16 @@ def main() -> None:
                             for t in tiles
                             if (not t.hit)
                             and t.lane == lane
-                            and (
-                                any(point_inside_tile_y(py, t) for _px, py in lane_points[lane])
-                                or tile_overlaps_hit_zone(t, hit_y, hit_window)
+                            and abs((t.y + t.h * 0.5) - hit_y) <= (t.h * 0.5 + hit_window)
+                            and any(
+                                point_inside_tile_center_radius(
+                                    px,
+                                    py,
+                                    t,
+                                    lane_bounds[lane],
+                                    center_hit_radius_frac,
+                                )
+                                for px, py in lane_points[lane]
                             )
                         ]
                         if not candidates:
@@ -269,10 +318,10 @@ def main() -> None:
                     kept.append(t)
                 tiles = kept
 
-            frame = pygame.Surface((scr_w, scr_h))
+            frame = pygame.Surface((canvas_w, canvas_h))
             draw_scene(
                 frame,
-                scr_w=scr_w,
+                scr_w=canvas_w,
                 play_top=play_top,
                 play_bottom=play_bottom,
                 hit_y=hit_y,
@@ -282,6 +331,7 @@ def main() -> None:
                 lane_colors=LANE_COLORS,
                 bg_color=BG_COLOR,
                 fg_color=FG_COLOR,
+                center_hit_radius_frac=center_hit_radius_frac,
             )
 
             depth_lanes = {lane for lane, points in lane_points.items() if points}
@@ -297,29 +347,38 @@ def main() -> None:
             }
             for sxp, syp, lane, in_hit_band in projected_points:
                 on_tile = lane is not None and any(
-                    (not t.hit) and t.lane == lane and point_inside_tile_y(syp, t)
+                    (not t.hit)
+                    and t.lane == lane
+                    and point_inside_tile_center_radius(
+                        sxp,
+                        syp,
+                        t,
+                        lane_bounds[lane],
+                        center_hit_radius_frac,
+                    )
                     for t in tiles
                 )
-                col = (80, 255, 120) if lane is not None and (in_hit_band or on_tile) else (255, 90, 90)
+                col = (80, 255, 120) if on_tile else (255, 90, 90)
                 pygame.draw.circle(frame, col, (int(sxp), int(syp)), 14, width=4)
 
             hud_lines = [
                 f"state: {state}  score: {score}  miss: {misses}  fps: {fps_ema:.1f}",
                 f"speed: {tile_speed_px_s:.0f}px/s (~{speed_mps:.2f} m/s)  step interval: {step_time_s:.2f}s",
                 f"step pitch: {step_pitch_px:.0f}px  tile-h: {tile_h}px ({tile_height_frac:.0%})  same-lane gap: {same_lane_gap_px}px",
-                f"hit-window: ±{hit_window}px  cooldown: {args.hit_cooldown_s:.2f}s",
+                f"center-hit radius: {center_hit_radius_frac:.0%}  cooldown: {args.hit_cooldown_s:.2f}s",
                 f"depth feet: {foot_points}  depth lanes: {sorted(depth_lanes)}  gated lanes: {sorted(gated_lanes)}",
-                f"camera: {color_w}x{color_h}  calib: {cal.raw.get('camera_resolution', '?')}",
+                f"camera: {color_w}x{color_h}  calib: {cal.raw.get('camera_resolution', '?')}  rotation: {output_rotation}",
                 f"lift-mm: {args.lift_mm:.0f}  min-area: {args.min_area}  bias-y: {args.proj_bias_y:.0f}",
                 f"insole lane map: {'swapped R/L' if args.swap_insole_lanes else 'normal L/R'}",
                 insole_hud_line(insole_snapshot, args.insole_thresh_kpa, args.insole_max_age_s),
                 "SPACE: capture empty floor | R: reset score | ESC/Q: quit",
             ]
             hud = hud_surface(hud_lines, fg_color=FG_COLOR)
-            frame.blit(hud, (scr_w // 2 - hud.get_width() // 2, 12))
-            if rotate_180:
-                frame = pygame.transform.rotate(frame, 180)
-            screen.blit(frame, (0, 0))
+            frame.blit(hud, (canvas_w // 2 - hud.get_width() // 2, 12))
+            if output_rotation:
+                frame = pygame.transform.rotate(frame, output_rotation)
+            screen.fill(BG_COLOR)
+            screen.blit(frame, ((scr_w - frame.get_width()) // 2, (scr_h - frame.get_height()) // 2))
             pygame.display.flip()
 
             for e in pygame.event.get():

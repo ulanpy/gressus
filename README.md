@@ -33,20 +33,17 @@ poetry install
 
 ## Калибровка (AprilTag на проекторе)
 
-Узел **RGB** у RealSense на Linux часто **`/dev/video6`** (формат `YUYV`). Проверка:
-
-```bash
-v4l2-ctl --list-devices
-v4l2-ctl -d /dev/video6 --list-formats-ext
-```
+Калибровку лучше делать через **RealSense color stream**, чтобы не выбирать вручную `/dev/videoN`.
 
 ```bash
 QT_QPA_PLATFORM=xcb poetry run python scripts/calibrate_apriltag.py \
-  -c /dev/video6 \
+  -c realsense \
   --width 640 \
   --height 480 \
-  --no-mjpeg \
+  --fps 30 \
   --display 0 \
+  --tag-size 280 \
+  --margin 30 \
   -o config/calibration.json
 ```
 
@@ -97,6 +94,7 @@ QT_QPA_PLATFORM=xcb poetry run python scripts/tile_game.py \
   --lift-mm 40 \
   --min-area 700 \
   --proj-bias-y 60 \
+  --output-rotation 90 \
   --insole-host 0.0.0.0 \
   --insole-port 9100 \
   --insole-thresh-kpa 8
@@ -116,6 +114,7 @@ QT_QPA_PLATFORM=xcb poetry run python scripts/tile_game.py \
 - `--tile-height-frac` / `--same-lane-gap-frac` — размер плитки и зазор в одной дорожке;
 - `--lift-mm`, `--min-area` — сегментация стопы;
 - `--proj-bias-y` — смещение по вертикали после гомографии;
+- `--output-rotation 0|90|180|270` — поворот финального изображения на проектор;
 - `--swap-insole-lanes` — если мостик отдаёт L/R в обратном порядке относительно дорожек.
 
 ### Разрешение: калибровка и игра

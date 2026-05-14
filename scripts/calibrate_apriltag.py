@@ -8,6 +8,7 @@ import json
 import sys
 import time
 from pathlib import Path
+from typing import Protocol
 
 import cv2
 import numpy as np
@@ -20,6 +21,12 @@ TAG_FAMILY = "DICT_APRILTAG_36h11"
 TAG_IDS = (0, 1, 2, 3)
 
 
+class CameraReader(Protocol):
+    def read(self) -> tuple[bool, np.ndarray | None]: ...
+
+    def release(self) -> None: ...
+
+
 def _pupil_apriltags_available() -> bool:
     try:
         import pupil_apriltags  # noqa: F401
@@ -30,6 +37,8 @@ def _pupil_apriltags_available() -> bool:
 
 def _parse_camera_arg(s: str) -> int | str:
     s = s.strip()
+    if s.lower() in {"realsense", "rs", "d435"}:
+        return "realsense"
     if s.startswith("/dev/") or s.startswith("v4l2:"):
         return s
     if s.isdigit():
@@ -44,7 +53,7 @@ def parse_args() -> argparse.Namespace:
         "--camera",
         type=_parse_camera_arg,
         default="0",
-        help="V4L2: путь /dev/videoN (предпочтительно) или индекс. Индекс ≠ номер videoN!",
+        help="Камера: realsense (предпочтительно для игры), /dev/videoN или индекс OpenCV.",
     )
     p.add_argument(
         "-d",
@@ -107,6 +116,12 @@ def parse_args() -> argparse.Namespace:
         type=int,
         default=1080,
         help="Запрашиваемая высота (часто 1080 вместе с --width 1920).",
+    )
+    p.add_argument(
+        "--fps",
+        type=int,
+        default=30,
+        help="Запрашиваемый FPS камеры для OpenCV/RealSense.",
     )
     p.add_argument(
         "--backend",
@@ -346,6 +361,107 @@ def _probe_fps(cap: cv2.VideoCapture, n_frames: int = 45) -> tuple[float, float]
     return reported, measured
 
 
+def _probe_reader_fps(reader: CameraReader, n_frames: int = 45) -> float:
+    t0 = time.perf_counter()
+    got = 0
+    for _ in range(n_frames):
+        ok, _frame = reader.read()
+        if ok:
+            got += 1
+    dt = time.perf_counter() - t0
+    return (got / dt) if dt > 0 else 0.0
+
+
+class RealSenseColorCapture:
+    def __init__(self, width: int, height: int, fps: int) -> None:
+        try:
+            import pyrealsense2 as rs
+        except ImportError as e:
+            print("pyrealsense2 is not installed. Run: poetry install", file=sys.stderr)
+            raise SystemExit(1) from e
+
+        self._rs = rs
+        self._pipe = rs.pipeline()
+        cfg = rs.config()
+        cfg.enable_stream(rs.stream.color, width, height, rs.format.bgr8, fps)
+        try:
+            profile = self._pipe.start(cfg)
+        except RuntimeError as e:
+            print(
+                f"[calib] RealSense color failed: {width}x{height}@{fps}. "
+                "Try --width 640 --height 480 --fps 30.",
+                file=sys.stderr,
+            )
+            raise SystemExit(2) from e
+
+        stream = profile.get_stream(rs.stream.color).as_video_stream_profile()
+        self.width = int(stream.width())
+        self.height = int(stream.height())
+        self.fps = int(stream.fps())
+        dev = profile.get_device()
+        self.serial = _rs_info(dev, rs.camera_info.serial_number)
+        self.name = _rs_info(dev, rs.camera_info.name)
+
+        # Let auto-exposure settle before the first detection frames.
+        for _ in range(12):
+            self.read()
+
+    def read(self) -> tuple[bool, np.ndarray | None]:
+        try:
+            frames = self._pipe.wait_for_frames(timeout_ms=5000)
+        except RuntimeError:
+            return False, None
+        color = frames.get_color_frame()
+        if not color:
+            return False, None
+        return True, np.asanyarray(color.get_data()).copy()
+
+    def release(self) -> None:
+        self._pipe.stop()
+
+
+def _rs_info(dev, info) -> str:  # type: ignore[no-untyped-def]
+    try:
+        return str(dev.get_info(info))
+    except Exception:
+        return "n/a"
+
+
+def _open_camera(args: argparse.Namespace, use_mjpeg: bool) -> tuple[CameraReader, int, int, str, float, float]:
+    if args.camera == "realsense":
+        cap = RealSenseColorCapture(args.width, args.height, args.fps)
+        print(
+            f"[calib] realsense color {cap.width}x{cap.height}@{cap.fps} "
+            f"name={cap.name!r} serial={cap.serial!r} backend={args.backend}",
+            file=sys.stderr,
+        )
+        startup_meas = 0.0 if args.no_fps_probe else _probe_reader_fps(cap, n_frames=45)
+        if not args.no_fps_probe:
+            print(f"[calib] RealSense grab~{startup_meas:.1f}", file=sys.stderr)
+        return cap, cap.width, cap.height, "realsense", 0.0, startup_meas
+
+    cap_cv = cv2.VideoCapture(args.camera)
+    if not cap_cv.isOpened():
+        print(f"Не удалось открыть камеру --camera {args.camera}", file=sys.stderr)
+        pygame.quit()
+        sys.exit(1)
+
+    aw, ah = _configure_capture(cap_cv, args.width, args.height, use_mjpeg)
+    fcc_lbl = _fourcc_log_label(cap_cv, use_mjpeg)
+    print(
+        f"[calib] {args.camera!r} {aw}x{ah} {fcc_lbl} mjpeg={use_mjpeg} backend={args.backend}",
+        file=sys.stderr,
+    )
+    startup_rep, startup_meas = 0.0, 0.0
+    if not args.no_fps_probe:
+        startup_rep, startup_meas = _probe_fps(cap_cv, n_frames=45)
+        print(
+            f"[calib] CAP_PROP_FPS={startup_rep:.1f} grab~{startup_meas:.1f}",
+            file=sys.stderr,
+        )
+    return cap_cv, aw, ah, "opencv", startup_rep, startup_meas
+
+
 def _draw_status_bar(screen: pygame.Surface, proj_w: int, proj_h: int, ok: bool) -> None:
     hbar = max(8, proj_h // 80)
     y0 = proj_h - hbar * 2
@@ -417,25 +533,7 @@ def main() -> None:
         for tid in TAG_IDS
     }
 
-    cap = cv2.VideoCapture(args.camera)
-    if not cap.isOpened():
-        print(f"Не удалось открыть камеру --camera {args.camera}", file=sys.stderr)
-        pygame.quit()
-        sys.exit(1)
-
-    aw, ah = _configure_capture(cap, args.width, args.height, use_mjpeg)
-    fcc_lbl = _fourcc_log_label(cap, use_mjpeg)
-    print(
-        f"[calib] {args.camera!r} {aw}x{ah} {fcc_lbl} mjpeg={use_mjpeg} backend={args.backend}",
-        file=sys.stderr,
-    )
-    startup_rep, startup_meas = 0.0, 0.0
-    if not args.no_fps_probe:
-        startup_rep, startup_meas = _probe_fps(cap, n_frames=45)
-        print(
-            f"[calib] CAP_PROP_FPS={startup_rep:.1f} grab~{startup_meas:.1f}",
-            file=sys.stderr,
-        )
+    cap, aw, ah, camera_label, startup_rep, startup_meas = _open_camera(args, use_mjpeg)
 
     clock = pygame.time.Clock()
     running = True
@@ -559,6 +657,7 @@ def main() -> None:
                             "version": 1,
                             "method": "apriltag_centers",
                             "detector_backend": args.backend,
+                            "camera_backend": camera_label,
                             "tag_family": TAG_FAMILY,
                             "tag_ids": list(TAG_IDS),
                             "proj_resolution": [proj_w, proj_h],

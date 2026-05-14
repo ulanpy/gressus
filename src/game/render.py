@@ -77,6 +77,7 @@ def draw_scene(
     lane_colors: tuple[tuple[int, int, int], tuple[int, int, int]],
     bg_color: tuple[int, int, int],
     fg_color: tuple[int, int, int],
+    center_hit_radius_frac: float,
 ) -> None:
     screen.fill(bg_color)
     rects = lane_rects(scr_w, play_top, play_bottom)
@@ -101,6 +102,9 @@ def draw_scene(
             color = (255, 255, 255)
         pygame.draw.rect(screen, color, t_rect, border_radius=10)
         pygame.draw.rect(screen, fg_color, t_rect, width=3, border_radius=10)
-        txt = label_surface(tile.note, 0.9, fg_color, 2)
-        screen.blit(txt, (t_rect.centerx - txt.get_width() // 2, t_rect.centery - txt.get_height() // 2))
+        hit_radius = int(min(t_rect.width, t_rect.height) * center_hit_radius_frac)
+        pygame.draw.circle(screen, (255, 255, 255), t_rect.center, hit_radius, width=3)
+        if tile.note:
+            txt = label_surface(tile.note, 0.9, fg_color, 2)
+            screen.blit(txt, (t_rect.centerx - txt.get_width() // 2, t_rect.centery - txt.get_height() // 2))
 

@@ -10,12 +10,22 @@ def screen_lane_of_point(x: float, lane_rects: list[tuple[float, float]]) -> int
     return None
 
 
-def point_inside_tile_y(y: float, tile: FallingTile) -> bool:
-    return tile.y <= y <= (tile.y + tile.h)
-
-
-def tile_overlaps_hit_zone(tile: FallingTile, hit_y: int, hit_window: int) -> bool:
-    return tile.y <= (hit_y + hit_window) and (tile.y + tile.h) >= (hit_y - hit_window)
+def point_inside_tile_center_radius(
+    x: float,
+    y: float,
+    tile: FallingTile,
+    lane_bounds: tuple[float, float],
+    radius_frac: float,
+) -> bool:
+    left, right = lane_bounds
+    lane_w = right - left
+    pad_x = max(8.0, lane_w / 12.0)
+    tile_left = left + pad_x
+    tile_right = right - pad_x
+    cx = (tile_left + tile_right) * 0.5
+    cy = tile.y + tile.h * 0.5
+    radius = min(tile_right - tile_left, float(tile.h)) * radius_frac
+    return (x - cx) * (x - cx) + (y - cy) * (y - cy) <= radius * radius
 
 
 def lane_ready_for_tile(

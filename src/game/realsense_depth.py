@@ -65,12 +65,12 @@ def detect_foot_points(
         pts = c.reshape(-1, 2)
         if pts.shape[0] == 0:
             continue
+        # Use only the foot tip (bottom-most band of the silhouette): standing far
+        # from the treadmill must not scatter many sample points across the canvas.
         max_y = int(np.max(pts[:, 1]))
         band = pts[pts[:, 1] >= (max_y - 6)]
         if band.shape[0] == 0:
             band = pts
-        x = float(np.median(band[:, 0]))
-        y = float(max_y)
-        points.append((x, y))
+        points.append((float(np.median(band[:, 0])), float(max_y)))
     return points
 
