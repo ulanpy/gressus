@@ -17,6 +17,12 @@ poetry run python scripts/listener.py 0.0.0.0 9100 \
   | QT_QPA_PLATFORM=xcb poetry run python scripts/insole_pressure_viz.py --size m
 ```
 
+Без стелек — мок-шаг для отладки дизайна:
+
+```bash
+QT_QPA_PLATFORM=xcb poetry run python scripts/insole_pressure_viz.py --mock --size m
+```
+
 Для размера стельки **S** подставьте `--size s`. Пакеты: `numpy`, `pygame`, `opencv` (Poetry).
 
 ## Текущее железо (май 2026)
@@ -133,7 +139,7 @@ QT_QPA_PLATFORM=xcb poetry run python scripts/tile_game.py \
 | `src/insole_sensors_m.py` | Координаты 64 сенсоров стельки **M** (мм) для визуализации. |
 | `src/insole_sensors_s.py` | То же для размера **S** (`--size s` в визуализаторе). |
 | `scripts/tile_game.py` | Основная игра: RealSense, плитки, звук, опционально Insolex по TCP. |
-| `scripts/insole_pressure_viz.py` | 3D/анатомическая визуализация давления из stdin JSONL; `--size m\|s`. |
+| `scripts/insole_pressure_viz.py` | 2D-градиент давления по сенсорам (stdin JSONL); `--size m\|s`, `--mock`. |
 | `scripts/calibrate_apriltag.py` | Калибровка AprilTag 36h11 с проектора в `calibration.json`. |
 | `scripts/adjust_projection_quad.py` | Pre-warp четырёхугольника проекции на ленту. |
 | `scripts/realsense_depth_preview.py` | Отладка потоков depth/color. |

@@ -7,6 +7,9 @@
     poetry run python scripts/listener.py 0.0.0.0 9100 \\
       | QT_QPA_PLATFORM=xcb poetry run python scripts/insole_pressure_viz.py
 
+Без стелек (мок для отладки дизайна):
+    QT_QPA_PLATFORM=xcb poetry run python scripts/insole_pressure_viz.py --mock
+
 Или из файла:
     QT_QPA_PLATFORM=xcb poetry run python scripts/insole_pressure_viz.py \\
       < dumps.jsonl
@@ -24,6 +27,7 @@ import os
 import queue
 import sys
 import threading
+import time
 from pathlib import Path
 
 if os.environ.get("WAYLAND_DISPLAY") and not os.environ.get("QT_QPA_PLATFORM"):
@@ -37,9 +41,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from src.insole_stream import N_SENSORS, latest_scan  # noqa: E402
 
-GRID_W = 36
-GRID_H = 100
-HEIGHT_GAMMA = 0.68
+GRID_W = 48
+GRID_H = 128
+COLOR_LUT_SIZE = 256
 
 
 def _text_surface(
@@ -78,23 +82,46 @@ def bbox_mm(coords: tuple[tuple[float, float], ...]) -> tuple[float, float, floa
     return min(xs), max(xs), min(ys), max(ys)
 
 
+_PRESSURE_STOPS = (
+    (0.00, np.array([232, 239, 248], dtype=np.float32)),
+    (0.18, np.array([154, 214, 244], dtype=np.float32)),
+    (0.42, np.array([78, 194, 176], dtype=np.float32)),
+    (0.68, np.array([255, 225, 111], dtype=np.float32)),
+    (0.86, np.array([255, 157, 73], dtype=np.float32)),
+    (1.00, np.array([236, 78, 55], dtype=np.float32)),
+)
+
+
+def _build_color_lut(size: int = COLOR_LUT_SIZE) -> np.ndarray:
+    lut = np.zeros((size, 3), dtype=np.uint8)
+    for i in range(size):
+        t = i / max(size - 1, 1)
+        for (t0, c0), (t1, c1) in zip(_PRESSURE_STOPS, _PRESSURE_STOPS[1:]):
+            if t <= t1:
+                a = (t - t0) / max(t1 - t0, 1e-6)
+                c = c0 + (c1 - c0) * a
+                lut[i] = np.clip(c, 0, 255).astype(np.uint8)
+                break
+        else:
+            lut[i] = np.clip(_PRESSURE_STOPS[-1][1], 0, 255).astype(np.uint8)
+    return lut
+
+
+_COLOR_LUT = _build_color_lut()
+
+
 def pressure_value_to_color(v_kpa: float, vmax: float) -> tuple[int, int, int]:
     t = float(np.clip(v_kpa / max(vmax, 1e-6), 0.0, 1.0))
-    stops = (
-        (0.00, np.array([232, 239, 248], dtype=np.float32)),
-        (0.18, np.array([154, 214, 244], dtype=np.float32)),
-        (0.42, np.array([78, 194, 176], dtype=np.float32)),
-        (0.68, np.array([255, 225, 111], dtype=np.float32)),
-        (0.86, np.array([255, 157, 73], dtype=np.float32)),
-        (1.00, np.array([236, 78, 55], dtype=np.float32)),
-    )
-    for (t0, c0), (t1, c1) in zip(stops, stops[1:]):
-        if t <= t1:
-            a = (t - t0) / max(t1 - t0, 1e-6)
-            c = c0 + (c1 - c0) * a
-            return int(c[0]), int(c[1]), int(c[2])
-    c = stops[-1][1]
+    idx = int(round(t * (COLOR_LUT_SIZE - 1)))
+    c = _COLOR_LUT[idx]
     return int(c[0]), int(c[1]), int(c[2])
+
+
+def field_to_rgb(field: np.ndarray, vmax_kpa: float) -> np.ndarray:
+    """field (H, W) кПа → RGB (H, W, 3)."""
+    t = np.clip(field / max(vmax_kpa, 1e-6), 0.0, 1.0)
+    idx = (t * (COLOR_LUT_SIZE - 1)).astype(np.uint8)
+    return _COLOR_LUT[idx]
 
 
 def finite_max(vals: np.ndarray | None) -> float:
@@ -104,75 +131,61 @@ def finite_max(vals: np.ndarray | None) -> float:
     return float(np.max(clean))
 
 
-def anatomical_foot_mask(
-    xx: np.ndarray,
-    yy: np.ndarray,
-    coords: np.ndarray,
+def mock_pressure_frame(
+    coords_mm: tuple[tuple[float, float], ...],
+    t_sec: float,
     *,
-    xmin: float,
-    xmax: float,
-    ymin: float,
-    ymax: float,
-    sensor_side_mm: float,
+    phase_offset: float,
 ) -> np.ndarray:
-    """Anatomical display outline with heel, medial arch and broad forefoot."""
+    """Синтетическое давление: шаг с пяткой → серединой → носком."""
+    coords = np.array(coords_mm[:N_SENSORS], dtype=np.float64)
+    ymin = float(np.min(coords[:, 1]))
+    ymax = float(np.max(coords[:, 1]))
     length = max(ymax - ymin, 1e-6)
-    raw_width = max(float(np.max(coords[:, 0]) - np.min(coords[:, 0])), 1e-6)
-    display_width = raw_width + sensor_side_mm * 3.2
+    x_center = float(np.mean(coords[:, 0]))
 
-    y_norm = (coords[:, 1] - np.min(coords[:, 1])) / max(
-        float(np.max(coords[:, 1]) - np.min(coords[:, 1])),
-        1e-6,
-    )
-    heel_center = float(np.mean(coords[y_norm <= 0.12, 0]))
-    mid_candidates = coords[(y_norm >= 0.42) & (y_norm <= 0.62), 0]
-    mid_center = float(np.mean(mid_candidates)) if mid_candidates.size else float(np.mean(coords[:, 0]))
-    toe_center = float(np.mean(coords[y_norm >= 0.88, 0]))
-    medial_sign = 1.0 if toe_center >= heel_center else -1.0
+    step = (t_sec * 1.05 + phase_offset) % 1.0
+    if step < 0.32:
+        hotspot_y = ymin + length * (0.10 + step * 1.05)
+        sigma_y = length * 0.13
+        peak = 175.0
+    elif step < 0.68:
+        hotspot_y = ymin + length * (0.48 + (step - 0.32) * 0.55)
+        sigma_y = length * 0.17
+        peak = 255.0
+    else:
+        hotspot_y = ymin + length * (0.78 + (step - 0.68) * 0.55)
+        sigma_y = length * 0.11
+        peak = 145.0
 
-    v = np.clip((yy - ymin) / length, 0.0, 1.0)
-    center = np.where(
-        v < 0.62,
-        heel_center + (mid_center - heel_center) * (v / 0.62),
-        mid_center + (toe_center - mid_center) * ((v - 0.62) / 0.38),
-    )
+    dy = coords[:, 1] - hotspot_y
+    dx = coords[:, 0] - x_center
+    sigma_x = length * 0.21
+    dist2 = (dy / sigma_y) ** 2 + (dx / sigma_x) ** 2
+    vals = peak * np.exp(-0.5 * dist2)
 
-    profile_v = np.array([0.00, 0.06, 0.16, 0.32, 0.48, 0.62, 0.76, 0.89, 0.98, 1.00])
-    lateral_profile = np.array([0.07, 0.20, 0.27, 0.30, 0.32, 0.39, 0.48, 0.47, 0.30, 0.10])
-    medial_profile = np.array([0.08, 0.19, 0.23, 0.15, 0.12, 0.22, 0.47, 0.55, 0.39, 0.14])
-    lateral_width = np.interp(v, profile_v, lateral_profile) * display_width
-    medial_width = np.interp(v, profile_v, medial_profile) * display_width
+    # лёгкий «шум» сенсора без random — детерминированно от времени
+    wobble = 1.0 + 0.06 * np.sin(t_sec * 9.0 + coords[:, 0] * 0.11 + coords[:, 1] * 0.07)
+    vals *= wobble
+    vals = np.clip(vals, 0.0, None)
+    return vals.astype(np.float64)
 
-    x_signed = (xx - center) * medial_sign
-    basic = (x_signed >= -lateral_width) & (x_signed <= medial_width)
 
-    heel_y = ymin + length * 0.075
-    heel_rx = display_width * 0.25
-    heel_ry = length * 0.095
-    heel = ((xx - heel_center) / heel_rx) ** 2 + ((yy - heel_y) / heel_ry) ** 2 <= 1.0
-
-    forefoot_y = ymin + length * 0.84
-    forefoot = (
-        ((xx - toe_center) / (display_width * 0.54)) ** 2
-        + ((yy - forefoot_y) / (length * 0.145)) ** 2
-        <= 1.0
-    )
-
-    big_toe_center_x = toe_center + medial_sign * display_width * 0.20
-    toe_y = ymin + length * 0.955
-    big_toe = (
-        ((xx - big_toe_center_x) / (display_width * 0.24)) ** 2
-        + ((yy - toe_y) / (length * 0.085)) ** 2
-        <= 1.0
-    )
-    other_toes_center_x = toe_center - medial_sign * display_width * 0.12
-    other_toes = (
-        ((xx - other_toes_center_x) / (display_width * 0.34)) ** 2
-        + ((yy - (toe_y - length * 0.015)) / (length * 0.070)) ** 2
-        <= 1.0
-    )
-
-    return basic | heel | forefoot | big_toe | other_toes
+def mock_bridge_object(
+    t_sec: float,
+    left_mm: tuple[tuple[float, float], ...],
+    right_mm: tuple[tuple[float, float], ...],
+) -> dict:
+    pl = mock_pressure_frame(left_mm, t_sec, phase_offset=0.0)
+    pr = mock_pressure_frame(right_mm, t_sec, phase_offset=0.5)
+    return {
+        "seq": int(t_sec * 50),
+        "dtMs": 20.0,
+        "L_online": True,
+        "R_online": True,
+        "L": [pl.tolist()],
+        "R": [pr.tolist()],
+    }
 
 
 def stdin_reader_lines(q_msg: queue.Queue[dict]) -> None:
@@ -192,202 +205,130 @@ def stdin_reader_lines(q_msg: queue.Queue[dict]) -> None:
             continue
 
 
-def pressure_field(
+def pressure_field_2d(
     coords_mm: tuple[tuple[float, float], ...],
     pressures: np.ndarray | None,
     *,
     sensor_side_mm: float,
     grid_w: int = GRID_W,
     grid_h: int = GRID_H,
-) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+) -> tuple[np.ndarray, float, float, float, float]:
+    """Сглаженное поле давления (кПа) в мм-сетке для 2D-градиента."""
     coords = np.array(coords_mm[:N_SENSORS], dtype=np.float64)
     xmin, xmax, ymin, ymax = bbox_mm(coords_mm)
-    pad_mm = sensor_side_mm * 1.8
-    xmin -= pad_mm
-    xmax += pad_mm
-    ymin -= pad_mm
-    ymax += pad_mm
+    pad = sensor_side_mm * 2.2
+    xmin -= pad
+    xmax += pad
+    ymin -= pad
+    ymax += pad
 
     xs = np.linspace(xmin, xmax, grid_w)
     ys = np.linspace(ymin, ymax, grid_h)
     xx, yy = np.meshgrid(xs, ys)
-
-    sx = (grid_w - 1) / max(xmax - xmin, 1e-6)
-    sy = (grid_h - 1) / max(ymax - ymin, 1e-6)
-    radius = max(4, int(round(sensor_side_mm * 1.7 * min(sx, sy))))
-    mask = anatomical_foot_mask(
-        xx,
-        yy,
-        coords,
-        xmin=xmin,
-        xmax=xmax,
-        ymin=ymin,
-        ymax=ymax,
-        sensor_side_mm=sensor_side_mm,
-    )
-    mask_img = (mask.astype(np.uint8) * 255)
-
-    for x_mm, y_mm in coords:
-        gx = int(round((x_mm - xmin) * sx))
-        gy = int(round((y_mm - ymin) * sy))
-        # Keep every physical sensor inside the display silhouette even if the
-        # anatomical outline is a little narrower than the actual board layout.
-        cv2.circle(mask_img, (gx, gy), radius, 255, -1, lineType=cv2.LINE_AA)
-
-    kernel = np.ones((7, 7), dtype=np.uint8)
-    mask_img = cv2.morphologyEx(mask_img, cv2.MORPH_CLOSE, kernel, iterations=2)
-    mask_img = cv2.GaussianBlur(mask_img, (0, 0), sigmaX=1.0)
-    mask = mask_img > 28
 
     vals = np.zeros(N_SENSORS, dtype=np.float64)
     if pressures is not None:
         n = min(N_SENSORS, len(pressures))
         vals[:n] = np.nan_to_num(pressures[:n], nan=0.0, posinf=0.0, neginf=0.0)
 
-    sigma_mm = sensor_side_mm * 1.65
+    sigma_mm = sensor_side_mm * 1.85
     weighted = np.zeros_like(xx, dtype=np.float64)
     weight = np.zeros_like(xx, dtype=np.float64)
     for (x_mm, y_mm), val in zip(coords, vals, strict=False):
+        if val <= 0.0:
+            continue
         d2 = (xx - x_mm) ** 2 + (yy - y_mm) ** 2
         w = np.exp(-d2 / (2.0 * sigma_mm * sigma_mm))
-        weighted += w * max(float(val), 0.0)
+        weighted += w * val
         weight += w
 
     field = np.divide(weighted, weight + 1e-9)
-    field = cv2.GaussianBlur(field.astype(np.float32), (0, 0), sigmaX=0.8, sigmaY=0.8)
-    field = np.where(mask, field, 0.0)
-    return xs, ys, field, mask
+    field = cv2.GaussianBlur(field.astype(np.float32), (0, 0), sigmaX=1.1, sigmaY=1.1)
+    return field, xmin, xmax, ymin, ymax
 
 
-def project_iso(
-    x_mm: float,
-    y_mm: float,
-    z_px: float,
-    *,
+def foot_2d_layout(
+    rect: pygame.Rect,
     xmin: float,
     xmax: float,
     ymin: float,
     ymax: float,
+) -> tuple[float, float, float]:
+    w_mm = xmax - xmin
+    h_mm = ymax - ymin
+    scale = min(rect.width / max(w_mm, 1e-6), rect.height / max(h_mm, 1e-6)) * 0.92
+    scale = max(scale, 0.1)
+    ox = rect.x + (rect.width - w_mm * scale) * 0.5
+    oy = rect.y + (rect.height - h_mm * scale) * 0.5
+    return scale, ox, oy
+
+
+def mm_to_screen(
+    x_mm: float,
+    y_mm: float,
+    *,
+    xmin: float,
+    ymin: float,
+    ymax: float,
     scale: float,
-    center: tuple[float, float],
+    ox: float,
+    oy: float,
 ) -> tuple[int, int]:
-    x0 = x_mm - (xmin + xmax) * 0.5
-    y0 = y_mm - (ymin + ymax) * 0.5
-    px = center[0] + (x0 - y0 * 0.24) * scale
-    py = center[1] - y0 * 0.34 * scale - z_px
+    """Вид сверху: пятка (малый y) внизу, носок (большой y) вверху."""
+    px = ox + (x_mm - xmin) * scale
+    py = oy + (ymax - y_mm) * scale
     return int(round(px)), int(round(py))
 
 
-def draw_foot_terrain(
+def draw_foot_2d(
     surface: pygame.Surface,
     rect: pygame.Rect,
     coords_mm: tuple[tuple[float, float], ...],
     pressures: np.ndarray | None,
     vmax_kpa: float,
-    height_px: float,
     *,
     sensor_side_mm: float,
 ) -> None:
-    xs, ys, field, mask = pressure_field(coords_mm, pressures, sensor_side_mm=sensor_side_mm)
-    xmin, xmax = float(xs[0]), float(xs[-1])
-    ymin, ymax = float(ys[0]), float(ys[-1])
-    w_mm = xmax - xmin
-    h_mm = ymax - ymin
-    scale = min(
-        rect.width * 0.78 / max(w_mm + h_mm * 0.24, 1e-6),
-        (rect.height * 0.70 - height_px) / max(h_mm * 0.34, 1e-6),
+    field, xmin, xmax, ymin, ymax = pressure_field_2d(
+        coords_mm, pressures, sensor_side_mm=sensor_side_mm
     )
-    scale = max(scale, 0.1)
-    center = (rect.centerx, rect.y + rect.height * 0.61)
+    scale, ox, oy = foot_2d_layout(rect, xmin, xmax, ymin, ymax)
+    plot_w = max(1, int(round((xmax - xmin) * scale)))
+    plot_h = max(1, int(round((ymax - ymin) * scale)))
 
-    contours, _ = cv2.findContours(
-        mask.astype(np.uint8),
-        cv2.RETR_EXTERNAL,
-        cv2.CHAIN_APPROX_SIMPLE,
+    rgb = field_to_rgb(field, vmax_kpa).astype(np.float32)
+    bg = np.array([248, 250, 252], dtype=np.float32)
+    alpha = np.clip(field / max(vmax_kpa, 1e-6), 0.0, 1.0) ** 0.82
+    rgb = (alpha[..., None] * rgb + (1.0 - alpha[..., None]) * bg).astype(np.uint8)
+    # cv2: (rows, cols) = (y, x); пятка (малый y) — внизу экрана
+    heat = cv2.resize(rgb, (plot_w, plot_h), interpolation=cv2.INTER_LINEAR)
+    heat = cv2.flip(heat, 0)
+    heat_surf = pygame.image.frombuffer(
+        np.ascontiguousarray(heat).tobytes(),
+        (plot_w, plot_h),
+        "RGB",
     )
-    for contour in contours:
-        if len(contour) < 3:
-            continue
-        poly: list[tuple[int, int]] = []
-        for p in contour[:, 0, :]:
-            j = int(np.clip(p[0], 0, len(xs) - 1))
-            i = int(np.clip(p[1], 0, len(ys) - 1))
-            poly.append(
-                project_iso(
-                    float(xs[j]),
-                    float(ys[i]),
-                    0.0,
-                    xmin=xmin,
-                    xmax=xmax,
-                    ymin=ymin,
-                    ymax=ymax,
-                    scale=scale,
-                    center=center,
-                )
-            )
-        if len(poly) >= 3:
-            pygame.draw.polygon(surface, (242, 247, 252), poly)
-            pygame.draw.lines(surface, (144, 158, 176), True, poly, width=2)
 
-    z = height_px * np.clip(field / max(vmax_kpa, 1e-6), 0.0, 1.0) ** HEIGHT_GAMMA
-    for i in range(len(ys) - 2, -1, -1):
-        for j in range(len(xs) - 1):
-            if not (mask[i, j] or mask[i + 1, j] or mask[i, j + 1] or mask[i + 1, j + 1]):
-                continue
-            p00 = project_iso(
-                xs[j],
-                ys[i],
-                z[i, j],
-                xmin=xmin,
-                xmax=xmax,
-                ymin=ymin,
-                ymax=ymax,
-                scale=scale,
-                center=center,
-            )
-            p10 = project_iso(
-                xs[j + 1],
-                ys[i],
-                z[i, j + 1],
-                xmin=xmin,
-                xmax=xmax,
-                ymin=ymin,
-                ymax=ymax,
-                scale=scale,
-                center=center,
-            )
-            p11 = project_iso(
-                xs[j + 1],
-                ys[i + 1],
-                z[i + 1, j + 1],
-                xmin=xmin,
-                xmax=xmax,
-                ymin=ymin,
-                ymax=ymax,
-                scale=scale,
-                center=center,
-            )
-            p01 = project_iso(
-                xs[j],
-                ys[i + 1],
-                z[i + 1, j],
-                xmin=xmin,
-                xmax=xmax,
-                ymin=ymin,
-                ymax=ymax,
-                scale=scale,
-                center=center,
-            )
-            v = float(
-                np.mean((field[i, j], field[i, j + 1], field[i + 1, j], field[i + 1, j + 1]))
-            )
-            if v <= 0.1:
-                color = (232, 239, 248)
-            else:
-                color = pressure_value_to_color(v, vmax_kpa)
-            pygame.draw.polygon(surface, color, (p00, p10, p11, p01))
-            if v > 0.5:
-                pygame.draw.lines(surface, (172, 186, 202), True, (p00, p10, p11, p01), width=1)
+    dest = pygame.Rect(int(round(ox)), int(round(oy)), plot_w, plot_h)
+    surface.blit(heat_surf, dest)
+
+    coords = coords_mm[:N_SENSORS]
+    vals = np.zeros(N_SENSORS, dtype=np.float64)
+    if pressures is not None:
+        n = min(N_SENSORS, len(pressures))
+        vals[:n] = np.nan_to_num(pressures[:n], nan=0.0, posinf=0.0, neginf=0.0)
+
+    dot_r = max(3, int(round(sensor_side_mm * scale * 0.38)))
+    for (x_mm, y_mm), v in zip(coords, vals, strict=False):
+        px, py = mm_to_screen(
+            x_mm, y_mm, xmin=xmin, ymin=ymin, ymax=ymax, scale=scale, ox=ox, oy=oy
+        )
+        if v <= 0.15:
+            color = (198, 208, 220)
+        else:
+            color = pressure_value_to_color(float(v), vmax_kpa)
+        pygame.draw.circle(surface, color, (px, py), dot_r)
+        pygame.draw.circle(surface, (90, 108, 128), (px, py), dot_r, width=1)
 
 
 def draw_foot_panel(
@@ -399,23 +340,23 @@ def draw_foot_panel(
     online: bool,
     vmax_kpa: float,
     thresh_kpa: float,
-    height_px: float,
     *,
     sensor_side_mm: float,
     title_fg: tuple[int, int, int],
+    mock: bool,
 ) -> None:
     pygame.draw.rect(surface, (255, 255, 255), rect)
     pygame.draw.rect(surface, (188, 198, 210), rect, width=2)
-    tg = title_fg if online else (185, 64, 64)
-    ttl = _text_surface([title], fg=tg, bg=(255, 255, 255))
+    tg = title_fg if (online or mock) else (185, 64, 64)
+    suffix = "  [mock]" if mock else ""
+    ttl = _text_surface([title + suffix], fg=tg, bg=(255, 255, 255))
     surface.blit(ttl, (rect.x + 12, rect.y + 8))
-    draw_foot_terrain(
+    draw_foot_2d(
         surface,
         rect.inflate(-16, -54).move(0, 22),
         coords_mm,
         pressures,
         vmax_kpa,
-        height_px,
         sensor_side_mm=sensor_side_mm,
     )
 
@@ -461,18 +402,17 @@ def parse_args() -> argparse.Namespace:
         help="Геометрия координат сенсоров: m — insole_sensors_m, s — insole_sensors_s.",
     )
     p.add_argument(
+        "--mock",
+        action="store_true",
+        help="Синтетические L/R без stdin (для отладки визуализации без стелек).",
+    )
+    p.add_argument(
         "--max-kpa",
         type=float,
         default=350.0,
         help="Верх шкалы давления для цвета (кПа). Реальный максимум сглаженно может подтягивать шкалу.",
     )
     p.add_argument("--thresh-kpa", type=float, default=8.0, help="Порог «нажато» для кольца.")
-    p.add_argument(
-        "--height-px",
-        type=float,
-        default=130.0,
-        help="Максимальная высота 3D-рельефа при давлении на верхе шкалы.",
-    )
     p.add_argument(
         "--vmax-smooth",
         type=float,
@@ -489,15 +429,20 @@ def main() -> None:
     pygame.init()
     w, h = 1040, 560
     screen = pygame.display.set_mode((w, h))
-    pygame.display.set_caption(f"Insole pressure ({args.size.upper()})")
+    caption = f"Insole pressure ({args.size.upper()})"
+    if args.mock:
+        caption += " [mock]"
+    pygame.display.set_caption(caption)
     clock = pygame.time.Clock()
 
     q_lines: queue.Queue[dict] = queue.Queue(maxsize=2)
-    t = threading.Thread(target=stdin_reader_lines, args=(q_lines,), daemon=True)
-    t.start()
+    if not args.mock:
+        t = threading.Thread(target=stdin_reader_lines, args=(q_lines,), daemon=True)
+        t.start()
 
     last_obj: dict = {}
     vmax_dyn = args.max_kpa
+    t0 = time.monotonic()
 
     lw = (w // 2) - 28
     rect_l = pygame.Rect(16, 60, lw, h - 80)
@@ -511,11 +456,14 @@ def main() -> None:
             elif e.type == pygame.KEYDOWN and e.key in (pygame.K_ESCAPE, pygame.K_q):
                 running = False
 
-        try:
-            while True:
-                last_obj = q_lines.get_nowait()
-        except queue.Empty:
-            pass
+        if args.mock:
+            last_obj = mock_bridge_object(time.monotonic() - t0, left_mm, right_mm)
+        else:
+            try:
+                while True:
+                    last_obj = q_lines.get_nowait()
+            except queue.Empty:
+                pass
 
         pl, pr = latest_scan(last_obj)
 
@@ -537,9 +485,9 @@ def main() -> None:
             l_on,
             scale_for_draw,
             args.thresh_kpa,
-            args.height_px,
             sensor_side_mm=sensor_side_mm,
             title_fg=(42, 125, 92),
+            mock=args.mock,
         )
         draw_foot_panel(
             screen,
@@ -550,20 +498,19 @@ def main() -> None:
             r_on,
             scale_for_draw,
             args.thresh_kpa,
-            args.height_px,
             sensor_side_mm=sensor_side_mm,
             title_fg=(42, 125, 92),
+            mock=args.mock,
         )
 
         seq = last_obj.get("seq", "?")
         dt_ms = last_obj.get("dtMs")
+        src = "mock gait" if args.mock else "stdin JSONL"
         hud_surface = _text_surface(
             [
                 f"size={args.size.upper()}  seq={seq}  dtMs={dt_ms if dt_ms is not None else '?'}  "
                 f"vmax(scale)≈{scale_for_draw:.0f} kPa (cap {args.max_kpa:g})",
-                "3D height map from stdin JSONL | height cap {:.0f}px | Esc quit".format(
-                    args.height_px
-                ),
+                f"2D pressure gradient ({src}) | Esc quit",
             ],
             fg=(45, 55, 70),
             bg=(238, 243, 248),
