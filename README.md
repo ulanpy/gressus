@@ -10,7 +10,28 @@
 
 **Приём давления со стороны Windows (TCP JSONL)** — см. docstring [`scripts/listener.py`](scripts/listener.py).
 
-**Режим только визуализации давления (stdin JSONL)**
+**Веб-визуализация давления (FastAPI + React/Vite)**
+
+Backend принимает реальные кадры Insolex/WaveX по TCP JSONL на `0.0.0.0:9100` и отдаёт их во фронт по WebSocket. В UI можно переключиться на mock-режим без стелек.
+
+```bash
+poetry run uvicorn src.insole_pressure_web:app --host 0.0.0.0 --port 8000
+```
+
+В отдельном терминале:
+
+```bash
+cd frontend
+deno task dev
+```
+
+Откройте `http://localhost:5173`. Для размера стельки используйте переключатель `M/S` в интерфейсе. Если нужен другой порт TCP для bridge:
+
+```bash
+INSOLE_PORT=9101 poetry run uvicorn src.insole_pressure_web:app --host 0.0.0.0 --port 8000
+```
+
+**Старый режим только визуализации давления (stdin JSONL)**
 
 ```bash
 poetry run python scripts/listener.py 0.0.0.0 9100 \
