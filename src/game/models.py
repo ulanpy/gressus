@@ -10,4 +10,5 @@ class FallingTile:
     y: float
     h: int
     hit: bool = False
-
+    spawn_t: float = 0.0
+    hit_t: float = 0.0
