@@ -7,10 +7,12 @@
 .hero,
 .patient-hero,
 .controls,
+.therapist-section-tabs,
 .foot-grid,
 .patient-foot-grid,
 .patient-guide,
-.bottom-grid {
+.bottom-grid,
+.progress-dashboard {
   width: min(1280px, 100%);
   margin: 0 auto;
 }
@@ -87,6 +89,7 @@
 .metric,
 .controls,
 .foot-card,
+.progress-card,
 .patient-message,
 .patient-foot,
 .patient-guide,
@@ -124,6 +127,7 @@
   grid-template-columns: minmax(0, 1fr) 360px;
   gap: 32px;
   align-items: stretch;
+  margin-top: 24px;
 }
 
 .patient-message {
@@ -157,6 +161,11 @@
   margin-top: 32px;
   border-radius: 28px;
   padding: 14px;
+}
+
+.therapist-section-tabs {
+  display: flex;
+  margin-top: 30px;
 }
 
 .button-group {
@@ -371,6 +380,189 @@ label {
   font-size: 24px;
 }
 
+.progress-dashboard {
+  margin-top: 24px;
+}
+
+.summary-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.progress-grid {
+  display: grid;
+  gap: 24px;
+  margin-top: 24px;
+}
+
+.progress-grid--charts {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.progress-grid--supporting {
+  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+}
+
+.progress-card {
+  border-radius: 28px;
+  padding: 24px;
+}
+
+.summary-card {
+  min-height: 154px;
+}
+
+.summary-card span,
+.domain-row span,
+.comparison-column span {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.summary-card strong {
+  display: block;
+  margin-top: 14px;
+  color: var(--text-strong);
+  font-size: 38px;
+  line-height: 1;
+}
+
+.summary-card p {
+  margin: 14px 0 0;
+  color: rgb(14 116 144);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.card-heading {
+  margin-bottom: 18px;
+}
+
+.card-heading h2 {
+  margin: 0;
+  color: var(--text-strong);
+  font-size: 24px;
+  letter-spacing: -0.03em;
+}
+
+.chart-card {
+  min-height: 390px;
+}
+
+.chart-shell {
+  height: 300px;
+}
+
+.domain-list,
+.recommendation-list {
+  display: grid;
+  gap: 12px;
+}
+
+.domain-row,
+.recommendation-row,
+.comparison-column {
+  border: 1px solid rgb(226 232 240 / 0.72);
+  border-radius: 20px;
+  background: rgb(255 255 255 / 0.58);
+}
+
+.domain-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 18px;
+  align-items: center;
+  padding: 16px;
+}
+
+.domain-row strong,
+.recommendation-row strong {
+  display: block;
+  color: var(--text-strong);
+  font-size: 16px;
+}
+
+.domain-row b {
+  flex: 0 0 auto;
+  color: rgb(14 116 144);
+  font-size: 18px;
+}
+
+.recommendation-row {
+  display: grid;
+  grid-template-columns: 86px minmax(0, 1fr);
+  gap: 14px;
+  align-items: start;
+  padding: 16px;
+}
+
+.recommendation-row p {
+  margin: 5px 0 0;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+.recommendation-badge {
+  border-radius: 999px;
+  padding: 6px 10px;
+  text-align: center;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.recommendation-badge--focus {
+  color: rgb(30 64 175);
+  background: rgb(219 234 254);
+}
+
+.recommendation-badge--steady {
+  color: rgb(15 118 110);
+  background: rgb(204 251 241);
+}
+
+.recommendation-badge--positive {
+  color: rgb(4 120 87);
+  background: rgb(209 250 229);
+}
+
+.baseline-card {
+  margin-top: 24px;
+}
+
+.baseline-columns {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.comparison-column {
+  display: grid;
+  gap: 12px;
+  padding: 18px;
+}
+
+.comparison-column > div strong {
+  display: block;
+  margin-top: 4px;
+  color: var(--text-strong);
+  font-size: 20px;
+}
+
+.comparison-column p {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  margin: 0;
+  color: var(--text);
+}
+
+.comparison-column b {
+  color: var(--text-strong);
+  font-weight: 800;
+}
+
 .rose {
   color: rgb(244 63 94);
 }
@@ -473,7 +665,10 @@ label {
   .patient-foot-grid,
   .patient-foot,
   .patient-guide,
-  .bottom-grid {
+  .bottom-grid,
+  .summary-grid,
+  .progress-grid--charts,
+  .progress-grid--supporting {
     grid-template-columns: 1fr;
   }
 
@@ -499,6 +694,22 @@ label {
 
   .metrics {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .baseline-columns {
+    grid-template-columns: 1fr;
+  }
+
+  .chart-card {
+    min-height: 340px;
+  }
+
+  .chart-shell {
+    height: 250px;
+  }
+
+  .recommendation-row {
+    grid-template-columns: 1fr;
   }
 
   .patient-foot {

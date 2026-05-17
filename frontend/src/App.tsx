@@ -1,10 +1,33 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import {
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Legend,
+  Line,
+  LineChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from 'recharts'
+import type { CSSProperties } from 'react'
 import './App.css'
+import {
+  calculateProgressSummary,
+  generateTherapyRecommendations,
+  getMockSessionHistory,
+  type ProgressSummary,
+  type SessionMetrics,
+  type TherapyRecommendation,
+} from './progressAnalytics'
 
 type SourceMode = 'live' | 'mock'
 type InsoleSize = 'm' | 's'
 type FootSide = 'left' | 'right'
 type ViewMode = 'therapist' | 'patient'
+type TherapistSection = 'live' | 'progress'
+type PatientContactKey = 'both' | 'left' | 'none' | 'right'
 
 type SensorPoint = {
   index: number
@@ -132,6 +155,7 @@ type TherapistPageProps = {
 type PatientPageProps = {
   dashboard: FootDashboard
   frame: FramePayload | null
+  movementMessage: string
 }
 
 type PatientFootPanelProps = {
@@ -141,11 +165,51 @@ type PatientFootPanelProps = {
   silhouette: FootSilhouette
 }
 
+type PatientSuggestionState = {
+  contactKey: PatientContactKey
+  lastSuggestionStep: number
+  message: string
+  stepCount: number
+}
+
+type TherapistSectionTabsProps = {
+  activeSection: TherapistSection
+  setActiveSection: (section: TherapistSection) => void
+}
+
+type ProgressDashboardProps = {
+  metrics: SessionMetrics[]
+}
+
+type ProgressSummaryCardsProps = {
+  summary: ProgressSummary
+}
+
+type SummaryCardProps = {
+  label: string
+  trend: string
+  value: string
+}
+
+type ChartProps = {
+  metrics: SessionMetrics[]
+}
+
+type ClinicalDomainsCardProps = {
+  metrics: SessionMetrics[]
+}
+
+type TherapyRecommendationsCardProps = {
+  recommendations: TherapyRecommendation[]
+}
+
 const MAX_KPA = 350
 const CONTACT_THRESHOLD_KPA = 8
 const FOOT_CONTOUR_CORNER_RADIUS = 160
 const FOOT_CONTOUR_DIP_FILL = 400
 const SENSOR_COUNT = 64
+const SUGGESTION_STEP_INTERVAL = 12
+const PATIENT_WAITING_MESSAGE = 'Поставь стопы на дорожку'
 const PRESSURE_LEVELS = {
   light: 45,
   strong: 160,
@@ -161,6 +225,13 @@ const PRESSURE_STOPS = [
   { t: 0.68, color: [255, 145, 35] },
   { t: 1, color: [225, 45, 30] },
 ] satisfies { t: number; color: [number, number, number] }[]
+
+const tooltipStyle = {
+  border: '1px solid rgb(226 232 240)',
+  borderRadius: 16,
+  boxShadow: '0 16px 40px rgb(15 23 42 / 0.12)',
+  color: '#334155',
+} satisfies CSSProperties
 
 const FOOT_LABELS = {
   left: {
@@ -179,7 +250,7 @@ function App() {
   const [size, setSize] = useState<InsoleSize>('m')
   const [showSensors, setShowSensors] = useState(true)
   const { geometry, setStatus, status } = useGeometry(size)
-  const frame = useInsoleFrame(source, size, setStatus)
+  const { frame, patientSuggestion } = useInsoleFrame(source, size, setStatus)
   const dashboard = useFootDashboard(geometry, frame)
 
   return (
@@ -199,7 +270,7 @@ function App() {
           status={status}
         />
       ) : (
-        <PatientPage dashboard={dashboard} frame={frame} />
+        <PatientPage dashboard={dashboard} frame={frame} movementMessage={patientSuggestion} />
       )}
     </main>
   )
@@ -237,6 +308,9 @@ function TherapistPage({
   source,
   status,
 }: TherapistPageProps) {
+  const [activeSection, setActiveSection] = useState<TherapistSection>('live')
+  const sessionMetrics = useMemo(() => getMockSessionHistory(), [])
+
   return (
     <>
       <section className="hero">
@@ -252,79 +326,336 @@ function TherapistPage({
         <StatusSummary dynamicScale={dashboard.dynamicScale} source={source} status={status} />
       </section>
 
-      <DashboardControls
-        frame={frame}
-        setShowSensors={setShowSensors}
-        setSize={setSize}
-        setSource={setSource}
-        showSensors={showSensors}
-        size={size}
-        source={source}
-      />
+      <TherapistSectionTabs activeSection={activeSection} setActiveSection={setActiveSection} />
 
-      {frame?.error && <p className="error">{frame.error}</p>}
+      {activeSection === 'live' ? (
+        <>
+          <DashboardControls
+            frame={frame}
+            setShowSensors={setShowSensors}
+            setSize={setSize}
+            setSource={setSource}
+            showSensors={showSensors}
+            size={size}
+            source={source}
+          />
 
-      <section className="foot-grid">
-        <FootPressurePanel
-          side="left"
-          frame={dashboard.leftFrame}
-          scale={dashboard.dynamicScale}
-          showSensors={showSensors}
-          silhouette={dashboard.leftSilhouette}
-        />
-        <FootPressurePanel
-          side="right"
-          frame={dashboard.rightFrame}
-          scale={dashboard.dynamicScale}
-          showSensors={showSensors}
-          silhouette={dashboard.rightSilhouette}
-        />
-      </section>
+          {frame?.error && <p className="error">{frame.error}</p>}
 
-      <section className="bottom-grid">
-        <div className="balance-card">
-          <div>
-            <p className="eyebrow">Распределение веса</p>
-            <h2>
-              {dashboard.leftShare}% лево / {100 - dashboard.leftShare}% право
-            </h2>
-          </div>
-          <div className="balance-track">
-            <div style={{ width: `${dashboard.leftShare}%` }} />
-          </div>
-        </div>
-        <div className="legend">
-          <div>
-            <p className="eyebrow">Шкала давления</p>
-            <h2>0 - {MAX_KPA} кПа</h2>
-          </div>
-          <div className="legend-bar" />
-        </div>
-      </section>
+          <section className="foot-grid">
+            <FootPressurePanel
+              side="left"
+              frame={dashboard.leftFrame}
+              scale={dashboard.dynamicScale}
+              showSensors={showSensors}
+              silhouette={dashboard.leftSilhouette}
+            />
+            <FootPressurePanel
+              side="right"
+              frame={dashboard.rightFrame}
+              scale={dashboard.dynamicScale}
+              showSensors={showSensors}
+              silhouette={dashboard.rightSilhouette}
+            />
+          </section>
+
+          <section className="bottom-grid">
+            <div className="balance-card">
+              <div>
+                <p className="eyebrow">Распределение веса</p>
+                <h2>
+                  {dashboard.leftShare}% лево / {100 - dashboard.leftShare}% право
+                </h2>
+              </div>
+              <div className="balance-track">
+                <div style={{ width: `${dashboard.leftShare}%` }} />
+              </div>
+            </div>
+            <div className="legend">
+              <div>
+                <p className="eyebrow">Шкала давления</p>
+                <h2>0 - {MAX_KPA} кПа</h2>
+              </div>
+              <div className="legend-bar" />
+            </div>
+          </section>
+        </>
+      ) : (
+        <ProgressDashboard metrics={sessionMetrics} />
+      )}
     </>
   )
 }
 
-function PatientPage({ dashboard, frame }: PatientPageProps) {
-  const leftActive = dashboard.leftFrame.stats.pressed
-  const rightActive = dashboard.rightFrame.stats.pressed
-  const movementMessage = patientMovementMessage(leftActive, rightActive, dashboard.leftShare)
+function TherapistSectionTabs({ activeSection, setActiveSection }: TherapistSectionTabsProps) {
+  return (
+    <section className="therapist-section-tabs" aria-label="Therapist section">
+      <div className="button-group">
+        <button
+          type="button"
+          className={activeSection === 'live' ? 'active' : ''}
+          onClick={() => setActiveSection('live')}
+        >
+          Live Session
+        </button>
+        <button
+          type="button"
+          className={activeSection === 'progress' ? 'active' : ''}
+          onClick={() => setActiveSection('progress')}
+        >
+          Progress Analysis
+        </button>
+      </div>
+    </section>
+  )
+}
+
+function ProgressDashboard({ metrics }: ProgressDashboardProps) {
+  const summary = useMemo(() => calculateProgressSummary(metrics), [metrics])
+  const recommendations = useMemo(() => generateTherapyRecommendations(metrics), [metrics])
 
   return (
+    <section className="progress-dashboard" aria-label="Progress analysis dashboard">
+      <ProgressSummaryCards summary={summary} />
+
+      <div className="progress-grid progress-grid--charts">
+        <SessionTrendChart metrics={metrics} />
+        <LoadBalanceChart metrics={metrics} />
+      </div>
+
+      <div className="progress-grid progress-grid--supporting">
+        <ClinicalDomainsCard metrics={metrics} />
+        <TherapyRecommendationsCard recommendations={recommendations} />
+      </div>
+
+      <BaselineLatestCard summary={summary} />
+    </section>
+  )
+}
+
+function ProgressSummaryCards({ summary }: ProgressSummaryCardsProps) {
+  return (
+    <div className="summary-grid">
+      <SummaryCard
+        label="Overall Gait Score"
+        value={`${summary.latest.gaitScore}`}
+        trend={`↑ ${Math.round(summary.gaitScorePercent)}% from baseline`}
+      />
+      <SummaryCard
+        label="Symmetry Improvement"
+        value={`+${summary.symmetryChange}`}
+        trend={`↑ ${Math.round(summary.symmetryPercent)}% since session 1`}
+      />
+      <SummaryCard
+        label="Stability Improvement"
+        value={`+${summary.stabilityChange}`}
+        trend={`↑ ${Math.round(summary.stabilityPercent)}% since session 1`}
+      />
+      <SummaryCard
+        label="Sessions Completed"
+        value={`${summary.sessionsCompleted}`}
+        trend={`${formatShortDate(summary.baseline.date)} to ${formatShortDate(summary.latest.date)}`}
+      />
+    </div>
+  )
+}
+
+function SummaryCard({ label, value, trend }: SummaryCardProps) {
+  return (
+    <article className="progress-card summary-card">
+      <span>{label}</span>
+      <strong>{value}</strong>
+      <p>{trend}</p>
+    </article>
+  )
+}
+
+function SessionTrendChart({ metrics }: ChartProps) {
+  return (
+    <article className="progress-card chart-card">
+      <CardHeading eyebrow="Session Trend" title="Score trajectory" />
+      <div className="chart-shell">
+        <ResponsiveContainer width="100%" height="100%">
+          <LineChart data={metrics} margin={{ top: 8, right: 12, bottom: 0, left: -18 }}>
+            <CartesianGrid stroke="rgb(226 232 240)" vertical={false} />
+            <XAxis dataKey="session" tickLine={false} axisLine={false} tick={{ fill: '#64748b', fontSize: 12 }} />
+            <YAxis domain={[50, 90]} tickLine={false} axisLine={false} tick={{ fill: '#64748b', fontSize: 12 }} />
+            <Tooltip contentStyle={tooltipStyle} />
+            <Legend iconType="circle" wrapperStyle={{ color: '#64748b', fontSize: 12 }} />
+            <Line type="monotone" dataKey="gaitScore" name="Gait" stroke="#0891b2" strokeWidth={3} dot={false} />
+            <Line type="monotone" dataKey="symmetryScore" name="Symmetry" stroke="#2563eb" strokeWidth={3} dot={false} />
+            <Line type="monotone" dataKey="stabilityScore" name="Stability" stroke="#10b981" strokeWidth={3} dot={false} />
+          </LineChart>
+        </ResponsiveContainer>
+      </div>
+    </article>
+  )
+}
+
+function LoadBalanceChart({ metrics }: ChartProps) {
+  return (
+    <article className="progress-card chart-card">
+      <CardHeading eyebrow="Left vs Right Load Balance" title="Average pressure by session" />
+      <div className="chart-shell">
+        <ResponsiveContainer width="100%" height="100%">
+          <BarChart data={metrics} margin={{ top: 8, right: 12, bottom: 0, left: -18 }}>
+            <CartesianGrid stroke="rgb(226 232 240)" vertical={false} />
+            <XAxis dataKey="session" tickLine={false} axisLine={false} tick={{ fill: '#64748b', fontSize: 12 }} />
+            <YAxis tickLine={false} axisLine={false} tick={{ fill: '#64748b', fontSize: 12 }} unit=" kPa" />
+            <Tooltip contentStyle={tooltipStyle} />
+            <Legend iconType="circle" wrapperStyle={{ color: '#64748b', fontSize: 12 }} />
+            <Bar dataKey="leftAvgPressure" name="Left" fill="#38bdf8" radius={[8, 8, 0, 0]} />
+            <Bar dataKey="rightAvgPressure" name="Right" fill="#34d399" radius={[8, 8, 0, 0]} />
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
+    </article>
+  )
+}
+
+function ClinicalDomainsCard({ metrics }: ClinicalDomainsCardProps) {
+  const baseline = metrics[0]
+  const latest = metrics[metrics.length - 1]
+  const domains = [
+    {
+      label: 'Symmetry',
+      baseline: baseline.symmetryScore,
+      latest: latest.symmetryScore,
+      unit: 'score',
+      improvement: percentImprovement(baseline.symmetryScore, latest.symmetryScore),
+    },
+    {
+      label: 'Stability',
+      baseline: baseline.stabilityScore,
+      latest: latest.stabilityScore,
+      unit: 'score',
+      improvement: percentImprovement(baseline.stabilityScore, latest.stabilityScore),
+    },
+    {
+      label: 'Load Balance',
+      baseline: Math.abs(baseline.leftAvgPressure - baseline.rightAvgPressure),
+      latest: Math.abs(latest.leftAvgPressure - latest.rightAvgPressure),
+      unit: 'kPa gap',
+      improvement: percentReduction(
+        Math.abs(baseline.leftAvgPressure - baseline.rightAvgPressure),
+        Math.abs(latest.leftAvgPressure - latest.rightAvgPressure),
+      ),
+    },
+    {
+      label: 'Variability',
+      baseline: baseline.variabilityScore,
+      latest: latest.variabilityScore,
+      unit: 'index',
+      improvement: percentReduction(baseline.variabilityScore, latest.variabilityScore),
+    },
+  ]
+
+  return (
+    <article className="progress-card">
+      <CardHeading eyebrow="Clinical Domains" title="Baseline to latest" />
+      <div className="domain-list">
+        {domains.map((domain) => (
+          <div className="domain-row" key={domain.label}>
+            <div>
+              <strong>{domain.label}</strong>
+              <span>
+                {Math.round(domain.baseline)} → {Math.round(domain.latest)} {domain.unit}
+              </span>
+            </div>
+            <b>{formatSignedPercent(domain.improvement)}</b>
+          </div>
+        ))}
+      </div>
+    </article>
+  )
+}
+
+function TherapyRecommendationsCard({ recommendations }: TherapyRecommendationsCardProps) {
+  return (
+    <article className="progress-card">
+      <CardHeading eyebrow="Therapy Recommendations" title="Next clinical focus" />
+      <div className="recommendation-list">
+        {recommendations.map((recommendation) => (
+          <div className="recommendation-row" key={recommendation.id}>
+            <span className={`recommendation-badge recommendation-badge--${recommendation.tone}`}>
+              {recommendation.badge}
+            </span>
+            <div>
+              <strong>{recommendation.label}</strong>
+              <p>{recommendation.detail}</p>
+            </div>
+          </div>
+        ))}
+      </div>
+    </article>
+  )
+}
+
+function BaselineLatestCard({ summary }: { summary: ProgressSummary }) {
+  const metrics = [
+    { label: 'Gait score', baseline: summary.baseline.gaitScore, latest: summary.latest.gaitScore },
+    { label: 'Walking speed', baseline: summary.baseline.walkingSpeed, latest: summary.latest.walkingSpeed, unit: 'm/s' },
+    { label: 'Cadence', baseline: summary.baseline.cadence, latest: summary.latest.cadence, unit: 'spm' },
+    { label: 'Load gap', baseline: Math.abs(summary.baseline.leftAvgPressure - summary.baseline.rightAvgPressure), latest: Math.abs(summary.latest.leftAvgPressure - summary.latest.rightAvgPressure), unit: 'kPa' },
+  ]
+
+  return (
+    <article className="progress-card baseline-card">
+      <CardHeading eyebrow="Baseline vs Latest" title="Key therapy markers" />
+      <div className="baseline-columns">
+        <ComparisonColumn title={`Session ${summary.baseline.session}`} date={summary.baseline.date} metrics={metrics} mode="baseline" />
+        <ComparisonColumn title={`Session ${summary.latest.session}`} date={summary.latest.date} metrics={metrics} mode="latest" />
+      </div>
+    </article>
+  )
+}
+
+function ComparisonColumn({
+  date,
+  metrics,
+  mode,
+  title,
+}: {
+  date: string
+  metrics: { label: string; baseline: number; latest: number; unit?: string }[]
+  mode: 'baseline' | 'latest'
+  title: string
+}) {
+  return (
+    <div className="comparison-column">
+      <div>
+        <span>{title}</span>
+        <strong>{formatShortDate(date)}</strong>
+      </div>
+      {metrics.map((metric) => {
+        const value = mode === 'baseline' ? metric.baseline : metric.latest
+
+        return (
+          <p key={metric.label}>
+            <span>{metric.label}</span>
+            <b>
+              {formatMetricValue(value)}
+              {metric.unit ? ` ${metric.unit}` : ''}
+            </b>
+          </p>
+        )
+      })}
+    </div>
+  )
+}
+
+function CardHeading({ eyebrow, title }: { eyebrow: string; title: string }) {
+  return (
+    <div className="card-heading">
+      <p className="eyebrow">{eyebrow}</p>
+      <h2>{title}</h2>
+    </div>
+  )
+}
+
+function PatientPage({ dashboard, frame, movementMessage }: PatientPageProps) {
+  return (
     <>
-      <section className="patient-hero">
-        <div>
-          <p className="eyebrow">Режим пациента</p>
-          <h1>Смотри, как шагают твои стопы</h1>
-          <p className="lede">Цвета помогают увидеть, где стопа нажимает сильнее. Старайся шагать спокойно и ровно.</p>
-        </div>
-
-        <div className="patient-message" aria-live="polite">
-          <span>{frame?.connected === false ? 'Ждем сигнал' : 'Твой шаг'}</span>
-          <strong>{movementMessage}</strong>
-        </div>
-      </section>
-
       {frame?.error && <p className="error">Связь со стельками прервалась. Можно спокойно попробовать снова.</p>}
 
       <section className="patient-foot-grid">
@@ -340,6 +671,17 @@ function PatientPage({ dashboard, frame }: PatientPageProps) {
           scale={dashboard.dynamicScale}
           silhouette={dashboard.rightSilhouette}
         />
+      </section>
+
+      <section className="patient-hero">
+        <div>
+          <p className="eyebrow">Режим пациента</p>
+        </div>
+
+        <div className="patient-message" aria-live="polite">
+          <span>{frame?.connected === false ? 'Ждем сигнал' : 'Твой шаг'}</span>
+          <strong>{movementMessage}</strong>
+        </div>
       </section>
 
       <section className="patient-guide">
@@ -593,13 +935,23 @@ function useInsoleFrame(
   setStatus: React.Dispatch<React.SetStateAction<string>>,
 ) {
   const [frame, setFrame] = useState<FramePayload | null>(null)
+  const [patientSuggestion, setPatientSuggestion] = useState(PATIENT_WAITING_MESSAGE)
+  const patientSuggestionState = useRef<PatientSuggestionState>({
+    contactKey: 'none',
+    lastSuggestionStep: 0,
+    message: PATIENT_WAITING_MESSAGE,
+    stepCount: 0,
+  })
 
   useEffect(() => {
     const ws = new WebSocket(websocketUrl(source, size))
 
     ws.onopen = () => setStatus('подключено')
     ws.onmessage = (event) => {
-      setFrame(JSON.parse(event.data) as FramePayload)
+      const nextFrame = JSON.parse(event.data) as FramePayload
+
+      setFrame(nextFrame)
+      setPatientSuggestion(updatePatientSuggestion(patientSuggestionState.current, nextFrame))
       setStatus('подключено')
     }
     ws.onerror = () => setStatus('ошибка сокета')
@@ -608,7 +960,7 @@ function useInsoleFrame(
     return () => ws.close()
   }, [setStatus, source, size])
 
-  return frame
+  return { frame, patientSuggestion }
 }
 
 function useFootDashboard(geometry: GeometryPayload | null, frame: FramePayload | null): FootDashboard {
@@ -854,9 +1206,62 @@ function formatKpa(value: number) {
   return `${Math.round(value)} kPa`
 }
 
+function formatShortDate(date: string) {
+  return new Intl.DateTimeFormat('en', { month: 'short', day: 'numeric' }).format(new Date(date))
+}
+
+function formatMetricValue(value: number) {
+  return Number.isInteger(value) ? String(value) : value.toFixed(1)
+}
+
+function percentImprovement(baseline: number, latest: number) {
+  return baseline === 0 ? 0 : ((latest - baseline) / baseline) * 100
+}
+
+function percentReduction(baseline: number, latest: number) {
+  return baseline === 0 ? 0 : ((baseline - latest) / baseline) * 100
+}
+
+function formatSignedPercent(value: number) {
+  const rounded = Math.round(value)
+
+  return `${rounded > 0 ? '+' : ''}${rounded}%`
+}
+
+function updatePatientSuggestion(state: PatientSuggestionState, frame: FramePayload) {
+  const leftActive = frame.leftStats.pressed
+  const rightActive = frame.rightStats.pressed
+  const leftShare = patientLeftShare(frame.leftStats.sumKpa, frame.rightStats.sumKpa)
+  const contactKey = patientContactKey(leftActive, rightActive)
+  const immediateMessage = patientMovementMessage(leftActive, rightActive, leftShare)
+
+  if (contactKey === 'none') {
+    state.contactKey = contactKey
+    state.lastSuggestionStep = state.stepCount
+    state.message = immediateMessage
+
+    return state.message
+  }
+
+  const stepCount = contactKey === state.contactKey ? state.stepCount : state.stepCount + 1
+  const shouldUpdate =
+    state.message === PATIENT_WAITING_MESSAGE ||
+    stepCount - state.lastSuggestionStep >= SUGGESTION_STEP_INTERVAL
+
+  state.contactKey = contactKey
+  state.stepCount = stepCount
+
+  if (shouldUpdate) {
+    state.lastSuggestionStep = stepCount
+    state.message = immediateMessage
+  }
+
+  return state.message
+}
+
 function patientMovementMessage(leftActive: boolean, rightActive: boolean, leftShare: number) {
   if (!leftActive && !rightActive) {
-    return 'Поставь стопы на дорожку'
+    return PATIENT_WAITING_MESSAGE
   }
 
   if (leftActive !== rightActive) {
@@ -872,6 +1277,28 @@ function patientMovementMessage(leftActive: boolean, rightActive: boolean, leftS
   }
 
   return 'Отличный ровный шаг'
+}
+
+function patientLeftShare(leftLoad: number, rightLoad: number) {
+  const totalLoad = leftLoad + rightLoad
+
+  return totalLoad > 0 ? Math.round((leftLoad / totalLoad) * 100) : 50
+}
+
+function patientContactKey(leftActive: boolean, rightActive: boolean): PatientContactKey {
+  if (leftActive && rightActive) {
+    return 'both'
+  }
+
+  if (leftActive) {
+    return 'left'
+  }
+
+  if (rightActive) {
+    return 'right'
+  }
+
+  return 'none'
 }
 
 function patientPressureLevel(frame: FootFrame) {
