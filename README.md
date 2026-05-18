@@ -1,18 +1,53 @@
-# Treadmill feedback game (прототип)
+# Treadmill feedback game
 
-Проектор на стену/пол + камера. Актуальная конфигурация: **Frbby P40 Pro** + **Intel RealSense D435**. Основной сценарий: **depth** (aligned-to-color), калибровка по AprilTag в `config/calibration.json`, игра **`tile_game.py`** (дорожки + плитки), опционально подтверждение шага по давлению Insolex.
+Интерактивная реабилитация для детей с ДЦП на беговой дорожке: проектор даёт визуальную обратную связь, камера и стельки фиксируют шаг. Прототип на имеющемся стеке (RealSense depth, калибровка AprilTag, опционально Insolex).
 
-**Окклюзия, тень и планы под дорожку** (почему в RGB попадает тень, зачем depth, свет и установка): [docs/occlusion-and-treadmill.md](docs/occlusion-and-treadmill.md).
+## Содержание
 
-**Актуальные спеки железа и план миграции на D435**: [docs/system-spec.md](docs/system-spec.md).
+1. [О проекте](#1-о-проекте)
+2. [Веб-визуализация давления](#2-веб-визуализация-давления)
+3. [Прочие команды запуска](#3-прочие-команды-запуска)
+4. [Структура репозитория](#4-структура-репозитория)
+5. [Документация](#5-документация)
 
-**Координаты сенсоров стельки размера M** (лев/прав): [docs/insole-sensors-m.md](docs/insole-sensors-m.md).
+## 1. О проекте
 
-**Приём давления со стороны Windows (TCP JSONL)** — см. docstring [`scripts/listener.py`](scripts/listener.py).
+Ребёнок идёт по дорожке и наступает на падающие плитки (левая/правая дорожка). Попадание засчитывается только при согласовании трёх сигналов в зоне плитки: подъём по **depth** над полом, **окклюзия** проецируемого света стопой и **давление** на соответствующей стельке Insolex (`D AND R AND P`). Цель — ритмичная поочерёдная нагрузка и понятная обратная связь без сложного интерфейса.
 
-**Веб-визуализация давления (FastAPI + React/Vite)**
+**Сценарий:** depth (aligned-to-color), калибровка в `config/calibration.json`, основная игра — `scripts/tile_game.py`.
 
-Backend принимает реальные кадры Insolex/WaveX по TCP JSONL на `0.0.0.0:9100` и отдаёт их во фронт по WebSocket. В UI можно переключиться на mock-режим без стелек.
+### Железо (май 2026)
+
+
+| Компонент | Модель               | Заметка                                                                   |
+| --------- | -------------------- | ------------------------------------------------------------------------- |
+| Проектор  | Frbby P40 Pro        | FHD 1920×1080; под углом к ленте — pre-warp (`adjust_projection_quad.py`) |
+| Камера    | Intel RealSense D435 | Stereo depth + RGB; трекинг стоп по depth, не по яркости RGB              |
+| Стельки   | Insolex / WaveX      | Давление по TCP JSONL с Windows-bridge (порт по умолчанию `9100`)         |
+
+
+### Стек
+
+
+| Слой           | Технологии                                                                      |
+| -------------- | ------------------------------------------------------------------------------- |
+| Runtime        | Python ≥3.14, [Poetry](https://python-poetry.org/)                              |
+| Захват и игра  | OpenCV, NumPy, pygame, pyrealsense2, pupil-apriltags, sounddevice               |
+| Давление (веб) | FastAPI, uvicorn; фронт — React/Vite, [Deno](https://deno.land/) (`frontend/`)  |
+| Конфиг         | `config/calibration.json` — гомография камера→проектор, `proj_quad`, разрешения |
+
+
+Установка зависимостей:
+
+```bash
+poetry install
+```
+
+При ошибках Qt/Wayland в OpenCV-скриптах добавляйте `QT_QPA_PLATFORM=xcb`.
+
+## 2. Веб-визуализация давления
+
+Backend принимает кадры Insolex/WaveX по TCP JSONL на `0.0.0.0:9100` и отдаёт их во фронт по WebSocket. В UI — переключатель mock без стелек и размер стельки **M/S**.
 
 ```bash
 poetry run uvicorn src.insole_pressure_web:app --host 0.0.0.0 --port 8000
@@ -25,42 +60,32 @@ cd frontend
 deno task dev
 ```
 
-Откройте `http://localhost:5173`. Для размера стельки используйте переключатель `M/S` в интерфейсе. Если нужен другой порт TCP для bridge:
+Откройте `http://localhost:5173`. Другой TCP-порт для bridge:
 
 ```bash
 INSOLE_PORT=9101 poetry run uvicorn src.insole_pressure_web:app --host 0.0.0.0 --port 8000
 ```
 
-**Старый режим только визуализации давления (stdin JSONL)**
+### Старый режим (stdin JSONL, pygame)
 
 ```bash
 poetry run python scripts/listener.py 0.0.0.0 9100 \
   | QT_QPA_PLATFORM=xcb poetry run python scripts/insole_pressure_viz.py --size m
 ```
 
-Без стелек — мок-шаг для отладки дизайна:
+Без стелек — мок для отладки:
 
 ```bash
 QT_QPA_PLATFORM=xcb poetry run python scripts/insole_pressure_viz.py --mock --size m
 ```
 
-Для размера стельки **S** подставьте `--size s`. Пакеты: `numpy`, `pygame`, `opencv` (Poetry).
+Для размера **S** — `--size s`.
 
-## Текущее железо (май 2026)
+## 3. Прочие команды запуска
 
-- **Проектор**: `Frbby P40 Pro` (FHD 1920x1080, LED, vertical/horizontal keystone, motorized focus/zoom/lens shift по данным поставщика).
-- **Камера (целевая)**: `Intel RealSense D435` (stereo depth + RGB).
-- **Практический вывод**: проектор под углом к ленте требует pre-warp (см. `scripts/adjust_projection_quad.py`), а стабильный трекинг стоп/ног лучше строить по depth, не по яркости RGB.
+### Калибровка (AprilTag на проекторе)
 
-## Зависимости
-
-```bash
-poetry install
-```
-
-## Калибровка (AprilTag на проекторе)
-
-Калибровку лучше делать через **RealSense color stream**, чтобы не выбирать вручную `/dev/videoN`.
+Через RealSense color stream (без ручного `/dev/videoN`):
 
 ```bash
 QT_QPA_PLATFORM=xcb poetry run python scripts/calibrate_apriltag.py \
@@ -74,33 +99,29 @@ QT_QPA_PLATFORM=xcb poetry run python scripts/calibrate_apriltag.py \
   -o config/calibration.json
 ```
 
-Enter — сохранить, Esc — выход, S — снимок `calibrate_debug.jpg` (файл в `.gitignore`).
+Enter — сохранить, Esc — выход, `S` — снимок `calibrate_debug.jpg` (в `.gitignore`).
 
-## Подгонка формы проекции на ленте / полу (pre-warp)
+### Pre-warp проекции на ленту
 
-Проектор под углом к поверхности → «полный кадр» ложится трапецией. Этот скрипт позволяет выбрать 4 угла внутри трапеции так, чтобы на ленте получился честный прямоугольник, и сохраняет их в `config/calibration.json` как `proj_quad`.
+Четыре угла в `config/calibration.json` как `proj_quad` (не затирает поля AprilTag):
 
 ```bash
 poetry run python scripts/adjust_projection_quad.py -d 1
 ```
 
-Клавиши: `1/2/3/4` — выбрать угол (TL/TR/BR/BL), `h j k l` или стрелки — двигать, `Shift` — шаг ×10, `[` / `]` — размер шага, `g` — тест‑паттерн (grid / checker / solid), `r` — сброс на полный экран, `Enter`/`S` — сохранить, `Esc` — выход. Ориентируйтесь по сетке: клетки должны быть равными квадратами **на ленте**, а не на проекторе.
+Клавиши: `1/2/3/4` — угол (TL/TR/BR/BL), `h j k l` или стрелки — сдвиг, Shift — ×10, `[` / `]` — шаг, `g` — паттерн, `r` — сброс, Enter/`S` — сохранить, Esc — выход. Клетки сетки должны быть равными квадратами **на ленте**.
 
-Сохранение не затирает поля от AprilTag‑калибровки — в тот же JSON добавляются `proj_quad`, `proj_quad_resolution`, `logical_size`.
-
-## RealSense debug (без проектора)
-
-Пока нет проектора, можно отдельно проверить depth/RGB потоки D435 и baseline depth-сегментацию «пол vs человек».
+### RealSense debug (без проектора)
 
 ```bash
-# 1) Просмотр color + depth, FPS, USB режима
+# color + depth, FPS, USB
 QT_QPA_PLATFORM=xcb poetry run python scripts/realsense_depth_preview.py --align-to-color
 
-# 2) Сегментация по глубине: SPACE = снять пустой пол, дальше маска "ближе пола"
+# SPACE = пустой пол, дальше маска «ближе пола»
 QT_QPA_PLATFORM=xcb poetry run python scripts/realsense_floor_debug.py --align-to-color --lift-mm 70
 ```
 
-Если видите "Couldn't resolve requests" или "Frame didn't arrive within 5000", задайте более лёгкий профиль вручную:
+При «Couldn't resolve requests» / таймауте кадра — облегчённый профиль:
 
 ```bash
 poetry run python scripts/realsense_depth_preview.py --align-to-color \
@@ -108,17 +129,13 @@ poetry run python scripts/realsense_depth_preview.py --align-to-color \
   --color-width 640 --color-height 480 --color-fps 15
 ```
 
-Если OpenCV падает с ошибкой Qt/Wayland, запускайте с `QT_QPA_PLATFORM=xcb`.
+### Игра по плиткам (`tile_game.py`)
 
-## Игра по плиткам (2 дорожки, depth + RGB + Insolex)
+Две дорожки; хит при **D AND R AND P** в зоне плитки:
 
-Две дорожки (LEFT/RIGHT), плитки падают сверху вниз. Попадание по плитке регистрируется когда совпадают **три сигнала**, измеренные **в зоне самой плитки** (а не «где-то на полу»):
-
-1. **D**epth — доля depth-пикселей внутри плитки с подъёмом в диапазоне **40–250 мм** над baseline-полом.
-2. **R**GB occlusion — доля пикселей в плитке, **не подсвеченных проектором** (свет блокирован стопой/тенью).
-3. **P**ressure — давление соответствующей стельки выше `--insole-thresh-kpa`.
-
-Условие хита: **`D AND R AND P`**. Точки D/R/P над плиткой — зелёные, когда порог достигнут.
+1. **D** — depth-пиксели с подъёмом **40–250 мм** над baseline-полом.
+2. **R** — пиксели, не подсвеченные проектором (окклюзия стопой).                                   
+3. **P** — давление стельки выше `--insole-thresh-kpa`.
 
 ```bash
 QT_QPA_PLATFORM=xcb poetry run python scripts/tile_game.py \
@@ -131,44 +148,50 @@ QT_QPA_PLATFORM=xcb poetry run python scripts/tile_game.py \
   --step-time-s 1.2
 ```
 
-**Скорость:** `-S` / `--speed` / `--treadmill-speed-mps` — одно и то же, число в диапазоне **0.05–1.5** (условные «м/с» вдоль ленты). Внутри переводится в `px/s = speed * 420`, затем ограничивается **~45–620 px/s**. Значение **4.0** будет обрезано до **1.5** — это максимум; для «быстрее» сначала крути `--step-time-s` вниз (чаще новые плитки), потом `--speed` вверх до ~1.0–1.5. В HUD видно фактические `speed: …px/s (~… m/s)`.
+**Скорость:** `-S` / `--speed` / `--treadmill-speed-mps` — **0.05–1.5** (условные м/с); в px/s: `speed × 420`, лимит ~45–620. Для ускорения сначала уменьшайте `--step-time-s`, затем `--speed` до ~1.0–1.5.
 
-**Сдвиг проекции:** стрелки `←→↑↓` (Shift = шаг ×5), затем **`S`** — запись `hit_shift_canvas` в тот же `--calibration` JSON.
+**Сдвиг проекции:** стрелки (Shift = ×5), затем `S` — запись `hit_shift_canvas` в тот же JSON.
 
-Без стелек: `--no-insole` (gate P всегда true).
+Без стелек: `--no-insole`.
 
-Шаги:
-- встаньте **вне** зоны проекции;
-- `SPACE` — снять модель пустого пола (depth + RGB baseline) и начать раунд;
-- наступайте поочерёдно левой/правой ногой, когда плитка под ногой;
-- `R` — сброс счёта, `Esc/Q` — выход.
+**Ход сессии:** встать вне зоны проекции → `SPACE` (baseline пола + старт) → наступать по плиткам поочерёдно → `R` сброс, `Esc`/`Q` выход.
 
 Флаги: `--calibration`, `-d/--display`, `--output-rotation`, `--no-insole`, `--insole-port`, `--insole-thresh-kpa`, `-S/--speed/--treadmill-speed-mps`, `--step-time-s`.
 
-### Разрешение: калибровка и игра
+**Разрешение:** в JSON — `camera_resolution`, `proj_resolution`; игра на том же дисплее (`-d`) и разрешении проектора, что при калибровке; камера — 640×480.
 
-В JSON сохраняются `camera_resolution` и `proj_resolution`. Игра работает с тем же монитором (`-d`) и тем же разрешением проектора, что при калибровке; разрешение камеры фиксированно 640×480.
+## 4. Структура репозитория
 
-## Структура репозитория
 
-| Путь | Назначение |
-|------|------------|
-| `scripts/listener.py` | TCP-сервер: принимает JSONL от Windows WaveX-bridge, печатает компактный JSON в stdout (для пайпа в визуализатор или лог). |
-| `config/calibration.json` | Результат калибровки: гомография камера→проектор, разрешения, опционально `proj_quad`. Локальная машина — коммитить по желанию. |
-| `src/calibration.py` | Загрузка JSON и `cam_to_proj(x, y, frame_w)` для проекции точки кадра в координаты проектора. Используется в `tile_game.py`, `calibrate_apriltag.py`, `adjust_projection_quad.py`. |
-| `src/insole_stream.py` | Общий приём Insolex: парсинг последнего кадра L/R, статистика давления, TCP receiver в фоне. Используется в `tile_game.py` и `insole_pressure_viz.py`. |
-| `src/insole_sensors_m.py` | Координаты 64 сенсоров стельки **M** (мм) для визуализации. |
-| `src/insole_sensors_s.py` | То же для размера **S** (`--size s` в визуализаторе). |
-| `scripts/tile_game.py` | Основная игра: RealSense, плитки, звук, опционально Insolex по TCP. |
-| `scripts/insole_pressure_viz.py` | 2D-градиент давления по сенсорам (stdin JSONL); `--size m\|s`, `--mock`. |
-| `scripts/calibrate_apriltag.py` | Калибровка AprilTag 36h11 с проектора в `calibration.json`. |
-| `scripts/adjust_projection_quad.py` | Pre-warp четырёхугольника проекции на ленту. |
-| `scripts/realsense_depth_preview.py` | Отладка потоков depth/color. |
-| `scripts/realsense_floor_debug.py` | Отладка сегментации «пол / человек» по глубине. |
-| `scripts/display_utils.py` | `open_fullscreen()` для pygame (выбор дисплея). |
-| `docs/occlusion-and-treadmill.md` | Заметки про тень/окклюзию и почему depth. |
-| `docs/insole-sensors-m.md` | Таблица координат M. |
-| `docs/system-spec.md` | Железо и планы. |
+| Путь                                              | Назначение                                                        |
+| ------------------------------------------------- | ----------------------------------------------------------------- |
+| `scripts/listener.py`                             | TCP JSONL от Windows WaveX-bridge → stdout                        |
+| `config/calibration.json`                         | Гомография, разрешения, `proj_quad` (локально, коммит по желанию) |
+| `src/calibration.py`                              | `cam_to_proj` и загрузка JSON                                     |
+| `src/insole_stream.py`                            | Приём Insolex: TCP, парсинг L/R, статистика                       |
+| `src/insole_pressure_web.py`                      | FastAPI + WebSocket для веб-визуализации                          |
+| `src/insole_sensors_m.py` / `insole_sensors_s.py` | Координаты 64 сенсоров M / S                                      |
+| `scripts/tile_game.py`                            | Основная игра                                                     |
+| `scripts/insole_pressure_viz.py`                  | 2D-давление (stdin); `--size m|s`, `--mock`                       |
+| `scripts/calibrate_apriltag.py`                   | Калибровка AprilTag 36h11                                         |
+| `scripts/adjust_projection_quad.py`               | Pre-warp четырёхугольника                                         |
+| `scripts/realsense_depth_preview.py`              | Отладка depth/color                                               |
+| `scripts/realsense_floor_debug.py`                | Сегментация пол / человек                                         |
+| `scripts/display_utils.py`                        | Полноэкранный pygame, выбор дисплея                               |
+| `frontend/`                                       | React/Vite UI давления                                            |
+| `docs/`                                           | Подробные заметки (см. ниже)                                      |
+
+
+## 5. Документация
+
+
+| Документ                                                           | О чём                                           |
+| ------------------------------------------------------------------ | ----------------------------------------------- |
+| [docs/occlusion-and-treadmill.md](docs/occlusion-and-treadmill.md) | Тень, окклюзия, зачем depth, свет и установка   |
+| [docs/system-spec.md](docs/system-spec.md)                         | Железо, pipeline D435, чеклист                  |
+| [docs/insole-sensors-m.md](docs/insole-sensors-m.md)               | Координаты сенсоров стельки M                   |
+| `[scripts/listener.py](scripts/listener.py)`                       | Приём давления с Windows (TCP JSONL), docstring |
+
 
 ## Лицензия
 

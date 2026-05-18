@@ -4,15 +4,19 @@ from __future__ import annotations
 
 import asyncio
 import os
+import sys
 import time
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import Any, Literal
 
 import numpy as np
-from fastapi import FastAPI, Query, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel, Field
 
 from src.insole_stream import InsoleTcpReceiver, N_SENSORS, pressure_stats
+from src.runtime.process_manager import ProcessManager
 
 InsoleSize = Literal["m", "s"]
 SourceMode = Literal["live", "mock"]
@@ -20,6 +24,71 @@ SourceMode = Literal["live", "mock"]
 DEFAULT_HOST = os.environ.get("INSOLE_HOST", "0.0.0.0")
 DEFAULT_PORT = int(os.environ.get("INSOLE_PORT", "9100"))
 DEFAULT_THRESHOLD_KPA = 8.0
+DEFAULT_CALIBRATION_PATH = "config/calibration.json"
+DEFAULT_LOOPBACK_BASE = os.environ.get("RUNTIME_LOOPBACK_BASE_URL", "http://127.0.0.1:8000")
+REPO_ROOT = Path(__file__).resolve().parent.parent
+
+
+class StartRuntimeRequest(BaseModel):
+    job: Literal["game", "calibrate_apriltag"]
+    display: int | None = None
+    outputRotation: Literal[0, 90, 180, 270] = 270
+    insoleThresholdKpa: float = Field(DEFAULT_THRESHOLD_KPA, ge=0.0)
+    speed: float = Field(0.35, ge=0.05, le=1.5)
+    stepTimeS: float = Field(1.2, ge=0.2, le=2.8)
+
+
+class StopRuntimeRequest(BaseModel):
+    timeoutS: float = Field(3.0, ge=0.5, le=15.0)
+
+
+def _manager_payload() -> dict[str, Any]:
+    return app.state.process_manager.snapshot()
+
+
+def _command_for_job(cfg: StartRuntimeRequest) -> list[str]:
+    python_bin = sys.executable
+    if cfg.job == "game":
+        cmd = [
+            python_bin,
+            "scripts/tile_game.py",
+            "--calibration",
+            DEFAULT_CALIBRATION_PATH,
+            "--output-rotation",
+            str(cfg.outputRotation),
+            "--insole-thresh-kpa",
+            str(cfg.insoleThresholdKpa),
+            "--speed",
+            str(cfg.speed),
+            "--step-time-s",
+            str(cfg.stepTimeS),
+            "--insole-frame-url",
+            f"{DEFAULT_LOOPBACK_BASE}/api/frame?source=live",
+        ]
+        if cfg.display is not None:
+            cmd.extend(["-d", str(cfg.display)])
+        return cmd
+
+    return [
+        python_bin,
+        "scripts/calibrate_apriltag.py",
+        "-c",
+        "realsense",
+        "--width",
+        "640",
+        "--height",
+        "480",
+        "--fps",
+        "30",
+        "--display",
+        "0",
+        "--tag-size",
+        "280",
+        "--margin",
+        "30",
+        "-o",
+        DEFAULT_CALIBRATION_PATH,
+    ]
 
 
 def load_insole_geometry(size: InsoleSize) -> tuple[
@@ -123,10 +192,14 @@ def _frame_payload(
     connected: bool,
     age_s: float | None,
     error: str | None,
+    available: bool = True,
+    game_running: bool = False,
 ) -> dict[str, Any]:
     return {
         "size": size,
         "source": source,
+        "available": available,
+        "gameRunning": game_running,
         "seq": obj.get("seq"),
         "dtMs": obj.get("dtMs"),
         "connected": connected,
@@ -141,8 +214,50 @@ def _frame_payload(
     }
 
 
+def _passive_live_payload(size: InsoleSize) -> dict[str, Any]:
+    return _frame_payload(
+        size=size,
+        source="live",
+        obj={},
+        left=None,
+        right=None,
+        threshold_kpa=0.0,
+        connected=False,
+        age_s=None,
+        error=None,
+        available=False,
+        game_running=False,
+    )
+
+
+def _is_game_running() -> bool:
+    snap = app.state.process_manager.snapshot()
+    active = snap.get("activeJob") or {}
+    return active.get("name") == "game"
+
+
+def _ensure_receiver_lifecycle() -> bool:
+    """Bind the insole TCP listener only while a game subprocess is running."""
+    game_running = _is_game_running()
+    receiver: InsoleTcpReceiver | None = getattr(app.state, "receiver", None)
+    if game_running and receiver is None:
+        receiver = InsoleTcpReceiver(DEFAULT_HOST, DEFAULT_PORT)
+        receiver.start()
+        app.state.receiver = receiver
+        return True
+    if not game_running and receiver is not None:
+        receiver.stop()
+        app.state.receiver = None
+        return False
+    return receiver is not None
+
+
 def _live_frame_payload(size: InsoleSize, threshold_kpa: float) -> dict[str, Any]:
-    snapshot = app.state.receiver.latest_snapshot(threshold_kpa)
+    active = _ensure_receiver_lifecycle()
+    receiver: InsoleTcpReceiver | None = getattr(app.state, "receiver", None)
+    if not active or receiver is None:
+        return _passive_live_payload(size)
+    snapshot = receiver.latest_snapshot(threshold_kpa)
     return _frame_payload(
         size=size,
         source="live",
@@ -153,19 +268,25 @@ def _live_frame_payload(size: InsoleSize, threshold_kpa: float) -> dict[str, Any
         connected=snapshot.connected,
         age_s=snapshot.age_s,
         error=snapshot.error,
+        available=True,
+        game_running=True,
     )
 
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
-    receiver = InsoleTcpReceiver(DEFAULT_HOST, DEFAULT_PORT)
-    _app.state.receiver = receiver
+    process_manager = ProcessManager(cwd=REPO_ROOT)
+    _app.state.receiver = None
+    _app.state.process_manager = process_manager
     _app.state.started_at = time.monotonic()
-    receiver.start()
     try:
         yield
     finally:
-        receiver.stop()
+        process_manager.shutdown()
+        existing: InsoleTcpReceiver | None = getattr(_app.state, "receiver", None)
+        if existing is not None:
+            existing.stop()
+            _app.state.receiver = None
 
 
 app = FastAPI(title="Insole pressure visualizer", lifespan=lifespan)
@@ -173,14 +294,19 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
     allow_credentials=False,
-    allow_methods=["GET"],
+    allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["*"],
 )
 
 
 @app.get("/api/health")
 def health() -> dict[str, Any]:
-    return {"ok": True, "insoleHost": DEFAULT_HOST, "insolePort": DEFAULT_PORT}
+    return {
+        "ok": True,
+        "insoleHost": DEFAULT_HOST,
+        "insolePort": DEFAULT_PORT,
+        "runtime": _manager_payload(),
+    }
 
 
 @app.get("/api/geometry")
@@ -203,6 +329,39 @@ def frame(
     if source == "mock":
         return _mock_bridge_object(size, time.monotonic() - app.state.started_at, threshold_kpa)
     return _live_frame_payload(size, threshold_kpa)
+
+
+@app.get("/api/runtime/status")
+def runtime_status() -> dict[str, Any]:
+    _ensure_receiver_lifecycle()
+    return _manager_payload()
+
+
+@app.post("/api/runtime/start")
+def runtime_start(payload: StartRuntimeRequest, request: Request) -> dict[str, Any]:
+    _ = request  # keeps API stable if later needed for request-derived config
+    cmd = _command_for_job(payload)
+    try:
+        job = app.state.process_manager.start(
+            name=payload.job,
+            command=cmd,
+            env={"QT_QPA_PLATFORM": os.environ.get("QT_QPA_PLATFORM", "xcb")},
+        )
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    _ensure_receiver_lifecycle()
+    return {
+        "ok": True,
+        "started": {"name": job.name, "pid": job.pid, "command": list(job.command)},
+        "runtime": _manager_payload(),
+    }
+
+
+@app.post("/api/runtime/stop")
+def runtime_stop(payload: StopRuntimeRequest) -> dict[str, Any]:
+    stopped = app.state.process_manager.stop(timeout_s=payload.timeoutS)
+    _ensure_receiver_lifecycle()
+    return {"ok": True, "stopped": stopped, "runtime": _manager_payload()}
 
 
 @app.websocket("/ws/insole")

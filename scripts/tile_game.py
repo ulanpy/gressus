@@ -14,6 +14,9 @@ import os
 import sys
 import time
 from pathlib import Path
+from urllib import error as url_error
+from urllib import parse as url_parse
+from urllib import request as url_request
 
 if os.environ.get("WAYLAND_DISPLAY") and not os.environ.get("QT_QPA_PLATFORM"):
     os.environ["QT_QPA_PLATFORM"] = "xcb"
@@ -41,7 +44,7 @@ from src.game.realsense_depth import (  # noqa: E402
     tile_signals,
 )
 from src.game.render import draw_scene, hud_surface, lane_rects  # noqa: E402
-from src.insole_stream import InsoleSnapshot, InsoleTcpReceiver  # noqa: E402
+from src.insole_stream import InsoleSnapshot, InsoleTcpReceiver, PressureStats  # noqa: E402
 
 LANE_NAMES = ("LEFT", "RIGHT")
 LANE_COLORS = ((48, 210, 255), (246, 88, 220))
@@ -145,6 +148,68 @@ def save_shift(cal_path: Path, shift: tuple[int, int]) -> None:
         json.dump(raw, f, indent=2, ensure_ascii=False)
 
 
+class BackendInsoleClient:
+    """Read pressure snapshots from FastAPI /api/frame instead of direct TCP bind."""
+
+    def __init__(self, base_url: str, threshold_kpa: float) -> None:
+        self.base_url = base_url
+        self.threshold_kpa = threshold_kpa
+        self._last_error: str | None = None
+
+    def latest_snapshot(self, threshold_kpa: float) -> InsoleSnapshot:
+        params = {
+            "source": "live",
+            "threshold_kpa": f"{(threshold_kpa or self.threshold_kpa):.3f}",
+        }
+        sep = "&" if "?" in self.base_url else "?"
+        target = f"{self.base_url}{sep}{url_parse.urlencode(params)}"
+        try:
+            with url_request.urlopen(target, timeout=0.2) as resp:
+                payload = json.loads(resp.read().decode("utf-8"))
+            self._last_error = None
+        except (url_error.URLError, TimeoutError, json.JSONDecodeError, ValueError) as exc:
+            self._last_error = str(exc)
+            return InsoleSnapshot(
+                obj={},
+                left=None,
+                right=None,
+                left_stats=PressureStats(),
+                right_stats=PressureStats(),
+                age_s=None,
+                connected=False,
+                error=self._last_error,
+            )
+
+        left = np.array(payload["left"], dtype=np.float64) if isinstance(payload.get("left"), list) else None
+        right = (
+            np.array(payload["right"], dtype=np.float64)
+            if isinstance(payload.get("right"), list)
+            else None
+        )
+        return InsoleSnapshot(
+            obj={"seq": payload.get("seq"), "dtMs": payload.get("dtMs")},
+            left=left,
+            right=right,
+            left_stats=_stats_from_payload(payload.get("leftStats")),
+            right_stats=_stats_from_payload(payload.get("rightStats")),
+            age_s=float(payload["ageS"]) if isinstance(payload.get("ageS"), (int, float)) else None,
+            connected=bool(payload.get("connected", False)),
+            error=payload.get("error") if isinstance(payload.get("error"), str) else self._last_error,
+        )
+
+
+def _stats_from_payload(raw: object) -> PressureStats:
+    if not isinstance(raw, dict):
+        return PressureStats()
+    return PressureStats(
+        max_kpa=float(raw.get("maxKpa", 0.0) or 0.0),
+        mean_kpa=float(raw.get("meanKpa", 0.0) or 0.0),
+        sum_kpa=float(raw.get("sumKpa", 0.0) or 0.0),
+        pressed=bool(raw.get("pressed", False)),
+        has_data=bool(raw.get("hasData", False)),
+    )
+
+
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="2-lane treadmill tile game.")
     p.add_argument("--calibration", type=Path, default=Path("config/calibration.json"))
@@ -157,6 +222,12 @@ def parse_args() -> argparse.Namespace:
     )
     p.add_argument("--no-insole", action="store_true")
     p.add_argument("--insole-port", type=int, default=9100)
+    p.add_argument(
+        "--insole-frame-url",
+        type=str,
+        default=None,
+        help="URL FastAPI /api/frame for insole snapshots (avoids direct TCP bind).",
+    )
     p.add_argument("--insole-thresh-kpa", type=float, default=8.0)
     p.add_argument(
         "-S",
@@ -189,13 +260,17 @@ def main() -> None:
     audio = GameAudio(assets_dir=default_assets_dir())
 
     insole_rx: InsoleTcpReceiver | None = None
+    insole_client: BackendInsoleClient | None = None
     pipe = None
     align = None
     depth_scale_m = 0.0
     try:
         if insole_enabled:
-            insole_rx = InsoleTcpReceiver("0.0.0.0", args.insole_port)
-            insole_rx.start()
+            if args.insole_frame_url:
+                insole_client = BackendInsoleClient(args.insole_frame_url, args.insole_thresh_kpa)
+            else:
+                insole_rx = InsoleTcpReceiver("0.0.0.0", args.insole_port)
+                insole_rx.start()
         if not args.demo:
             pipe, align, depth_scale_m = start_realsense(
                 rs, depth_width=640, depth_height=480, depth_fps=15,
@@ -255,7 +330,11 @@ def main() -> None:
             fps_ema = 1.0 / dt if fps_ema <= 0.0 else 0.9 * fps_ema + 0.1 / dt
 
             insole_snap = (
-                insole_rx.latest_snapshot(args.insole_thresh_kpa) if insole_rx else None
+                insole_client.latest_snapshot(args.insole_thresh_kpa)
+                if insole_client is not None
+                else insole_rx.latest_snapshot(args.insole_thresh_kpa)
+                if insole_rx is not None
+                else None
             )
 
             frames = None
