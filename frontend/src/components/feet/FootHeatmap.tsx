@@ -1,9 +1,10 @@
+import { memo } from 'react'
 import type { FootHeatmapProps } from '../../types/components'
 import { contrastIntensity, pressureColor } from '../../lib/pressure/color'
 import { CONTACT_THRESHOLD_KPA } from '../../constants/insole'
 
 
-export function FootHeatmap({ frame, idPrefix, scale, showSensors, silhouette, title }: FootHeatmapProps) {
+function FootHeatmapInner({ frame, idPrefix, scale, showSensors, silhouette, title }: FootHeatmapProps) {
   const clipId = `${idPrefix}-foot-clip`
   const gradientId = `${idPrefix}-foot-depth`
 
@@ -71,3 +72,5 @@ export function FootHeatmap({ frame, idPrefix, scale, showSensors, silhouette, t
     </svg>
   )
 }
+
+export const FootHeatmap = memo(FootHeatmapInner)

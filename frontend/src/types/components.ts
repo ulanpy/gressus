@@ -4,6 +4,7 @@ import type { ViewMode, TherapistSection } from './navigation'
 import type { Language } from './i18n'
 import type { GameLaunchParams, RuntimePayload } from './runtime'
 import type { ProgressSummary, SessionMetrics, TherapyRecommendation } from '../progressAnalytics'
+import type { CemrrProgressState } from '../hooks/useCemrrProgress'
 
 export type MetricProps = {
   label: string
@@ -61,11 +62,15 @@ export type TherapistPageProps = {
   showSensors: boolean
   source: SourceMode
   status: string
+  cemrr: CemrrProgressState
+  activeSection: TherapistSection
+  setActiveSection: (section: TherapistSection) => void
 }
 
 export type ControlPageProps = {
   runtime: RuntimePayload
   runtimeActionError: string | null
+  runtimeActionLogTail: string | null
   runtimePending: boolean
   startCalibration: () => Promise<void>
   startGame: (params: GameLaunchParams) => Promise<void>
@@ -89,10 +94,6 @@ export type PatientFootPanelProps = {
 export type TherapistSectionTabsProps = {
   activeSection: TherapistSection
   setActiveSection: (section: TherapistSection) => void
-}
-
-export type ProgressDashboardProps = {
-  metrics: SessionMetrics[]
 }
 
 export type ProgressSummaryCardsProps = {

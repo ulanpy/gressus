@@ -1,9 +1,6 @@
-import { useMemo, useState } from 'react'
-import { getMockSessionHistory } from '../progressAnalytics'
 import { MAX_KPA } from '../constants/insole'
 import { useI18n } from '../i18n/context'
 import type { TherapistPageProps } from '../types/components'
-import type { TherapistSection } from '../types/navigation'
 import { StatusSummary } from '../components/layout/StatusSummary'
 import { TherapistSectionTabs } from '../components/progress/TherapistSectionTabs'
 import { DashboardControls } from '../components/feet/DashboardControls'
@@ -21,10 +18,11 @@ export function TherapistPage({
   showSensors,
   source,
   status,
+  cemrr,
+  activeSection,
+  setActiveSection,
 }: TherapistPageProps) {
   const { t } = useI18n()
-  const [activeSection, setActiveSection] = useState<TherapistSection>('live')
-  const sessionMetrics = useMemo(() => getMockSessionHistory(), [])
 
   return (
     <>
@@ -82,7 +80,7 @@ export function TherapistPage({
           )}
         </>
       ) : (
-        <ProgressDashboard metrics={sessionMetrics} />
+        <ProgressDashboard cemrr={cemrr} />
       )}
     </>
   )

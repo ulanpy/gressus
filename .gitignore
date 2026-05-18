@@ -6,6 +6,7 @@ __pycache__/
 
 # Local / debug outputs
 calibrate_debug.jpg
+logs/
 
 # Virtualenvs (if created under repo)
 .venv/

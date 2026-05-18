@@ -1,35 +1,59 @@
-import { useMemo } from 'react'
-import { calculateProgressSummary, generateTherapyRecommendations } from '../../progressAnalytics'
+import { memo } from 'react'
+import type { CemrrProgressState } from '../../hooks/useCemrrProgress'
 import { useI18n } from '../../i18n/context'
-import type { ProgressDashboardProps } from '../../types/components'
-import { ProgressSummaryCards } from './ProgressSummaryCards'
-import { SessionTrendChart } from './SessionTrendChart'
-import { LoadBalanceChart } from './LoadBalanceChart'
-import { ClinicalDomainsCard } from './ClinicalDomainsCard'
-import { TherapyRecommendationsCard } from './TherapyRecommendationsCard'
-import { BaselineLatestCard } from './BaselineLatestCard'
+import { CemrrUpload } from './cemrr/CemrrUpload'
+import { GriHero } from './cemrr/GriHero'
+import { AspectScoresCard } from './cemrr/AspectScoresCard'
+import { TimingStrideCards } from './cemrr/TimingStrideCards'
+import { TorqueCard } from './cemrr/TorqueCard'
+import { AliCard } from './cemrr/AliCard'
+import { JsiCard } from './cemrr/JsiCard'
+import { CemrrRecommendationsCard } from './cemrr/CemrrRecommendationsCard'
+import { SessionsHistoryCard } from './cemrr/SessionsHistoryCard'
 
+type ProgressDashboardProps = {
+  cemrr: CemrrProgressState
+}
 
-export function ProgressDashboard({ metrics }: ProgressDashboardProps) {
+function ProgressDashboardInner({ cemrr }: ProgressDashboardProps) {
   const { t } = useI18n()
-  const summary = useMemo(() => calculateProgressSummary(metrics), [metrics])
-  const recommendations = useMemo(() => generateTherapyRecommendations(metrics), [metrics])
+  const { results, activeResult, recommendations, error } = cemrr
 
   return (
     <section className="progress-dashboard" aria-label={t.progress.aria}>
-      <ProgressSummaryCards summary={summary} />
+      <CemrrUpload
+        onText={cemrr.handleText}
+        onLoadExample={cemrr.handleLoadExample}
+        error={error}
+        sessionCount={results.length}
+        onClear={cemrr.handleClear}
+      />
 
-      <div className="progress-grid progress-grid--charts">
-        <SessionTrendChart metrics={metrics} />
-        <LoadBalanceChart metrics={metrics} />
-      </div>
+      {activeResult && (
+        <>
+          {results.length > 1 && (
+            <SessionsHistoryCard
+              results={results}
+              activeSession={activeResult.session}
+              onSelect={cemrr.setActiveSession}
+            />
+          )}
 
-      <div className="progress-grid progress-grid--supporting">
-        <ClinicalDomainsCard metrics={metrics} />
-        <TherapyRecommendationsCard recommendations={recommendations} />
-      </div>
+          <GriHero result={activeResult} />
+          <AspectScoresCard result={activeResult} />
+          <TimingStrideCards result={activeResult} />
 
-      <BaselineLatestCard summary={summary} />
+          <div className="cemrr-grid cemrr-grid--two">
+            <AliCard result={activeResult} />
+            <JsiCard result={activeResult} />
+          </div>
+
+          <TorqueCard result={activeResult} />
+          <CemrrRecommendationsCard recommendations={recommendations} />
+        </>
+      )}
     </section>
   )
 }
+
+export const ProgressDashboard = memo(ProgressDashboardInner)

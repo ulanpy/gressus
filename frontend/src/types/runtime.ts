@@ -5,6 +5,7 @@ export type RuntimeActiveJob = {
   command: string[]
   pid: number
   uptimeS: number
+  logPath?: string | null
 } | null
 
 export type RuntimePayload = {
@@ -14,6 +15,7 @@ export type RuntimePayload = {
     name: RuntimeJobName | null
     code: number | null
     finishedAt: number
+    logPath?: string | null
   } | null
 }
 

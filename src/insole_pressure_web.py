@@ -341,18 +341,39 @@ def runtime_status() -> dict[str, Any]:
 def runtime_start(payload: StartRuntimeRequest, request: Request) -> dict[str, Any]:
     _ = request  # keeps API stable if later needed for request-derived config
     cmd = _command_for_job(payload)
+    manager = app.state.process_manager
     try:
-        job = app.state.process_manager.start(
+        job = manager.start(
             name=payload.job,
             command=cmd,
             env={"QT_QPA_PLATFORM": os.environ.get("QT_QPA_PLATFORM", "xcb")},
         )
     except RuntimeError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    still_alive = manager.wait_briefly(0.3)
+    if not still_alive:
+        tail = manager.tail_log(max_bytes=4096)
+        snapshot = _manager_payload()
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "message": f"{payload.job} exited immediately",
+                "logPath": str(job.log_path),
+                "logTail": tail,
+                "runtime": snapshot,
+            },
+        )
+
     _ensure_receiver_lifecycle()
     return {
         "ok": True,
-        "started": {"name": job.name, "pid": job.pid, "command": list(job.command)},
+        "started": {
+            "name": job.name,
+            "pid": job.pid,
+            "command": list(job.command),
+            "logPath": str(job.log_path),
+        },
         "runtime": _manager_payload(),
     }
 
@@ -362,6 +383,21 @@ def runtime_stop(payload: StopRuntimeRequest) -> dict[str, Any]:
     stopped = app.state.process_manager.stop(timeout_s=payload.timeoutS)
     _ensure_receiver_lifecycle()
     return {"ok": True, "stopped": stopped, "runtime": _manager_payload()}
+
+
+@app.get("/api/runtime/log")
+def runtime_log(tail: int = Query(4096, ge=128, le=65536)) -> dict[str, Any]:
+    manager = app.state.process_manager
+    snapshot = manager.snapshot()
+    active = snapshot.get("activeJob") or {}
+    log_path = active.get("logPath")
+    if log_path is None:
+        last_exit = snapshot.get("lastExit") or {}
+        log_path = last_exit.get("logPath")
+    return {
+        "logPath": log_path,
+        "logTail": manager.tail_log(max_bytes=tail),
+    }
 
 
 @app.websocket("/ws/insole")
