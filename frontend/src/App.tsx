@@ -51,6 +51,8 @@ type FootStats = {
 
 type FramePayload = {
   source: SourceMode
+  available: boolean
+  gameRunning: boolean
   seq: number | string | null
   dtMs: number | null
   connected: boolean
@@ -113,10 +115,8 @@ type FootHeatmapProps = {
 type DashboardControlsProps = {
   frame: FramePayload | null
   setShowSensors: (update: (value: boolean) => boolean) => void
-  setSize: (size: InsoleSize) => void
   setSource: (source: SourceMode) => void
   showSensors: boolean
-  size: InsoleSize
   source: SourceMode
 }
 
@@ -143,11 +143,16 @@ type FootDashboard = {
 type TherapistPageProps = {
   dashboard: FootDashboard
   frame: FramePayload | null
+  liveInactive: boolean
+  runtime: RuntimePayload
+  runtimeActionError: string | null
+  runtimePending: boolean
+  startCalibration: () => Promise<void>
+  startGame: (params: GameLaunchParams) => Promise<void>
+  stopRuntime: () => Promise<void>
   setShowSensors: (update: (value: boolean) => boolean) => void
-  setSize: (size: InsoleSize) => void
   setSource: (source: SourceMode) => void
   showSensors: boolean
-  size: InsoleSize
   source: SourceMode
   status: string
 }
@@ -155,6 +160,7 @@ type TherapistPageProps = {
 type PatientPageProps = {
   dashboard: FootDashboard
   frame: FramePayload | null
+  liveInactive: boolean
   movementMessage: string
 }
 
@@ -175,6 +181,33 @@ type PatientSuggestionState = {
 type TherapistSectionTabsProps = {
   activeSection: TherapistSection
   setActiveSection: (section: TherapistSection) => void
+}
+
+type RuntimeJobName = 'game' | 'calibrate_apriltag'
+
+type RuntimeActiveJob = {
+  name: RuntimeJobName
+  command: string[]
+  pid: number
+  uptimeS: number
+} | null
+
+type RuntimePayload = {
+  state: 'idle' | 'running'
+  activeJob: RuntimeActiveJob
+  lastExit: {
+    name: RuntimeJobName | null
+    code: number | null
+    finishedAt: number
+  } | null
+}
+
+type GameLaunchParams = {
+  display: number | null
+  outputRotation: 0 | 90 | 180 | 270
+  insoleThresholdKpa: number
+  speed: number
+  stepTimeS: number
 }
 
 type ProgressDashboardProps = {
@@ -233,6 +266,8 @@ const tooltipStyle = {
   color: '#334155',
 } satisfies CSSProperties
 
+const INSOLE_SIZE: InsoleSize = 'm'
+
 const FOOT_LABELS = {
   left: {
     aria: 'Left insole pressure heatmap',
@@ -247,10 +282,14 @@ const FOOT_LABELS = {
 function App() {
   const [activeView, setActiveView] = useState<ViewMode>('therapist')
   const [source, setSource] = useState<SourceMode>('mock')
-  const [size, setSize] = useState<InsoleSize>('m')
   const [showSensors, setShowSensors] = useState(true)
-  const { geometry, setStatus, status } = useGeometry(size)
-  const { frame, patientSuggestion } = useInsoleFrame(source, size, setStatus)
+  const runtime = useRuntimeControls()
+  const isGameRunning =
+    runtime.state.state === 'running' && runtime.state.activeJob?.name === 'game'
+  const liveGateOpen = source === 'mock' || isGameRunning
+  const liveInactive = source === 'live' && !isGameRunning
+  const { geometry, setStatus, status } = useGeometry(INSOLE_SIZE)
+  const { frame, patientSuggestion } = useInsoleFrame(source, INSOLE_SIZE, setStatus, liveGateOpen)
   const dashboard = useFootDashboard(geometry, frame)
 
   return (
@@ -261,16 +300,26 @@ function App() {
         <TherapistPage
           dashboard={dashboard}
           frame={frame}
+          liveInactive={liveInactive}
+          runtime={runtime.state}
+          runtimeActionError={runtime.actionError}
+          runtimePending={runtime.pending}
+          startCalibration={runtime.startCalibration}
+          startGame={runtime.startGame}
+          stopRuntime={runtime.stopRuntime}
           setShowSensors={setShowSensors}
-          setSize={setSize}
           setSource={setSource}
           showSensors={showSensors}
-          size={size}
           source={source}
           status={status}
         />
       ) : (
-        <PatientPage dashboard={dashboard} frame={frame} movementMessage={patientSuggestion} />
+        <PatientPage
+          dashboard={dashboard}
+          frame={frame}
+          liveInactive={liveInactive}
+          movementMessage={patientSuggestion}
+        />
       )}
     </main>
   )
@@ -300,11 +349,16 @@ function PageTabs({ activeView, setActiveView }: PageTabsProps) {
 function TherapistPage({
   dashboard,
   frame,
+  liveInactive,
+  runtime,
+  runtimeActionError,
+  runtimePending,
+  startCalibration,
+  startGame,
+  stopRuntime,
   setShowSensors,
-  setSize,
   setSource,
   showSensors,
-  size,
   source,
   status,
 }: TherapistPageProps) {
@@ -330,55 +384,53 @@ function TherapistPage({
 
       {activeSection === 'live' ? (
         <>
+          <RuntimeControls
+            runtime={runtime}
+            actionError={runtimeActionError}
+            pending={runtimePending}
+            startCalibration={startCalibration}
+            startGame={startGame}
+            stopRuntime={stopRuntime}
+          />
+
           <DashboardControls
             frame={frame}
             setShowSensors={setShowSensors}
-            setSize={setSize}
             setSource={setSource}
             showSensors={showSensors}
-            size={size}
             source={source}
           />
 
           {frame?.error && <p className="error">{frame.error}</p>}
 
-          <section className="foot-grid">
-            <FootPressurePanel
-              side="left"
-              frame={dashboard.leftFrame}
-              scale={dashboard.dynamicScale}
-              showSensors={showSensors}
-              silhouette={dashboard.leftSilhouette}
-            />
-            <FootPressurePanel
-              side="right"
-              frame={dashboard.rightFrame}
-              scale={dashboard.dynamicScale}
-              showSensors={showSensors}
-              silhouette={dashboard.rightSilhouette}
-            />
-          </section>
+          {liveInactive ? (
+            <LiveInactiveCard variant="therapist" />
+          ) : (
+            <FeetPressurePanel dashboard={dashboard} showSensors={showSensors} />
+          )}
 
-          <section className="bottom-grid">
-            <div className="balance-card">
-              <div>
-                <p className="eyebrow">Распределение веса</p>
-                <h2>
-                  {dashboard.leftShare}% лево / {100 - dashboard.leftShare}% право
-                </h2>
+          {!liveInactive && (
+            <section className="bottom-grid">
+              <div className="balance-card">
+                <div>
+                  <p className="eyebrow">Распределение веса</p>
+                  <h2>
+                    {dashboard.leftShare}% лево / {100 - dashboard.leftShare}% право
+                  </h2>
+                </div>
+                <div className="balance-track">
+                  <div style={{ width: `${dashboard.leftShare}%` }} />
+                </div>
               </div>
-              <div className="balance-track">
-                <div style={{ width: `${dashboard.leftShare}%` }} />
+              <div className="legend">
+                <div>
+                  <p className="eyebrow">Шкала давления</p>
+                  <h2>0 - {MAX_KPA} кПа</h2>
+                </div>
+                <div className="legend-bar" />
               </div>
-            </div>
-            <div className="legend">
-              <div>
-                <p className="eyebrow">Шкала давления</p>
-                <h2>0 - {MAX_KPA} кПа</h2>
-              </div>
-              <div className="legend-bar" />
-            </div>
-          </section>
+            </section>
+          )}
         </>
       ) : (
         <ProgressDashboard metrics={sessionMetrics} />
@@ -653,25 +705,16 @@ function CardHeading({ eyebrow, title }: { eyebrow: string; title: string }) {
   )
 }
 
-function PatientPage({ dashboard, frame, movementMessage }: PatientPageProps) {
+function PatientPage({ dashboard, frame, liveInactive, movementMessage }: PatientPageProps) {
+  if (liveInactive) {
+    return <LiveInactiveCard variant="patient" />
+  }
+
   return (
     <>
       {frame?.error && <p className="error">Связь со стельками прервалась. Можно спокойно попробовать снова.</p>}
 
-      <section className="patient-foot-grid">
-        <PatientFootPanel
-          side="left"
-          frame={dashboard.leftFrame}
-          scale={dashboard.dynamicScale}
-          silhouette={dashboard.leftSilhouette}
-        />
-        <PatientFootPanel
-          side="right"
-          frame={dashboard.rightFrame}
-          scale={dashboard.dynamicScale}
-          silhouette={dashboard.rightSilhouette}
-        />
-      </section>
+      <FeetPatientPanel dashboard={dashboard} />
 
       <section className="patient-hero">
         <div>
@@ -702,6 +745,33 @@ function PatientPage({ dashboard, frame, movementMessage }: PatientPageProps) {
   )
 }
 
+function LiveInactiveCard({ variant }: { variant: 'therapist' | 'patient' }) {
+  const isPatient = variant === 'patient'
+  return (
+    <section className={`live-inactive ${isPatient ? 'live-inactive--patient' : ''}`} aria-live="polite">
+      <div className="live-inactive__icon" aria-hidden>
+        <svg viewBox="0 0 64 64" width="56" height="56">
+          <circle cx="32" cy="32" r="28" fill="none" stroke="currentColor" strokeWidth="2" opacity="0.35" />
+          <circle cx="32" cy="32" r="6" fill="currentColor" />
+        </svg>
+      </div>
+      <div className="live-inactive__copy">
+        <p className="eyebrow">Стельки неактивны</p>
+        <h2>
+          {isPatient
+            ? 'Подожди, терапевт скоро запустит игру'
+            : 'Стельки включаются вместе с игрой'}
+        </h2>
+        <p>
+          {isPatient
+            ? 'Когда сессия начнётся — давление стопы будет видно здесь.'
+            : 'TCP-приём данных запускается только во время игрового сеанса. Нажми «Запустить игру» в панели сверху.'}
+        </p>
+      </div>
+    </section>
+  )
+}
+
 function StatusSummary({ dynamicScale, source, status }: StatusSummaryProps) {
   return (
     <div className="status-grid">
@@ -721,13 +791,335 @@ function StatusSummary({ dynamicScale, source, status }: StatusSummaryProps) {
   )
 }
 
+const GAME_DEFAULTS: GameLaunchParams = {
+  display: null,
+  outputRotation: 270,
+  insoleThresholdKpa: 8,
+  speed: 0.35,
+  stepTimeS: 1.2,
+}
+
+const GAME_PRESETS: { id: string; label: string; values: Partial<GameLaunchParams> }[] = [
+  { id: 'demo', label: 'Демо', values: { speed: 0.35, stepTimeS: 1.2, insoleThresholdKpa: 8 } },
+  { id: 'easy', label: 'Мягко', values: { speed: 0.22, stepTimeS: 1.6, insoleThresholdKpa: 6 } },
+  { id: 'fast', label: 'Быстро', values: { speed: 0.75, stepTimeS: 0.8, insoleThresholdKpa: 10 } },
+]
+
+function RuntimeControls({
+  actionError,
+  pending,
+  runtime,
+  startCalibration,
+  startGame,
+  stopRuntime,
+}: {
+  actionError: string | null
+  pending: boolean
+  runtime: RuntimePayload
+  startCalibration: () => Promise<void>
+  startGame: (params: GameLaunchParams) => Promise<void>
+  stopRuntime: () => Promise<void>
+}) {
+  const [gameParams, setGameParams] = useState<GameLaunchParams>(GAME_DEFAULTS)
+  const [showAdvanced, setShowAdvanced] = useState(false)
+  const canStart = runtime.state === 'idle' && !pending
+  const canStop = runtime.state === 'running' && !pending
+  const isGameRunning = runtime.activeJob?.name === 'game'
+  const isCalibRunning = runtime.activeJob?.name === 'calibrate_apriltag'
+
+  const statusTitle =
+    isGameRunning
+      ? 'Игра запущена'
+      : isCalibRunning
+      ? 'Калибровка AprilTag запущена'
+      : 'Готов к запуску'
+  const statusMeta = runtime.activeJob
+    ? `pid ${runtime.activeJob.pid} · uptime ${Math.round(runtime.activeJob.uptimeS)}с`
+    : runtime.lastExit
+    ? `последний: ${runtime.lastExit.name ?? '-'} · code ${runtime.lastExit.code ?? '-'}`
+    : 'ничего не запущено'
+
+  return (
+    <section className="runtime" aria-label="Runtime controls">
+      <header className="runtime__statusbar">
+        <div className="runtime__status">
+          <span
+            className={`runtime__indicator ${runtime.state === 'running' ? 'runtime__indicator--running' : ''}`}
+            aria-hidden
+          />
+          <div className="runtime__status-text">
+            <p className="runtime__status-title">{statusTitle}</p>
+            <span className="runtime__status-meta">{statusMeta}</span>
+          </div>
+        </div>
+        <button
+          type="button"
+          className="runtime__stop"
+          onClick={() => void stopRuntime()}
+          disabled={!canStop}
+        >
+          Остановить
+        </button>
+      </header>
+
+      <article className="runtime__card">
+        <header className="runtime__card-head">
+          <div>
+            <p className="runtime__card-eyebrow">Сценарий</p>
+            <h2 className="runtime__card-title">Игра по плиткам</h2>
+          </div>
+          <div className="runtime__preset-row" role="group" aria-label="Пресеты">
+            {GAME_PRESETS.map((preset) => (
+              <button
+                key={preset.id}
+                type="button"
+                className="runtime__preset"
+                onClick={() => setGameParams((prev) => ({ ...prev, ...preset.values }))}
+              >
+                {preset.label}
+              </button>
+            ))}
+            <button
+              type="button"
+              className="runtime__preset"
+              onClick={() => setGameParams(GAME_DEFAULTS)}
+            >
+              Сброс
+            </button>
+          </div>
+        </header>
+
+        <div className="runtime__sliders">
+          <SliderField
+            label="Скорость"
+            hint="условные м/с"
+            value={gameParams.speed}
+            onChange={(value) => setGameParams((prev) => ({ ...prev, speed: value }))}
+            min={0.05}
+            max={1.5}
+            step={0.05}
+            format={(value) => value.toFixed(2)}
+          />
+          <SliderField
+            label="Интервал шага"
+            hint="между плитками"
+            value={gameParams.stepTimeS}
+            onChange={(value) => setGameParams((prev) => ({ ...prev, stepTimeS: value }))}
+            min={0.2}
+            max={2.8}
+            step={0.1}
+            format={(value) => `${value.toFixed(2)}с`}
+          />
+          <SliderField
+            label="Порог давления"
+            hint="Insole threshold"
+            value={gameParams.insoleThresholdKpa}
+            onChange={(value) => setGameParams((prev) => ({ ...prev, insoleThresholdKpa: value }))}
+            min={0}
+            max={30}
+            step={0.5}
+            format={(value) => `${value.toFixed(1)} кПа`}
+          />
+        </div>
+
+        <button
+          type="button"
+          className="runtime__advanced-toggle"
+          onClick={() => setShowAdvanced((value) => !value)}
+        >
+          {showAdvanced ? 'Скрыть параметры экрана' : 'Параметры экрана'}
+        </button>
+
+        {showAdvanced && (
+          <div className="runtime__advanced">
+            <Field label="Display" hint="индекс монитора">
+              <Stepper
+                value={gameParams.display ?? 0}
+                onChange={(value) => setGameParams((prev) => ({ ...prev, display: value }))}
+                min={0}
+                max={4}
+                step={1}
+              />
+            </Field>
+            <Field label="Поворот" hint="output-rotation">
+              <Segmented
+                options={[0, 90, 180, 270]}
+                value={gameParams.outputRotation}
+                onChange={(value) =>
+                  setGameParams((prev) => ({
+                    ...prev,
+                    outputRotation: value as 0 | 90 | 180 | 270,
+                  }))
+                }
+              />
+            </Field>
+          </div>
+        )}
+
+        <footer className="runtime__card-actions">
+          <button
+            type="button"
+            className="runtime__secondary runtime__secondary--icon"
+            onClick={() => void startCalibration()}
+            disabled={!canStart}
+          >
+            <CameraIcon />
+            Калибровка камеры
+          </button>
+          <button
+            type="button"
+            className="runtime__primary"
+            onClick={() => void startGame(gameParams)}
+            disabled={!canStart}
+          >
+            Запустить игру
+          </button>
+        </footer>
+      </article>
+
+      {actionError && <p className="error runtime__error">{actionError}</p>}
+    </section>
+  )
+}
+
+function Field({ children, hint, label }: { children: React.ReactNode; hint?: string; label: string }) {
+  return (
+    <div className="runtime__field">
+      <div className="runtime__field-label">
+        <span>{label}</span>
+        {hint && <span className="runtime__field-hint">{hint}</span>}
+      </div>
+      <div className="runtime__field-control">{children}</div>
+    </div>
+  )
+}
+
+function SliderField({
+  format,
+  hint,
+  label,
+  max,
+  min,
+  onChange,
+  step,
+  value,
+}: {
+  format: (value: number) => string
+  hint?: string
+  label: string
+  max: number
+  min: number
+  onChange: (value: number) => void
+  step: number
+  value: number
+}) {
+  return (
+    <div className="runtime__slider-field">
+      <div className="runtime__slider-head">
+        <span className="runtime__slider-label">{label}</span>
+        {hint && <span className="runtime__field-hint">{hint}</span>}
+        <span className="runtime__slider-value">{format(value)}</span>
+      </div>
+      <input
+        type="range"
+        value={value}
+        min={min}
+        max={max}
+        step={step}
+        onChange={(event) => onChange(Number(event.target.value))}
+      />
+    </div>
+  )
+}
+
+function Stepper({
+  max,
+  min,
+  onChange,
+  step,
+  value,
+}: {
+  max: number
+  min: number
+  onChange: (value: number) => void
+  step: number
+  value: number
+}) {
+  const decimals = step < 1 ? Math.max(0, -Math.floor(Math.log10(step))) : 0
+  const display = value.toFixed(decimals)
+  return (
+    <div className="runtime__stepper" role="group" aria-label="numeric stepper">
+      <button
+        type="button"
+        onClick={() => onChange(Math.max(min, Number((value - step).toFixed(decimals))))}
+        disabled={value <= min}
+        aria-label="decrement"
+      >
+        −
+      </button>
+      <span className="runtime__stepper-value">{display}</span>
+      <button
+        type="button"
+        onClick={() => onChange(Math.min(max, Number((value + step).toFixed(decimals))))}
+        disabled={value >= max}
+        aria-label="increment"
+      >
+        +
+      </button>
+    </div>
+  )
+}
+
+function Segmented<T extends number | string>({
+  onChange,
+  options,
+  value,
+}: {
+  onChange: (value: T) => void
+  options: T[]
+  value: T
+}) {
+  return (
+    <div className="runtime__segmented" role="group">
+      {options.map((option) => (
+        <button
+          key={String(option)}
+          type="button"
+          className={option === value ? 'active' : ''}
+          onClick={() => onChange(option)}
+        >
+          {String(option)}
+        </button>
+      ))}
+    </div>
+  )
+}
+
+function CameraIcon() {
+  return (
+    <svg
+      className="runtime__btn-icon"
+      width="18"
+      height="18"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
+      <circle cx="12" cy="13" r="4" />
+    </svg>
+  )
+}
+
 function DashboardControls({
   frame,
   setShowSensors,
-  setSize,
   setSource,
   showSensors,
-  size,
   source,
 }: DashboardControlsProps) {
   return (
@@ -741,14 +1133,6 @@ function DashboardControls({
         </button>
       </div>
 
-      <label>
-        Размер
-        <select value={size} onChange={(event) => setSize(event.target.value as InsoleSize)}>
-          <option value="m">M</option>
-          <option value="s">S</option>
-        </select>
-      </label>
-
       <button type="button" className="ghost" onClick={() => setShowSensors((value) => !value)}>
         {showSensors ? 'Скрыть датчики' : 'Показать датчики'}
       </button>
@@ -761,12 +1145,76 @@ function DashboardControls({
   )
 }
 
-function FootPressurePanel({ side, frame, scale, showSensors, silhouette }: FootPressurePanelProps) {
+function FeetPressurePanel({
+  dashboard,
+  showSensors,
+}: {
+  dashboard: FootDashboard
+  showSensors: boolean
+}) {
+  return (
+    <article className="feet-panel" aria-label="Карты давления обеих стелек">
+      <div className="feet-panel__pair">
+        <FootPressurePanel
+          embedded
+          side="left"
+          frame={dashboard.leftFrame}
+          scale={dashboard.dynamicScale}
+          showSensors={showSensors}
+          silhouette={dashboard.leftSilhouette}
+        />
+        <div className="feet-panel__sep" aria-hidden />
+        <FootPressurePanel
+          embedded
+          side="right"
+          frame={dashboard.rightFrame}
+          scale={dashboard.dynamicScale}
+          showSensors={showSensors}
+          silhouette={dashboard.rightSilhouette}
+        />
+      </div>
+    </article>
+  )
+}
+
+function FeetPatientPanel({ dashboard }: { dashboard: FootDashboard }) {
+  return (
+    <article className="feet-panel feet-panel--patient" aria-label="Стопы пациента">
+      <div className="feet-panel__pair">
+        <PatientFootPanel
+          embedded
+          side="left"
+          frame={dashboard.leftFrame}
+          scale={dashboard.dynamicScale}
+          silhouette={dashboard.leftSilhouette}
+        />
+        <div className="feet-panel__sep" aria-hidden />
+        <PatientFootPanel
+          embedded
+          side="right"
+          frame={dashboard.rightFrame}
+          scale={dashboard.dynamicScale}
+          silhouette={dashboard.rightSilhouette}
+        />
+      </div>
+    </article>
+  )
+}
+
+function FootPressurePanel({
+  embedded,
+  side,
+  frame,
+  scale,
+  showSensors,
+  silhouette,
+}: FootPressurePanelProps & { embedded?: boolean }) {
   const activeSensorCount = frame.points.filter((point) => point.pressure >= CONTACT_THRESHOLD_KPA).length
   const onlineLabel = frame.online ? 'В сети' : 'Ожидание'
+  const rootClass = embedded ? 'feet-panel__side' : 'foot-card'
 
-  return (
-    <article className="foot-card">
+  const content = (
+    <>
       <div className="foot-card__head">
         <div>
           <p className="eyebrow">{FOOT_LABELS[side].eyebrow}</p>
@@ -775,7 +1223,7 @@ function FootPressurePanel({ side, frame, scale, showSensors, silhouette }: Foot
         <span className={`pill ${frame.online ? 'pill--ok' : 'pill--warn'}`}>{onlineLabel}</span>
       </div>
 
-      <div className="foot-card__body">
+      <div className={`foot-card__body ${embedded ? 'foot-card__body--embedded' : ''}`}>
         <div className="foot-visual">
           <FootHeatmap
             frame={frame}
@@ -794,16 +1242,31 @@ function FootPressurePanel({ side, frame, scale, showSensors, silhouette }: Foot
           <Metric label="Датчики" value={`${activeSensorCount}/${SENSOR_COUNT}`} accent="green" />
         </div>
       </div>
-    </article>
+    </>
   )
+
+  if (embedded) {
+    return <div className={rootClass}>{content}</div>
+  }
+
+  return <article className={rootClass}>{content}</article>
 }
 
-function PatientFootPanel({ frame, scale, side, silhouette }: PatientFootPanelProps) {
+function PatientFootPanel({
+  embedded,
+  frame,
+  scale,
+  side,
+  silhouette,
+}: PatientFootPanelProps & { embedded?: boolean }) {
   const pressureLevel = patientPressureLevel(frame)
   const statusText = patientPressureText(pressureLevel)
+  const rootClass = embedded
+    ? `feet-panel__side patient-foot patient-foot--embedded patient-foot--${pressureLevel}`
+    : `patient-foot patient-foot--${pressureLevel}`
 
-  return (
-    <article className={`patient-foot patient-foot--${pressureLevel}`}>
+  const inner = (
+    <>
       <div className="patient-foot__copy">
         <p className="eyebrow">{side === 'left' ? 'Левая стопа' : 'Правая стопа'}</p>
         <h2>{statusText}</h2>
@@ -819,8 +1282,14 @@ function PatientFootPanel({ frame, scale, side, silhouette }: PatientFootPanelPr
           title={`${side === 'left' ? 'Left' : 'Right'} foot pressure picture`}
         />
       </div>
-    </article>
+    </>
   )
+
+  if (embedded) {
+    return <div className={rootClass}>{inner}</div>
+  }
+
+  return <article className={rootClass}>{inner}</article>
 }
 
 function FootHeatmap({ frame, idPrefix, scale, showSensors, silhouette, title }: FootHeatmapProps) {
@@ -933,6 +1402,7 @@ function useInsoleFrame(
   source: SourceMode,
   size: InsoleSize,
   setStatus: React.Dispatch<React.SetStateAction<string>>,
+  gateOpen: boolean,
 ) {
   const [frame, setFrame] = useState<FramePayload | null>(null)
   const [patientSuggestion, setPatientSuggestion] = useState(PATIENT_WAITING_MESSAGE)
@@ -944,6 +1414,19 @@ function useInsoleFrame(
   })
 
   useEffect(() => {
+    if (!gateOpen) {
+      setFrame(null)
+      setPatientSuggestion(PATIENT_WAITING_MESSAGE)
+      patientSuggestionState.current = {
+        contactKey: 'none',
+        lastSuggestionStep: 0,
+        message: PATIENT_WAITING_MESSAGE,
+        stepCount: 0,
+      }
+      setStatus('ожидание запуска')
+      return
+    }
+
     const ws = new WebSocket(websocketUrl(source, size))
 
     ws.onopen = () => setStatus('подключено')
@@ -958,9 +1441,84 @@ function useInsoleFrame(
     ws.onclose = () => setStatus('отключено')
 
     return () => ws.close()
-  }, [setStatus, source, size])
+  }, [setStatus, source, size, gateOpen])
 
   return { frame, patientSuggestion }
+}
+
+function useRuntimeControls() {
+  const [state, setState] = useState<RuntimePayload>({
+    state: 'idle',
+    activeJob: null,
+    lastExit: null,
+  })
+  const [pending, setPending] = useState(false)
+  const [actionError, setActionError] = useState<string | null>(null)
+
+  const refreshStatus = async () => {
+    const response = await fetch('/api/runtime/status')
+    if (!response.ok) {
+      throw new Error(`runtime status: ${response.status}`)
+    }
+    const payload = (await response.json()) as RuntimePayload
+    setState(payload)
+  }
+
+  const runAction = async (path: string, body: object) => {
+    setPending(true)
+    setActionError(null)
+    try {
+      const response = await fetch(path, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+      if (!response.ok) {
+        const text = await response.text()
+        throw new Error(text || `runtime action failed: ${response.status}`)
+      }
+      await refreshStatus()
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : 'Не удалось выполнить действие')
+    } finally {
+      setPending(false)
+    }
+  }
+
+  useEffect(() => {
+    let stopped = false
+    const tick = async () => {
+      try {
+        await refreshStatus()
+      } catch {
+        if (!stopped) {
+          setActionError('Backend runtime недоступен')
+        }
+      }
+    }
+    void tick()
+    const timer = window.setInterval(() => void tick(), 1500)
+    return () => {
+      stopped = true
+      window.clearInterval(timer)
+    }
+  }, [])
+
+  return {
+    state,
+    pending,
+    actionError,
+    startGame: (params: GameLaunchParams) =>
+      runAction('/api/runtime/start', {
+        job: 'game',
+        ...params,
+      }),
+    startCalibration: () =>
+      runAction('/api/runtime/start', {
+        job: 'calibrate_apriltag',
+      }),
+    stopRuntime: () => runAction('/api/runtime/stop', {}),
+  }
 }
 
 function useFootDashboard(geometry: GeometryPayload | null, frame: FramePayload | null): FootDashboard {
