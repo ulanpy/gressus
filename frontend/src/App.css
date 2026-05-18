@@ -3,6 +3,7 @@
   padding: 48px 24px;
 }
 
+.top-bar,
 .page-tabs,
 .hero,
 .patient-hero,
@@ -17,10 +18,18 @@
   margin: 0 auto;
 }
 
+.top-bar {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 28px;
+}
+
 .page-tabs {
   display: inline-flex;
   gap: 6px;
-  margin: 0 calc((100% - min(1280px, 100%)) / 2) 28px;
+  margin: 0;
   border: 1px solid var(--panel-border);
   border-radius: 999px;
   background: rgb(255 255 255 / 0.72);
@@ -40,6 +49,30 @@
 }
 
 .page-tabs button.active {
+  color: white;
+  background: rgb(15 23 42);
+  box-shadow: 0 10px 26px rgb(15 23 42 / 0.18);
+}
+
+.language-toggle {
+  display: inline-flex;
+  gap: 5px;
+  border: 1px solid var(--panel-border);
+  border-radius: 999px;
+  background: rgb(255 255 255 / 0.72);
+  padding: 5px;
+  box-shadow: var(--shadow);
+  backdrop-filter: blur(18px);
+}
+
+.language-toggle button {
+  min-width: 48px;
+  padding: 9px 12px;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.language-toggle button.active {
   color: white;
   background: rgb(15 23 42);
   box-shadow: 0 10px 26px rgb(15 23 42 / 0.18);
@@ -1236,9 +1269,18 @@ label {
 }
 
 @media (max-width: 640px) {
+  .top-bar {
+    display: grid;
+  }
+
   .page-tabs {
     display: grid;
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: 1fr 1fr 1fr;
+  }
+
+  .language-toggle {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
   }
 
   .page-tabs button {

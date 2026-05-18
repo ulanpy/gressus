@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Bar,
   BarChart,
@@ -28,6 +28,8 @@ type FootSide = 'left' | 'right'
 type ViewMode = 'therapist' | 'patient' | 'control'
 type TherapistSection = 'live' | 'progress'
 type PatientContactKey = 'both' | 'left' | 'none' | 'right'
+type Language = 'ru' | 'en' | 'kk'
+type PatientMessageKey = 'evenStep' | 'keepWalking' | 'softerLeft' | 'softerRight' | 'waiting'
 
 type SensorPoint = {
   index: number
@@ -125,6 +127,11 @@ type PageTabsProps = {
   setActiveView: (view: ViewMode) => void
 }
 
+type LanguageToggleProps = {
+  language: Language
+  setLanguage: (language: Language) => void
+}
+
 type StatusSummaryProps = {
   dynamicScale: number
   source: SourceMode
@@ -177,7 +184,7 @@ type PatientFootPanelProps = {
 type PatientSuggestionState = {
   contactKey: PatientContactKey
   lastSuggestionStep: number
-  message: string
+  message: PatientMessageKey
   stepCount: number
 }
 
@@ -245,7 +252,7 @@ const FOOT_CONTOUR_CORNER_RADIUS = 160
 const FOOT_CONTOUR_DIP_FILL = 400
 const SENSOR_COUNT = 64
 const SUGGESTION_STEP_INTERVAL = 12
-const PATIENT_WAITING_MESSAGE = 'Поставь стопы на дорожку'
+const PATIENT_WAITING_MESSAGE: PatientMessageKey = 'waiting'
 const PRESSURE_LEVELS = {
   light: 45,
   strong: 160,
@@ -271,19 +278,485 @@ const tooltipStyle = {
 
 const INSOLE_SIZE: InsoleSize = 'm'
 
-const FOOT_LABELS = {
-  left: {
-    aria: 'Left insole pressure heatmap',
-    eyebrow: 'Левая стелька',
+const translations = {
+  ru: {
+    langName: 'Русский',
+    tabs: { therapist: 'Терапевт', patient: 'Пациент', control: 'Управление' },
+    therapist: {
+      eyebrow: 'Данные стелек',
+      title: 'Карты давления в реальном времени',
+      lede: 'Мок — для проверки интерфейса. Живой — после запуска игры во вкладке «Управление».',
+      live: 'Живая сессия',
+      progress: 'Анализ прогресса',
+    },
+    control: {
+      eyebrow: 'Сеанс',
+      title: 'Управление игрой и калибровкой',
+      lede: 'Запуск и остановка сценариев на проекторе. Стельки в режиме «Живой» активируются вместе с игрой.',
+      statusRunningGame: 'Игра запущена',
+      statusRunningCalibration: 'Калибровка AprilTag запущена',
+      statusReady: 'Готов к запуску',
+      nothingRunning: 'ничего не запущено',
+      last: 'последний',
+      uptime: 'uptime',
+      runtimeAria: 'Управление запуском',
+      stop: 'Остановить',
+      scenario: 'Сценарий',
+      tileGame: 'Игра по плиткам',
+      presets: 'Пресеты',
+      demo: 'Демо',
+      easy: 'Мягко',
+      fast: 'Быстро',
+      reset: 'Сброс',
+      speed: 'Скорость',
+      speedHint: 'условные м/с',
+      stepInterval: 'Интервал шага',
+      stepHint: 'между плитками',
+      pressureThreshold: 'Порог давления',
+      thresholdHint: 'Insole threshold',
+      hideScreen: 'Скрыть параметры экрана',
+      screenParams: 'Параметры экрана',
+      displayHint: 'индекс монитора',
+      rotation: 'Поворот',
+      cameraCalibration: 'Калибровка камеры',
+      startGame: 'Запустить игру',
+      backendUnavailable: 'Backend runtime недоступен',
+      actionFailed: 'Не удалось выполнить действие',
+    },
+    live: {
+      inactiveEyebrow: 'Стельки неактивны',
+      inactivePatientTitle: 'Подожди, терапевт скоро запустит игру',
+      inactiveTherapistTitle: 'Стельки включаются вместе с игрой',
+      inactivePatientText: 'Когда сессия начнётся — давление стопы будет видно здесь.',
+      inactiveTherapistText: 'TCP-приём данных запускается только во время игрового сеанса. Нажми «Запустить игру» в панели сверху.',
+      source: 'Источник',
+      socket: 'Сокет',
+      scale: 'Шкала',
+      mockGait: 'Мок-походка',
+      liveTcp: 'Живой TCP',
+      mock: 'Мок',
+      live: 'Живой',
+      hideSensors: 'Скрыть датчики',
+      showSensors: 'Показать датчики',
+      weight: 'Распределение веса',
+      leftRight: (left: number) => `${left}% лево / ${100 - left}% право`,
+      pressureScale: 'Шкала давления',
+      leftInsole: 'Левая стелька',
+      rightInsole: 'Правая стелька',
+      leftFoot: 'Левая стопа',
+      rightFoot: 'Правая стопа',
+      leftAria: 'Карта давления левой стельки',
+      rightAria: 'Карта давления правой стельки',
+      feetAria: 'Карты давления обеих стелек',
+      patientFeetAria: 'Стопы пациента',
+      online: 'В сети',
+      waiting: 'Ожидание',
+      contact: 'Контакт обнаружен',
+      pressureMap: 'Карта давления',
+      peak: 'Пик',
+      average: 'Среднее',
+      load: 'Нагрузка',
+      sensors: 'Датчики',
+      kpa: 'кПа',
+      status: {
+        connecting: 'подключение',
+        launchWaiting: 'ожидание запуска',
+        connected: 'подключено',
+        backendUnavailable: 'бэкенд недоступен',
+        socketError: 'ошибка сокета',
+        disconnected: 'отключено',
+      },
+    },
+    progress: {
+      aria: 'Панель анализа прогресса',
+      summary: {
+        gait: 'Общий балл походки',
+        symmetry: 'Улучшение симметрии',
+        stability: 'Улучшение стабильности',
+        sessions: 'Сессий завершено',
+        fromBaseline: (value: number) => `↑ ${value}% от базового уровня`,
+        sinceSessionOne: (value: number) => `↑ ${value}% с 1-й сессии`,
+        dateRange: (start: string, end: string) => `${start} - ${end}`,
+      },
+      charts: {
+        sessionTrend: 'Тренд сессий',
+        scoreTrajectory: 'Динамика баллов',
+        gait: 'Походка',
+        symmetry: 'Симметрия',
+        stability: 'Стабильность',
+        loadBalance: 'Баланс нагрузки слева/справа',
+        avgPressure: 'Среднее давление по сессиям',
+        left: 'Левая',
+        right: 'Правая',
+      },
+      domains: {
+        eyebrow: 'Клинические домены',
+        title: 'База и последняя сессия',
+        symmetry: 'Симметрия',
+        stability: 'Стабильность',
+        loadBalance: 'Баланс нагрузки',
+        variability: 'Вариабельность',
+        score: 'балл',
+        gap: 'разница кПа',
+        index: 'индекс',
+      },
+      recommendations: {
+        eyebrow: 'Рекомендации терапии',
+        title: 'Следующий клинический фокус',
+        badges: { focus: 'Фокус', steady: 'Контроль', positive: 'Улучшение' },
+      },
+      baseline: {
+        eyebrow: 'База и последняя',
+        title: 'Ключевые маркеры терапии',
+        session: 'Сессия',
+        gaitScore: 'Балл походки',
+        walkingSpeed: 'Скорость ходьбы',
+        cadence: 'Каденс',
+        loadGap: 'Разница нагрузки',
+      },
+    },
+    patient: {
+      error: 'Связь со стельками прервалась. Можно спокойно попробовать снова.',
+      mode: 'Режим пациента',
+      signalWaiting: 'Ждем сигнал',
+      yourStep: 'Твой шаг',
+      guideLight: 'Мягкое касание',
+      guideStrong: 'Сильное касание',
+      guideCalm: 'Ровный шаг',
+      messages: {
+        waiting: 'Поставь стопы на дорожку',
+        keepWalking: 'Продолжай шагать спокойно',
+        softerLeft: 'Попробуй мягче на левую стопу',
+        softerRight: 'Попробуй мягче на правую стопу',
+        evenStep: 'Отличный ровный шаг',
+      },
+      pressure: { light: 'Мягкое касание', strong: 'Сильное касание', steady: 'Хороший контакт', waiting: 'Ждет шага' },
+    },
   },
-  right: {
-    aria: 'Right insole pressure heatmap',
-    eyebrow: 'Правая стелька',
+  en: {
+    langName: 'English',
+    tabs: { therapist: 'Therapist', patient: 'Patient', control: 'Control' },
+    therapist: {
+      eyebrow: 'Insole data',
+      title: 'Real-time pressure maps',
+      lede: 'Mock is for interface testing. Live starts after launching the game in the Control tab.',
+      live: 'Live Session',
+      progress: 'Progress Analysis',
+    },
+    control: {
+      eyebrow: 'Session',
+      title: 'Game and calibration controls',
+      lede: 'Start and stop projector workflows. Live insole mode activates together with the game.',
+      statusRunningGame: 'Game running',
+      statusRunningCalibration: 'AprilTag calibration running',
+      statusReady: 'Ready to start',
+      nothingRunning: 'nothing running',
+      last: 'last',
+      uptime: 'uptime',
+      runtimeAria: 'Runtime controls',
+      stop: 'Stop',
+      scenario: 'Scenario',
+      tileGame: 'Tile game',
+      presets: 'Presets',
+      demo: 'Demo',
+      easy: 'Gentle',
+      fast: 'Fast',
+      reset: 'Reset',
+      speed: 'Speed',
+      speedHint: 'relative m/s',
+      stepInterval: 'Step interval',
+      stepHint: 'between tiles',
+      pressureThreshold: 'Pressure threshold',
+      thresholdHint: 'Insole threshold',
+      hideScreen: 'Hide screen parameters',
+      screenParams: 'Screen parameters',
+      displayHint: 'monitor index',
+      rotation: 'Rotation',
+      cameraCalibration: 'Camera calibration',
+      startGame: 'Start game',
+      backendUnavailable: 'Backend runtime unavailable',
+      actionFailed: 'Could not complete action',
+    },
+    live: {
+      inactiveEyebrow: 'Insoles inactive',
+      inactivePatientTitle: 'Wait for the therapist to start the game',
+      inactiveTherapistTitle: 'Insoles activate with the game',
+      inactivePatientText: 'When the session starts, foot pressure will appear here.',
+      inactiveTherapistText: 'TCP data reception starts only during the game session. Press “Start game” in the top panel.',
+      source: 'Source',
+      socket: 'Socket',
+      scale: 'Scale',
+      mockGait: 'Mock gait',
+      liveTcp: 'Live TCP',
+      mock: 'Mock',
+      live: 'Live',
+      hideSensors: 'Hide sensors',
+      showSensors: 'Show sensors',
+      weight: 'Weight distribution',
+      leftRight: (left: number) => `${left}% left / ${100 - left}% right`,
+      pressureScale: 'Pressure scale',
+      leftInsole: 'Left insole',
+      rightInsole: 'Right insole',
+      leftFoot: 'Left foot',
+      rightFoot: 'Right foot',
+      leftAria: 'Left insole pressure map',
+      rightAria: 'Right insole pressure map',
+      feetAria: 'Pressure maps for both insoles',
+      patientFeetAria: 'Patient feet',
+      online: 'Online',
+      waiting: 'Waiting',
+      contact: 'Contact detected',
+      pressureMap: 'Pressure map',
+      peak: 'Peak',
+      average: 'Average',
+      load: 'Load',
+      sensors: 'Sensors',
+      kpa: 'kPa',
+      status: {
+        connecting: 'connecting',
+        launchWaiting: 'waiting for launch',
+        connected: 'connected',
+        backendUnavailable: 'backend unavailable',
+        socketError: 'socket error',
+        disconnected: 'disconnected',
+      },
+    },
+    progress: {
+      aria: 'Progress analysis dashboard',
+      summary: {
+        gait: 'Overall Gait Score',
+        symmetry: 'Symmetry Improvement',
+        stability: 'Stability Improvement',
+        sessions: 'Sessions Completed',
+        fromBaseline: (value: number) => `↑ ${value}% from baseline`,
+        sinceSessionOne: (value: number) => `↑ ${value}% since session 1`,
+        dateRange: (start: string, end: string) => `${start} to ${end}`,
+      },
+      charts: {
+        sessionTrend: 'Session Trend',
+        scoreTrajectory: 'Score trajectory',
+        gait: 'Gait',
+        symmetry: 'Symmetry',
+        stability: 'Stability',
+        loadBalance: 'Left vs Right Load Balance',
+        avgPressure: 'Average pressure by session',
+        left: 'Left',
+        right: 'Right',
+      },
+      domains: {
+        eyebrow: 'Clinical Domains',
+        title: 'Baseline to latest',
+        symmetry: 'Symmetry',
+        stability: 'Stability',
+        loadBalance: 'Load Balance',
+        variability: 'Variability',
+        score: 'score',
+        gap: 'kPa gap',
+        index: 'index',
+      },
+      recommendations: {
+        eyebrow: 'Therapy Recommendations',
+        title: 'Next clinical focus',
+        badges: { focus: 'Focus', steady: 'Monitor', positive: 'Improving' },
+      },
+      baseline: {
+        eyebrow: 'Baseline vs Latest',
+        title: 'Key therapy markers',
+        session: 'Session',
+        gaitScore: 'Gait score',
+        walkingSpeed: 'Walking speed',
+        cadence: 'Cadence',
+        loadGap: 'Load gap',
+      },
+    },
+    patient: {
+      error: 'Insole connection was interrupted. You can calmly try again.',
+      mode: 'Patient mode',
+      signalWaiting: 'Waiting for signal',
+      yourStep: 'Your step',
+      guideLight: 'Soft contact',
+      guideStrong: 'Strong contact',
+      guideCalm: 'Even step',
+      messages: {
+        waiting: 'Place your feet on the treadmill',
+        keepWalking: 'Keep walking calmly',
+        softerLeft: 'Try softer on the left foot',
+        softerRight: 'Try softer on the right foot',
+        evenStep: 'Great even step',
+      },
+      pressure: { light: 'Soft contact', strong: 'Strong contact', steady: 'Good contact', waiting: 'Waiting for step' },
+    },
   },
-} satisfies Record<FootSide, { aria: string; eyebrow: string }>
+  kk: {
+    langName: 'Қазақша',
+    tabs: { therapist: 'Терапевт', patient: 'Пациент', control: 'Басқару' },
+    therapist: {
+      eyebrow: 'Ұлтарақ деректері',
+      title: 'Нақты уақыттағы қысым карталары',
+      lede: 'Мок интерфейсті тексеруге арналған. Тірі режим Басқару қойындысында ойын іске қосылғаннан кейін басталады.',
+      live: 'Тірі сессия',
+      progress: 'Прогресс талдауы',
+    },
+    control: {
+      eyebrow: 'Сессия',
+      title: 'Ойын және калибрлеуді басқару',
+      lede: 'Проектор сценарийлерін іске қосу және тоқтату. Тірі ұлтарақ режимі ойынмен бірге қосылады.',
+      statusRunningGame: 'Ойын іске қосылды',
+      statusRunningCalibration: 'AprilTag калибрлеуі іске қосылды',
+      statusReady: 'Іске қосуға дайын',
+      nothingRunning: 'ештеңе іске қосылмаған',
+      last: 'соңғы',
+      uptime: 'жұмыс уақыты',
+      runtimeAria: 'Іске қосуды басқару',
+      stop: 'Тоқтату',
+      scenario: 'Сценарий',
+      tileGame: 'Плитка ойыны',
+      presets: 'Пресеттер',
+      demo: 'Демо',
+      easy: 'Жұмсақ',
+      fast: 'Жылдам',
+      reset: 'Қалпына келтіру',
+      speed: 'Жылдамдық',
+      speedHint: 'шартты м/с',
+      stepInterval: 'Қадам аралығы',
+      stepHint: 'плиткалар арасында',
+      pressureThreshold: 'Қысым шегі',
+      thresholdHint: 'Ұлтарақ шегі',
+      hideScreen: 'Экран параметрлерін жасыру',
+      screenParams: 'Экран параметрлері',
+      displayHint: 'монитор индексі',
+      rotation: 'Бұрылу',
+      cameraCalibration: 'Камераны калибрлеу',
+      startGame: 'Ойынды іске қосу',
+      backendUnavailable: 'Backend runtime қолжетімсіз',
+      actionFailed: 'Әрекетті орындау мүмкін болмады',
+    },
+    live: {
+      inactiveEyebrow: 'Ұлтарақтар белсенді емес',
+      inactivePatientTitle: 'Терапевт ойынды бастағанын күтіңіз',
+      inactiveTherapistTitle: 'Ұлтарақтар ойынмен бірге қосылады',
+      inactivePatientText: 'Сессия басталғанда табан қысымы осы жерде көрінеді.',
+      inactiveTherapistText: 'TCP деректерін қабылдау тек ойын сеансы кезінде басталады. Жоғарғы панельден «Ойынды іске қосу» түймесін басыңыз.',
+      source: 'Дереккөзі',
+      socket: 'Сокет',
+      scale: 'Шкала',
+      mockGait: 'Мок жүріс',
+      liveTcp: 'Тірі TCP',
+      mock: 'Мок',
+      live: 'Тірі',
+      hideSensors: 'Датчиктерді жасыру',
+      showSensors: 'Датчиктерді көрсету',
+      weight: 'Салмақтың таралуы',
+      leftRight: (left: number) => `${left}% сол / ${100 - left}% оң`,
+      pressureScale: 'Қысым шкаласы',
+      leftInsole: 'Сол жақ ұлтарақ',
+      rightInsole: 'Оң жақ ұлтарақ',
+      leftFoot: 'Сол табан',
+      rightFoot: 'Оң табан',
+      leftAria: 'Сол ұлтарақ қысым картасы',
+      rightAria: 'Оң ұлтарақ қысым картасы',
+      feetAria: 'Екі ұлтарақтың қысым карталары',
+      patientFeetAria: 'Пациент табандары',
+      online: 'Желіде',
+      waiting: 'Күту',
+      contact: 'Жанасу анықталды',
+      pressureMap: 'Қысым картасы',
+      peak: 'Шың',
+      average: 'Орташа',
+      load: 'Жүктеме',
+      sensors: 'Датчиктер',
+      kpa: 'кПа',
+      status: {
+        connecting: 'қосылу',
+        launchWaiting: 'іске қосуды күту',
+        connected: 'қосылды',
+        backendUnavailable: 'бэкенд қолжетімсіз',
+        socketError: 'сокет қатесі',
+        disconnected: 'ажыратылды',
+      },
+    },
+    progress: {
+      aria: 'Прогресс талдау панелі',
+      summary: {
+        gait: 'Жүрістің жалпы балы',
+        symmetry: 'Симметрия жақсаруы',
+        stability: 'Тұрақтылық жақсаруы',
+        sessions: 'Аяқталған сессиялар',
+        fromBaseline: (value: number) => `↑ ${value}% бастапқы деңгейден`,
+        sinceSessionOne: (value: number) => `↑ ${value}% 1-сессиядан бері`,
+        dateRange: (start: string, end: string) => `${start} - ${end}`,
+      },
+      charts: {
+        sessionTrend: 'Сессия тренді',
+        scoreTrajectory: 'Балдар динамикасы',
+        gait: 'Жүріс',
+        symmetry: 'Симметрия',
+        stability: 'Тұрақтылық',
+        loadBalance: 'Сол/оң жүктеме балансы',
+        avgPressure: 'Сессиялар бойынша орташа қысым',
+        left: 'Сол',
+        right: 'Оң',
+      },
+      domains: {
+        eyebrow: 'Клиникалық домендер',
+        title: 'Бастапқы және соңғы',
+        symmetry: 'Симметрия',
+        stability: 'Тұрақтылық',
+        loadBalance: 'Жүктеме балансы',
+        variability: 'Өзгергіштік',
+        score: 'балл',
+        gap: 'кПа айырма',
+        index: 'индекс',
+      },
+      recommendations: {
+        eyebrow: 'Терапия ұсыныстары',
+        title: 'Келесі клиникалық фокус',
+        badges: { focus: 'Фокус', steady: 'Бақылау', positive: 'Жақсару' },
+      },
+      baseline: {
+        eyebrow: 'Бастапқы және соңғы',
+        title: 'Терапияның негізгі маркерлері',
+        session: 'Сессия',
+        gaitScore: 'Жүріс балы',
+        walkingSpeed: 'Жүру жылдамдығы',
+        cadence: 'Каденс',
+        loadGap: 'Жүктеме айырмасы',
+      },
+    },
+    patient: {
+      error: 'Ұлтарақтармен байланыс үзілді. Қайтадан сабырмен байқап көріңіз.',
+      mode: 'Пациент режимі',
+      signalWaiting: 'Сигнал күту',
+      yourStep: 'Сіздің қадамыңыз',
+      guideLight: 'Жұмсақ жанасу',
+      guideStrong: 'Қатты жанасу',
+      guideCalm: 'Біркелкі қадам',
+      messages: {
+        waiting: 'Табандарыңызды жолаққа қойыңыз',
+        keepWalking: 'Сабырмен жүре беріңіз',
+        softerLeft: 'Сол табанға жұмсағырақ басыңыз',
+        softerRight: 'Оң табанға жұмсағырақ басыңыз',
+        evenStep: 'Өте жақсы біркелкі қадам',
+      },
+      pressure: { light: 'Жұмсақ жанасу', strong: 'Қатты жанасу', steady: 'Жақсы жанасу', waiting: 'Қадам күтілуде' },
+    },
+  },
+} as const
+
+type Translation = (typeof translations)[Language]
+
+const I18nContext = createContext<{ language: Language; t: Translation }>({
+  language: 'ru',
+  t: translations.ru,
+})
+
+function useI18n() {
+  return useContext(I18nContext)
+}
 
 function App() {
   const [activeView, setActiveView] = useState<ViewMode>('therapist')
+  const [language, setLanguage] = useState<Language>('ru')
   const [source, setSource] = useState<SourceMode>('mock')
   const [showSensors, setShowSensors] = useState(true)
   const runtime = useRuntimeControls()
@@ -294,48 +767,56 @@ function App() {
   const { geometry, setStatus, status } = useGeometry(INSOLE_SIZE)
   const { frame, patientSuggestion } = useInsoleFrame(source, INSOLE_SIZE, setStatus, liveGateOpen)
   const dashboard = useFootDashboard(geometry, frame)
+  const i18n = useMemo(() => ({ language, t: translations[language] }), [language])
 
   return (
-    <main className="dashboard">
-      <PageTabs activeView={activeView} setActiveView={setActiveView} />
+    <I18nContext.Provider value={i18n}>
+      <main className="dashboard">
+        <div className="top-bar">
+          <PageTabs activeView={activeView} setActiveView={setActiveView} />
+          <LanguageToggle language={language} setLanguage={setLanguage} />
+        </div>
 
-      {activeView === 'therapist' && (
-        <TherapistPage
-          dashboard={dashboard}
-          frame={frame}
-          liveInactive={liveInactive}
-          setShowSensors={setShowSensors}
-          setSource={setSource}
-          showSensors={showSensors}
-          source={source}
-          status={status}
-        />
-      )}
+        {activeView === 'therapist' && (
+          <TherapistPage
+            dashboard={dashboard}
+            frame={frame}
+            liveInactive={liveInactive}
+            setShowSensors={setShowSensors}
+            setSource={setSource}
+            showSensors={showSensors}
+            source={source}
+            status={status}
+          />
+        )}
 
-      {activeView === 'patient' && (
-        <PatientPage
-          dashboard={dashboard}
-          frame={frame}
-          liveInactive={liveInactive}
-          movementMessage={patientSuggestion}
-        />
-      )}
+        {activeView === 'patient' && (
+          <PatientPage
+            dashboard={dashboard}
+            frame={frame}
+            liveInactive={liveInactive}
+            movementMessage={patientSuggestion}
+          />
+        )}
 
-      {activeView === 'control' && (
-        <ControlPage
-          runtime={runtime.state}
-          runtimeActionError={runtime.actionError}
-          runtimePending={runtime.pending}
-          startCalibration={runtime.startCalibration}
-          startGame={runtime.startGame}
-          stopRuntime={runtime.stopRuntime}
-        />
-      )}
-    </main>
+        {activeView === 'control' && (
+          <ControlPage
+            runtime={runtime.state}
+            runtimeActionError={runtime.actionError}
+            runtimePending={runtime.pending}
+            startCalibration={runtime.startCalibration}
+            startGame={runtime.startGame}
+            stopRuntime={runtime.stopRuntime}
+          />
+        )}
+      </main>
+    </I18nContext.Provider>
   )
 }
 
 function PageTabs({ activeView, setActiveView }: PageTabsProps) {
+  const { t } = useI18n()
+
   return (
     <nav className="page-tabs" aria-label="Page view">
       <button
@@ -343,23 +824,41 @@ function PageTabs({ activeView, setActiveView }: PageTabsProps) {
         className={activeView === 'therapist' ? 'active' : ''}
         onClick={() => setActiveView('therapist')}
       >
-        Therapist
+        {t.tabs.therapist}
       </button>
       <button
         type="button"
         className={activeView === 'patient' ? 'active' : ''}
         onClick={() => setActiveView('patient')}
       >
-        Patient
+        {t.tabs.patient}
       </button>
       <button
         type="button"
         className={activeView === 'control' ? 'active' : ''}
         onClick={() => setActiveView('control')}
       >
-        Управление
+        {t.tabs.control}
       </button>
     </nav>
+  )
+}
+
+function LanguageToggle({ language, setLanguage }: LanguageToggleProps) {
+  return (
+    <div className="language-toggle" aria-label="Language">
+      {(['ru', 'en', 'kk'] as const).map((nextLanguage) => (
+        <button
+          type="button"
+          key={nextLanguage}
+          className={language === nextLanguage ? 'active' : ''}
+          onClick={() => setLanguage(nextLanguage)}
+          title={translations[nextLanguage].langName}
+        >
+          {nextLanguage.toUpperCase()}
+        </button>
+      ))}
+    </div>
   )
 }
 
@@ -371,15 +870,15 @@ function ControlPage({
   startGame,
   stopRuntime,
 }: ControlPageProps) {
+  const { t } = useI18n()
+
   return (
     <>
       <section className="hero hero--compact">
         <div>
-          <p className="eyebrow">Сеанс</p>
-          <h1>Управление игрой и калибровкой</h1>
-          <p className="lede">
-            Запуск и остановка сценариев на проекторе. Стельки в режиме «Живой» активируются вместе с игрой.
-          </p>
+          <p className="eyebrow">{t.control.eyebrow}</p>
+          <h1>{t.control.title}</h1>
+          <p className="lede">{t.control.lede}</p>
         </div>
       </section>
 
@@ -405,6 +904,7 @@ function TherapistPage({
   source,
   status,
 }: TherapistPageProps) {
+  const { t } = useI18n()
   const [activeSection, setActiveSection] = useState<TherapistSection>('live')
   const sessionMetrics = useMemo(() => getMockSessionHistory(), [])
 
@@ -412,11 +912,9 @@ function TherapistPage({
     <>
       <section className="hero hero--compact">
         <div>
-          <p className="eyebrow">Данные стелек</p>
-          <h1>Карты давления в реальном времени</h1>
-          <p className="lede">
-            Мок — для проверки интерфейса. Живой — после запуска игры во вкладке «Управление».
-          </p>
+          <p className="eyebrow">{t.therapist.eyebrow}</p>
+          <h1>{t.therapist.title}</h1>
+          <p className="lede">{t.therapist.lede}</p>
         </div>
 
         <StatusSummary dynamicScale={dashboard.dynamicScale} source={source} status={status} />
@@ -446,10 +944,8 @@ function TherapistPage({
             <section className="bottom-grid">
               <div className="balance-card">
                 <div>
-                  <p className="eyebrow">Распределение веса</p>
-                  <h2>
-                    {dashboard.leftShare}% лево / {100 - dashboard.leftShare}% право
-                  </h2>
+                  <p className="eyebrow">{t.live.weight}</p>
+                  <h2>{t.live.leftRight(dashboard.leftShare)}</h2>
                 </div>
                 <div className="balance-track">
                   <div style={{ width: `${dashboard.leftShare}%` }} />
@@ -457,8 +953,10 @@ function TherapistPage({
               </div>
               <div className="legend">
                 <div>
-                  <p className="eyebrow">Шкала давления</p>
-                  <h2>0 - {MAX_KPA} кПа</h2>
+                  <p className="eyebrow">{t.live.pressureScale}</p>
+                  <h2>
+                    0 - {MAX_KPA} {t.live.kpa}
+                  </h2>
                 </div>
                 <div className="legend-bar" />
               </div>
@@ -473,22 +971,24 @@ function TherapistPage({
 }
 
 function TherapistSectionTabs({ activeSection, setActiveSection }: TherapistSectionTabsProps) {
+  const { t } = useI18n()
+
   return (
-    <section className="therapist-section-tabs" aria-label="Therapist section">
+    <section className="therapist-section-tabs" aria-label={t.therapist.progress}>
       <div className="button-group">
         <button
           type="button"
           className={activeSection === 'live' ? 'active' : ''}
           onClick={() => setActiveSection('live')}
         >
-          Live Session
+          {t.therapist.live}
         </button>
         <button
           type="button"
           className={activeSection === 'progress' ? 'active' : ''}
           onClick={() => setActiveSection('progress')}
         >
-          Progress Analysis
+          {t.therapist.progress}
         </button>
       </div>
     </section>
@@ -496,11 +996,12 @@ function TherapistSectionTabs({ activeSection, setActiveSection }: TherapistSect
 }
 
 function ProgressDashboard({ metrics }: ProgressDashboardProps) {
+  const { t } = useI18n()
   const summary = useMemo(() => calculateProgressSummary(metrics), [metrics])
   const recommendations = useMemo(() => generateTherapyRecommendations(metrics), [metrics])
 
   return (
-    <section className="progress-dashboard" aria-label="Progress analysis dashboard">
+    <section className="progress-dashboard" aria-label={t.progress.aria}>
       <ProgressSummaryCards summary={summary} />
 
       <div className="progress-grid progress-grid--charts">
@@ -519,27 +1020,32 @@ function ProgressDashboard({ metrics }: ProgressDashboardProps) {
 }
 
 function ProgressSummaryCards({ summary }: ProgressSummaryCardsProps) {
+  const { language, t } = useI18n()
+
   return (
     <div className="summary-grid">
       <SummaryCard
-        label="Overall Gait Score"
+        label={t.progress.summary.gait}
         value={`${summary.latest.gaitScore}`}
-        trend={`↑ ${Math.round(summary.gaitScorePercent)}% from baseline`}
+        trend={t.progress.summary.fromBaseline(Math.round(summary.gaitScorePercent))}
       />
       <SummaryCard
-        label="Symmetry Improvement"
+        label={t.progress.summary.symmetry}
         value={`+${summary.symmetryChange}`}
-        trend={`↑ ${Math.round(summary.symmetryPercent)}% since session 1`}
+        trend={t.progress.summary.sinceSessionOne(Math.round(summary.symmetryPercent))}
       />
       <SummaryCard
-        label="Stability Improvement"
+        label={t.progress.summary.stability}
         value={`+${summary.stabilityChange}`}
-        trend={`↑ ${Math.round(summary.stabilityPercent)}% since session 1`}
+        trend={t.progress.summary.sinceSessionOne(Math.round(summary.stabilityPercent))}
       />
       <SummaryCard
-        label="Sessions Completed"
+        label={t.progress.summary.sessions}
         value={`${summary.sessionsCompleted}`}
-        trend={`${formatShortDate(summary.baseline.date)} to ${formatShortDate(summary.latest.date)}`}
+        trend={t.progress.summary.dateRange(
+          formatShortDate(summary.baseline.date, language),
+          formatShortDate(summary.latest.date, language),
+        )}
       />
     </div>
   )
@@ -556,9 +1062,11 @@ function SummaryCard({ label, value, trend }: SummaryCardProps) {
 }
 
 function SessionTrendChart({ metrics }: ChartProps) {
+  const { t } = useI18n()
+
   return (
     <article className="progress-card chart-card">
-      <CardHeading eyebrow="Session Trend" title="Score trajectory" />
+      <CardHeading eyebrow={t.progress.charts.sessionTrend} title={t.progress.charts.scoreTrajectory} />
       <div className="chart-shell">
         <ResponsiveContainer width="100%" height="100%">
           <LineChart data={metrics} margin={{ top: 8, right: 12, bottom: 0, left: -18 }}>
@@ -567,9 +1075,9 @@ function SessionTrendChart({ metrics }: ChartProps) {
             <YAxis domain={[50, 90]} tickLine={false} axisLine={false} tick={{ fill: '#64748b', fontSize: 12 }} />
             <Tooltip contentStyle={tooltipStyle} />
             <Legend iconType="circle" wrapperStyle={{ color: '#64748b', fontSize: 12 }} />
-            <Line type="monotone" dataKey="gaitScore" name="Gait" stroke="#0891b2" strokeWidth={3} dot={false} />
-            <Line type="monotone" dataKey="symmetryScore" name="Symmetry" stroke="#2563eb" strokeWidth={3} dot={false} />
-            <Line type="monotone" dataKey="stabilityScore" name="Stability" stroke="#10b981" strokeWidth={3} dot={false} />
+            <Line type="monotone" dataKey="gaitScore" name={t.progress.charts.gait} stroke="#0891b2" strokeWidth={3} dot={false} />
+            <Line type="monotone" dataKey="symmetryScore" name={t.progress.charts.symmetry} stroke="#2563eb" strokeWidth={3} dot={false} />
+            <Line type="monotone" dataKey="stabilityScore" name={t.progress.charts.stability} stroke="#10b981" strokeWidth={3} dot={false} />
           </LineChart>
         </ResponsiveContainer>
       </div>
@@ -578,9 +1086,11 @@ function SessionTrendChart({ metrics }: ChartProps) {
 }
 
 function LoadBalanceChart({ metrics }: ChartProps) {
+  const { t } = useI18n()
+
   return (
     <article className="progress-card chart-card">
-      <CardHeading eyebrow="Left vs Right Load Balance" title="Average pressure by session" />
+      <CardHeading eyebrow={t.progress.charts.loadBalance} title={t.progress.charts.avgPressure} />
       <div className="chart-shell">
         <ResponsiveContainer width="100%" height="100%">
           <BarChart data={metrics} margin={{ top: 8, right: 12, bottom: 0, left: -18 }}>
@@ -589,8 +1099,8 @@ function LoadBalanceChart({ metrics }: ChartProps) {
             <YAxis tickLine={false} axisLine={false} tick={{ fill: '#64748b', fontSize: 12 }} unit=" kPa" />
             <Tooltip contentStyle={tooltipStyle} />
             <Legend iconType="circle" wrapperStyle={{ color: '#64748b', fontSize: 12 }} />
-            <Bar dataKey="leftAvgPressure" name="Left" fill="#38bdf8" radius={[8, 8, 0, 0]} />
-            <Bar dataKey="rightAvgPressure" name="Right" fill="#34d399" radius={[8, 8, 0, 0]} />
+            <Bar dataKey="leftAvgPressure" name={t.progress.charts.left} fill="#38bdf8" radius={[8, 8, 0, 0]} />
+            <Bar dataKey="rightAvgPressure" name={t.progress.charts.right} fill="#34d399" radius={[8, 8, 0, 0]} />
           </BarChart>
         </ResponsiveContainer>
       </div>
@@ -599,45 +1109,46 @@ function LoadBalanceChart({ metrics }: ChartProps) {
 }
 
 function ClinicalDomainsCard({ metrics }: ClinicalDomainsCardProps) {
+  const { t } = useI18n()
   const baseline = metrics[0]
   const latest = metrics[metrics.length - 1]
   const domains = [
     {
-      label: 'Symmetry',
+      label: t.progress.domains.symmetry,
       baseline: baseline.symmetryScore,
       latest: latest.symmetryScore,
-      unit: 'score',
+      unit: t.progress.domains.score,
       improvement: percentImprovement(baseline.symmetryScore, latest.symmetryScore),
     },
     {
-      label: 'Stability',
+      label: t.progress.domains.stability,
       baseline: baseline.stabilityScore,
       latest: latest.stabilityScore,
-      unit: 'score',
+      unit: t.progress.domains.score,
       improvement: percentImprovement(baseline.stabilityScore, latest.stabilityScore),
     },
     {
-      label: 'Load Balance',
+      label: t.progress.domains.loadBalance,
       baseline: Math.abs(baseline.leftAvgPressure - baseline.rightAvgPressure),
       latest: Math.abs(latest.leftAvgPressure - latest.rightAvgPressure),
-      unit: 'kPa gap',
+      unit: t.progress.domains.gap,
       improvement: percentReduction(
         Math.abs(baseline.leftAvgPressure - baseline.rightAvgPressure),
         Math.abs(latest.leftAvgPressure - latest.rightAvgPressure),
       ),
     },
     {
-      label: 'Variability',
+      label: t.progress.domains.variability,
       baseline: baseline.variabilityScore,
       latest: latest.variabilityScore,
-      unit: 'index',
+      unit: t.progress.domains.index,
       improvement: percentReduction(baseline.variabilityScore, latest.variabilityScore),
     },
   ]
 
   return (
     <article className="progress-card">
-      <CardHeading eyebrow="Clinical Domains" title="Baseline to latest" />
+      <CardHeading eyebrow={t.progress.domains.eyebrow} title={t.progress.domains.title} />
       <div className="domain-list">
         {domains.map((domain) => (
           <div className="domain-row" key={domain.label}>
@@ -656,18 +1167,20 @@ function ClinicalDomainsCard({ metrics }: ClinicalDomainsCardProps) {
 }
 
 function TherapyRecommendationsCard({ recommendations }: TherapyRecommendationsCardProps) {
+  const { language, t } = useI18n()
+
   return (
     <article className="progress-card">
-      <CardHeading eyebrow="Therapy Recommendations" title="Next clinical focus" />
+      <CardHeading eyebrow={t.progress.recommendations.eyebrow} title={t.progress.recommendations.title} />
       <div className="recommendation-list">
         {recommendations.map((recommendation) => (
           <div className="recommendation-row" key={recommendation.id}>
             <span className={`recommendation-badge recommendation-badge--${recommendation.tone}`}>
-              {recommendation.badge}
+              {t.progress.recommendations.badges[recommendation.tone]}
             </span>
             <div>
-              <strong>{recommendation.label}</strong>
-              <p>{recommendation.detail}</p>
+              <strong>{recommendationText(recommendation, language).label}</strong>
+              <p>{recommendationText(recommendation, language).detail}</p>
             </div>
           </div>
         ))}
@@ -677,19 +1190,20 @@ function TherapyRecommendationsCard({ recommendations }: TherapyRecommendationsC
 }
 
 function BaselineLatestCard({ summary }: { summary: ProgressSummary }) {
+  const { language, t } = useI18n()
   const metrics = [
-    { label: 'Gait score', baseline: summary.baseline.gaitScore, latest: summary.latest.gaitScore },
-    { label: 'Walking speed', baseline: summary.baseline.walkingSpeed, latest: summary.latest.walkingSpeed, unit: 'm/s' },
-    { label: 'Cadence', baseline: summary.baseline.cadence, latest: summary.latest.cadence, unit: 'spm' },
-    { label: 'Load gap', baseline: Math.abs(summary.baseline.leftAvgPressure - summary.baseline.rightAvgPressure), latest: Math.abs(summary.latest.leftAvgPressure - summary.latest.rightAvgPressure), unit: 'kPa' },
+    { label: t.progress.baseline.gaitScore, baseline: summary.baseline.gaitScore, latest: summary.latest.gaitScore },
+    { label: t.progress.baseline.walkingSpeed, baseline: summary.baseline.walkingSpeed, latest: summary.latest.walkingSpeed, unit: 'm/s' },
+    { label: t.progress.baseline.cadence, baseline: summary.baseline.cadence, latest: summary.latest.cadence, unit: 'spm' },
+    { label: t.progress.baseline.loadGap, baseline: Math.abs(summary.baseline.leftAvgPressure - summary.baseline.rightAvgPressure), latest: Math.abs(summary.latest.leftAvgPressure - summary.latest.rightAvgPressure), unit: t.live.kpa },
   ]
 
   return (
     <article className="progress-card baseline-card">
-      <CardHeading eyebrow="Baseline vs Latest" title="Key therapy markers" />
+      <CardHeading eyebrow={t.progress.baseline.eyebrow} title={t.progress.baseline.title} />
       <div className="baseline-columns">
-        <ComparisonColumn title={`Session ${summary.baseline.session}`} date={summary.baseline.date} metrics={metrics} mode="baseline" />
-        <ComparisonColumn title={`Session ${summary.latest.session}`} date={summary.latest.date} metrics={metrics} mode="latest" />
+        <ComparisonColumn title={`${t.progress.baseline.session} ${summary.baseline.session}`} date={summary.baseline.date} language={language} metrics={metrics} mode="baseline" />
+        <ComparisonColumn title={`${t.progress.baseline.session} ${summary.latest.session}`} date={summary.latest.date} language={language} metrics={metrics} mode="latest" />
       </div>
     </article>
   )
@@ -697,11 +1211,13 @@ function BaselineLatestCard({ summary }: { summary: ProgressSummary }) {
 
 function ComparisonColumn({
   date,
+  language,
   metrics,
   mode,
   title,
 }: {
   date: string
+  language: Language
   metrics: { label: string; baseline: number; latest: number; unit?: string }[]
   mode: 'baseline' | 'latest'
   title: string
@@ -710,7 +1226,7 @@ function ComparisonColumn({
     <div className="comparison-column">
       <div>
         <span>{title}</span>
-        <strong>{formatShortDate(date)}</strong>
+        <strong>{formatShortDate(date, language)}</strong>
       </div>
       {metrics.map((metric) => {
         const value = mode === 'baseline' ? metric.baseline : metric.latest
@@ -739,39 +1255,41 @@ function CardHeading({ eyebrow, title }: { eyebrow: string; title: string }) {
 }
 
 function PatientPage({ dashboard, frame, liveInactive, movementMessage }: PatientPageProps) {
+  const { t } = useI18n()
+
   if (liveInactive) {
     return <LiveInactiveCard variant="patient" />
   }
 
   return (
     <>
-      {frame?.error && <p className="error">Связь со стельками прервалась. Можно спокойно попробовать снова.</p>}
+      {frame?.error && <p className="error">{t.patient.error}</p>}
 
       <FeetPatientPanel dashboard={dashboard} />
 
       <section className="patient-hero">
         <div>
-          <p className="eyebrow">Режим пациента</p>
+          <p className="eyebrow">{t.patient.mode}</p>
         </div>
 
         <div className="patient-message" aria-live="polite">
-          <span>{frame?.connected === false ? 'Ждем сигнал' : 'Твой шаг'}</span>
-          <strong>{movementMessage}</strong>
+          <span>{frame?.connected === false ? t.patient.signalWaiting : t.patient.yourStep}</span>
+          <strong>{patientMessageText(movementMessage, t)}</strong>
         </div>
       </section>
 
       <section className="patient-guide">
         <div className="patient-guide__item patient-guide__item--cool">
           <span />
-          <strong>Мягкое касание</strong>
+          <strong>{t.patient.guideLight}</strong>
         </div>
         <div className="patient-guide__item patient-guide__item--warm">
           <span />
-          <strong>Сильное касание</strong>
+          <strong>{t.patient.guideStrong}</strong>
         </div>
         <div className="patient-guide__item patient-guide__item--calm">
           <span />
-          <strong>Ровный шаг</strong>
+          <strong>{t.patient.guideCalm}</strong>
         </div>
       </section>
     </>
@@ -779,6 +1297,7 @@ function PatientPage({ dashboard, frame, liveInactive, movementMessage }: Patien
 }
 
 function LiveInactiveCard({ variant }: { variant: 'therapist' | 'patient' }) {
+  const { t } = useI18n()
   const isPatient = variant === 'patient'
   return (
     <section className={`live-inactive ${isPatient ? 'live-inactive--patient' : ''}`} aria-live="polite">
@@ -789,36 +1308,32 @@ function LiveInactiveCard({ variant }: { variant: 'therapist' | 'patient' }) {
         </svg>
       </div>
       <div className="live-inactive__copy">
-        <p className="eyebrow">Стельки неактивны</p>
-        <h2>
-          {isPatient
-            ? 'Подожди, терапевт скоро запустит игру'
-            : 'Стельки включаются вместе с игрой'}
-        </h2>
-        <p>
-          {isPatient
-            ? 'Когда сессия начнётся — давление стопы будет видно здесь.'
-            : 'TCP-приём данных запускается только во время игрового сеанса. Нажми «Запустить игру» в панели сверху.'}
-        </p>
+        <p className="eyebrow">{t.live.inactiveEyebrow}</p>
+        <h2>{isPatient ? t.live.inactivePatientTitle : t.live.inactiveTherapistTitle}</h2>
+        <p>{isPatient ? t.live.inactivePatientText : t.live.inactiveTherapistText}</p>
       </div>
     </section>
   )
 }
 
 function StatusSummary({ dynamicScale, source, status }: StatusSummaryProps) {
+  const { t } = useI18n()
+
   return (
     <div className="status-grid">
       <div className="status-card">
-        <span>Источник</span>
-        <strong>{source === 'mock' ? 'Мок-походка' : 'Живой TCP'}</strong>
+        <span>{t.live.source}</span>
+        <strong>{source === 'mock' ? t.live.mockGait : t.live.liveTcp}</strong>
       </div>
       <div className="status-card">
-        <span>Сокет</span>
-        <strong>{status}</strong>
+        <span>{t.live.socket}</span>
+        <strong>{translateStatus(status, t)}</strong>
       </div>
       <div className="status-card">
-        <span>Шкала</span>
-        <strong>{Math.round(dynamicScale)} кПа</strong>
+        <span>{t.live.scale}</span>
+        <strong>
+          {Math.round(dynamicScale)} {t.live.kpa}
+        </strong>
       </div>
     </div>
   )
@@ -833,9 +1348,9 @@ const GAME_DEFAULTS: GameLaunchParams = {
 }
 
 const GAME_PRESETS: { id: string; label: string; values: Partial<GameLaunchParams> }[] = [
-  { id: 'demo', label: 'Демо', values: { speed: 0.35, stepTimeS: 1.2, insoleThresholdKpa: 8 } },
-  { id: 'easy', label: 'Мягко', values: { speed: 0.22, stepTimeS: 1.6, insoleThresholdKpa: 6 } },
-  { id: 'fast', label: 'Быстро', values: { speed: 0.75, stepTimeS: 0.8, insoleThresholdKpa: 10 } },
+  { id: 'demo', label: 'demo', values: { speed: 0.35, stepTimeS: 1.2, insoleThresholdKpa: 8 } },
+  { id: 'easy', label: 'easy', values: { speed: 0.22, stepTimeS: 1.6, insoleThresholdKpa: 6 } },
+  { id: 'fast', label: 'fast', values: { speed: 0.75, stepTimeS: 0.8, insoleThresholdKpa: 10 } },
 ]
 
 function RuntimeControls({
@@ -853,6 +1368,7 @@ function RuntimeControls({
   startGame: (params: GameLaunchParams) => Promise<void>
   stopRuntime: () => Promise<void>
 }) {
+  const { t } = useI18n()
   const [gameParams, setGameParams] = useState<GameLaunchParams>(GAME_DEFAULTS)
   const [showAdvanced, setShowAdvanced] = useState(false)
   const canStart = runtime.state === 'idle' && !pending
@@ -862,18 +1378,18 @@ function RuntimeControls({
 
   const statusTitle =
     isGameRunning
-      ? 'Игра запущена'
+      ? t.control.statusRunningGame
       : isCalibRunning
-      ? 'Калибровка AprilTag запущена'
-      : 'Готов к запуску'
+      ? t.control.statusRunningCalibration
+      : t.control.statusReady
   const statusMeta = runtime.activeJob
-    ? `pid ${runtime.activeJob.pid} · uptime ${Math.round(runtime.activeJob.uptimeS)}с`
+    ? `pid ${runtime.activeJob.pid} · ${t.control.uptime} ${Math.round(runtime.activeJob.uptimeS)}с`
     : runtime.lastExit
-    ? `последний: ${runtime.lastExit.name ?? '-'} · code ${runtime.lastExit.code ?? '-'}`
-    : 'ничего не запущено'
+    ? `${t.control.last}: ${runtime.lastExit.name ?? '-'} · code ${runtime.lastExit.code ?? '-'}`
+    : t.control.nothingRunning
 
   return (
-    <section className="runtime" aria-label="Runtime controls">
+    <section className="runtime" aria-label={t.control.runtimeAria}>
       <header className="runtime__statusbar">
         <div className="runtime__status">
           <span
@@ -891,17 +1407,17 @@ function RuntimeControls({
           onClick={() => void stopRuntime()}
           disabled={!canStop}
         >
-          Остановить
+          {t.control.stop}
         </button>
       </header>
 
       <article className="runtime__card">
         <header className="runtime__card-head">
           <div>
-            <p className="runtime__card-eyebrow">Сценарий</p>
-            <h2 className="runtime__card-title">Игра по плиткам</h2>
+            <p className="runtime__card-eyebrow">{t.control.scenario}</p>
+            <h2 className="runtime__card-title">{t.control.tileGame}</h2>
           </div>
-          <div className="runtime__preset-row" role="group" aria-label="Пресеты">
+          <div className="runtime__preset-row" role="group" aria-label={t.control.presets}>
             {GAME_PRESETS.map((preset) => (
               <button
                 key={preset.id}
@@ -909,7 +1425,7 @@ function RuntimeControls({
                 className="runtime__preset"
                 onClick={() => setGameParams((prev) => ({ ...prev, ...preset.values }))}
               >
-                {preset.label}
+                {presetLabel(preset.id, t)}
               </button>
             ))}
             <button
@@ -917,15 +1433,15 @@ function RuntimeControls({
               className="runtime__preset"
               onClick={() => setGameParams(GAME_DEFAULTS)}
             >
-              Сброс
+              {t.control.reset}
             </button>
           </div>
         </header>
 
         <div className="runtime__sliders">
           <SliderField
-            label="Скорость"
-            hint="условные м/с"
+            label={t.control.speed}
+            hint={t.control.speedHint}
             value={gameParams.speed}
             onChange={(value) => setGameParams((prev) => ({ ...prev, speed: value }))}
             min={0.05}
@@ -934,24 +1450,24 @@ function RuntimeControls({
             format={(value) => value.toFixed(2)}
           />
           <SliderField
-            label="Интервал шага"
-            hint="между плитками"
+            label={t.control.stepInterval}
+            hint={t.control.stepHint}
             value={gameParams.stepTimeS}
             onChange={(value) => setGameParams((prev) => ({ ...prev, stepTimeS: value }))}
             min={0.2}
             max={2.8}
             step={0.1}
-            format={(value) => `${value.toFixed(2)}с`}
+            format={(value) => `${value.toFixed(2)} s`}
           />
           <SliderField
-            label="Порог давления"
-            hint="Insole threshold"
+            label={t.control.pressureThreshold}
+            hint={t.control.thresholdHint}
             value={gameParams.insoleThresholdKpa}
             onChange={(value) => setGameParams((prev) => ({ ...prev, insoleThresholdKpa: value }))}
             min={0}
             max={30}
             step={0.5}
-            format={(value) => `${value.toFixed(1)} кПа`}
+            format={(value) => `${value.toFixed(1)} ${t.live.kpa}`}
           />
         </div>
 
@@ -960,12 +1476,12 @@ function RuntimeControls({
           className="runtime__advanced-toggle"
           onClick={() => setShowAdvanced((value) => !value)}
         >
-          {showAdvanced ? 'Скрыть параметры экрана' : 'Параметры экрана'}
+          {showAdvanced ? t.control.hideScreen : t.control.screenParams}
         </button>
 
         {showAdvanced && (
           <div className="runtime__advanced">
-            <Field label="Display" hint="индекс монитора">
+            <Field label="Display" hint={t.control.displayHint}>
               <Stepper
                 value={gameParams.display ?? 0}
                 onChange={(value) => setGameParams((prev) => ({ ...prev, display: value }))}
@@ -974,7 +1490,7 @@ function RuntimeControls({
                 step={1}
               />
             </Field>
-            <Field label="Поворот" hint="output-rotation">
+            <Field label={t.control.rotation} hint="output-rotation">
               <Segmented
                 options={[0, 90, 180, 270]}
                 value={gameParams.outputRotation}
@@ -997,7 +1513,7 @@ function RuntimeControls({
             disabled={!canStart}
           >
             <CameraIcon />
-            Калибровка камеры
+            {t.control.cameraCalibration}
           </button>
           <button
             type="button"
@@ -1005,12 +1521,12 @@ function RuntimeControls({
             onClick={() => void startGame(gameParams)}
             disabled={!canStart}
           >
-            Запустить игру
+            {t.control.startGame}
           </button>
         </footer>
       </article>
 
-      {actionError && <p className="error runtime__error">{actionError}</p>}
+      {actionError && <p className="error runtime__error">{runtimeErrorText(actionError, t)}</p>}
     </section>
   )
 }
@@ -1155,19 +1671,21 @@ function DashboardControls({
   showSensors,
   source,
 }: DashboardControlsProps) {
+  const { t } = useI18n()
+
   return (
-    <section className="controls" aria-label="Dashboard controls">
+    <section className="controls" aria-label={t.live.source}>
       <div className="button-group">
         <button type="button" className={source === 'mock' ? 'active' : ''} onClick={() => setSource('mock')}>
-          Мок
+          {t.live.mock}
         </button>
         <button type="button" className={source === 'live' ? 'active' : ''} onClick={() => setSource('live')}>
-          Живой
+          {t.live.live}
         </button>
       </div>
 
       <button type="button" className="ghost" onClick={() => setShowSensors((value) => !value)}>
-        {showSensors ? 'Скрыть датчики' : 'Показать датчики'}
+        {showSensors ? t.live.hideSensors : t.live.showSensors}
       </button>
 
       <div className="frame-meta">
@@ -1185,8 +1703,10 @@ function FeetPressurePanel({
   dashboard: FootDashboard
   showSensors: boolean
 }) {
+  const { t } = useI18n()
+
   return (
-    <article className="feet-panel" aria-label="Карты давления обеих стелек">
+    <article className="feet-panel" aria-label={t.live.feetAria}>
       <div className="feet-panel__pair">
         <FootPressurePanel
           embedded
@@ -1211,8 +1731,10 @@ function FeetPressurePanel({
 }
 
 function FeetPatientPanel({ dashboard }: { dashboard: FootDashboard }) {
+  const { t } = useI18n()
+
   return (
-    <article className="feet-panel feet-panel--patient" aria-label="Стопы пациента">
+    <article className="feet-panel feet-panel--patient" aria-label={t.live.patientFeetAria}>
       <div className="feet-panel__pair">
         <PatientFootPanel
           embedded
@@ -1242,16 +1764,17 @@ function FootPressurePanel({
   showSensors,
   silhouette,
 }: FootPressurePanelProps & { embedded?: boolean }) {
+  const { t } = useI18n()
   const activeSensorCount = frame.points.filter((point) => point.pressure >= CONTACT_THRESHOLD_KPA).length
-  const onlineLabel = frame.online ? 'В сети' : 'Ожидание'
+  const onlineLabel = frame.online ? t.live.online : t.live.waiting
   const rootClass = embedded ? 'feet-panel__side' : 'foot-card'
 
   const content = (
     <>
       <div className="foot-card__head">
         <div>
-          <p className="eyebrow">{FOOT_LABELS[side].eyebrow}</p>
-          <h2>{frame.stats.pressed ? 'Контакт обнаружен' : 'Карта давления'}</h2>
+          <p className="eyebrow">{side === 'left' ? t.live.leftInsole : t.live.rightInsole}</p>
+          <h2>{frame.stats.pressed ? t.live.contact : t.live.pressureMap}</h2>
         </div>
         <span className={`pill ${frame.online ? 'pill--ok' : 'pill--warn'}`}>{onlineLabel}</span>
       </div>
@@ -1264,15 +1787,15 @@ function FootPressurePanel({
             scale={scale}
             showSensors={showSensors}
             silhouette={silhouette}
-            title={FOOT_LABELS[side].aria}
+            title={side === 'left' ? t.live.leftAria : t.live.rightAria}
           />
         </div>
 
         <div className="metrics">
-          <Metric label="Пик" value={formatKpa(frame.stats.maxKpa)} accent="rose" />
-          <Metric label="Среднее" value={formatKpa(frame.stats.meanKpa)} accent="cyan" />
-          <Metric label="Нагрузка" value={`${Math.round(frame.stats.sumKpa / 10)} u`} accent="amber" />
-          <Metric label="Датчики" value={`${activeSensorCount}/${SENSOR_COUNT}`} accent="green" />
+          <Metric label={t.live.peak} value={formatKpa(frame.stats.maxKpa)} accent="rose" />
+          <Metric label={t.live.average} value={formatKpa(frame.stats.meanKpa)} accent="cyan" />
+          <Metric label={t.live.load} value={`${Math.round(frame.stats.sumKpa / 10)} u`} accent="amber" />
+          <Metric label={t.live.sensors} value={`${activeSensorCount}/${SENSOR_COUNT}`} accent="green" />
         </div>
       </div>
     </>
@@ -1292,8 +1815,9 @@ function PatientFootPanel({
   side,
   silhouette,
 }: PatientFootPanelProps & { embedded?: boolean }) {
+  const { t } = useI18n()
   const pressureLevel = patientPressureLevel(frame)
-  const statusText = patientPressureText(pressureLevel)
+  const statusText = t.patient.pressure[pressureLevel]
   const rootClass = embedded
     ? `feet-panel__side patient-foot patient-foot--embedded patient-foot--${pressureLevel}`
     : `patient-foot patient-foot--${pressureLevel}`
@@ -1301,7 +1825,7 @@ function PatientFootPanel({
   const inner = (
     <>
       <div className="patient-foot__copy">
-        <p className="eyebrow">{side === 'left' ? 'Левая стопа' : 'Правая стопа'}</p>
+        <p className="eyebrow">{side === 'left' ? t.live.leftFoot : t.live.rightFoot}</p>
         <h2>{statusText}</h2>
       </div>
 
@@ -1312,7 +1836,7 @@ function PatientFootPanel({
           scale={scale}
           showSensors={false}
           silhouette={silhouette}
-          title={`${side === 'left' ? 'Left' : 'Right'} foot pressure picture`}
+          title={side === 'left' ? t.live.leftAria : t.live.rightAria}
         />
       </div>
     </>
@@ -1448,6 +1972,7 @@ function useInsoleFrame(
 
   useEffect(() => {
     if (!gateOpen) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setFrame(null)
       setPatientSuggestion(PATIENT_WAITING_MESSAGE)
       patientSuggestionState.current = {
@@ -1797,8 +2322,8 @@ function formatKpa(value: number) {
   return `${Math.round(value)} kPa`
 }
 
-function formatShortDate(date: string) {
-  return new Intl.DateTimeFormat('en', { month: 'short', day: 'numeric' }).format(new Date(date))
+function formatShortDate(date: string, language: Language) {
+  return new Intl.DateTimeFormat(dateLocale(language), { month: 'short', day: 'numeric' }).format(new Date(date))
 }
 
 function formatMetricValue(value: number) {
@@ -1817,6 +2342,131 @@ function formatSignedPercent(value: number) {
   const rounded = Math.round(value)
 
   return `${rounded > 0 ? '+' : ''}${rounded}%`
+}
+
+function dateLocale(language: Language) {
+  switch (language) {
+    case 'kk':
+      return 'kk-KZ'
+    case 'ru':
+      return 'ru-RU'
+    case 'en':
+      return 'en'
+  }
+}
+
+function translateStatus(status: string, t: Translation) {
+  switch (status) {
+    case 'подключение':
+      return t.live.status.connecting
+    case 'ожидание запуска':
+      return t.live.status.launchWaiting
+    case 'подключено':
+      return t.live.status.connected
+    case 'бэкенд недоступен':
+      return t.live.status.backendUnavailable
+    case 'ошибка сокета':
+      return t.live.status.socketError
+    case 'отключено':
+      return t.live.status.disconnected
+    default:
+      return status
+  }
+}
+
+function patientMessageText(message: string, t: Translation) {
+  return t.patient.messages[(message as PatientMessageKey) in t.patient.messages ? (message as PatientMessageKey) : 'waiting']
+}
+
+function presetLabel(id: string, t: Translation) {
+  switch (id) {
+    case 'demo':
+      return t.control.demo
+    case 'easy':
+      return t.control.easy
+    case 'fast':
+      return t.control.fast
+    default:
+      return id
+  }
+}
+
+function runtimeErrorText(error: string, t: Translation) {
+  if (error === 'Не удалось выполнить действие') {
+    return t.control.actionFailed
+  }
+
+  if (error === 'Backend runtime недоступен') {
+    return t.control.backendUnavailable
+  }
+
+  return error
+}
+
+function recommendationText(recommendation: TherapyRecommendation, language: Language) {
+  const copy = {
+    ru: {
+      symmetry: {
+        label: 'Обратная связь по симметрии',
+        detail: 'Используйте подсказки от шага к шагу, чтобы снизить разницу времени опоры слева и справа.',
+      },
+      stability: {
+        label: 'Баланс и контроль опоры',
+        detail: 'Продолжайте медленные удержания стойки и контролируемые переносы веса перед повышением скорости.',
+      },
+      variability: {
+        label: 'Стабильность ритма',
+        detail: 'Держите скорость дорожки контролируемой и добавьте работу с каденсом для более ровных шагов.',
+      },
+      'load-balance': {
+        label: 'Перераспределение подошвенной нагрузки',
+        detail: 'Добавьте обратную связь для более мягкой нагрузки на стороне с повышенным давлением.',
+      },
+      progression: {
+        label: 'Продолжать текущую прогрессию',
+        detail: 'Балл походки заметно вырос от базового уровня; сохраняйте прогрессию с небольшим повышением сложности.',
+      },
+      'load-gain': {
+        label: 'Улучшение баланса нагрузки',
+        detail: 'Левая и правая нагрузки теперь близки; сохраняйте этот паттерн при увеличении скорости.',
+      },
+    },
+    kk: {
+      symmetry: {
+        label: 'Симметрия бойынша кері байланыс',
+        detail: 'Сол және оң тірек уақытының айырмасын азайту үшін әр қадамға арналған нұсқауларды қолданыңыз.',
+      },
+      stability: {
+        label: 'Баланс және тірек бақылауы',
+        detail: 'Жылдамдықты арттырмас бұрын баяу тұру ұсталымдарын және салмақты бақылап ауыстыруды жалғастырыңыз.',
+      },
+      variability: {
+        label: 'Ырғақ тұрақтылығы',
+        detail: 'Қадамдарды біркелкі ету үшін жолақ жылдамдығын бақылап, каденс ырғағымен жұмыс қосыңыз.',
+      },
+      'load-balance': {
+        label: 'Табан жүктемесін қайта бөлу',
+        detail: 'Қысымы жоғары жақта жүктемені жұмсарту үшін кері байланыс қосыңыз.',
+      },
+      progression: {
+        label: 'Ағымдағы прогрессияны жалғастыру',
+        detail: 'Жүріс балы бастапқы деңгейден айтарлықтай өсті; қиындықты аздап арттырып жалғастырыңыз.',
+      },
+      'load-gain': {
+        label: 'Жүктеме балансы жақсарды',
+        detail: 'Сол және оң жүктемелер жақындады; жылдамдық артқанда осы үлгіні сақтаңыз.',
+      },
+    },
+  } as const
+
+  if (language === 'en') {
+    return { label: recommendation.label, detail: recommendation.detail }
+  }
+
+  return copy[language][recommendation.id as keyof (typeof copy)['ru']] ?? {
+    label: recommendation.label,
+    detail: recommendation.detail,
+  }
 }
 
 function updatePatientSuggestion(state: PatientSuggestionState, frame: FramePayload) {
@@ -1850,24 +2500,24 @@ function updatePatientSuggestion(state: PatientSuggestionState, frame: FramePayl
   return state.message
 }
 
-function patientMovementMessage(leftActive: boolean, rightActive: boolean, leftShare: number) {
+function patientMovementMessage(leftActive: boolean, rightActive: boolean, leftShare: number): PatientMessageKey {
   if (!leftActive && !rightActive) {
     return PATIENT_WAITING_MESSAGE
   }
 
   if (leftActive !== rightActive) {
-    return 'Продолжай шагать спокойно'
+    return 'keepWalking'
   }
 
   if (leftShare > 60) {
-    return 'Попробуй мягче на левую стопу'
+    return 'softerLeft'
   }
 
   if (leftShare < 40) {
-    return 'Попробуй мягче на правую стопу'
+    return 'softerRight'
   }
 
-  return 'Отличный ровный шаг'
+  return 'evenStep'
 }
 
 function patientLeftShare(leftLoad: number, rightLoad: number) {
@@ -1906,19 +2556,6 @@ function patientPressureLevel(frame: FootFrame) {
   }
 
   return 'steady'
-}
-
-function patientPressureText(level: ReturnType<typeof patientPressureLevel>) {
-  switch (level) {
-    case 'light':
-      return 'Мягкое касание'
-    case 'strong':
-      return 'Сильное касание'
-    case 'steady':
-      return 'Хороший контакт'
-    case 'waiting':
-      return 'Ждет шага'
-  }
 }
 
 export default App
