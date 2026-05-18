@@ -25,7 +25,7 @@ import {
 type SourceMode = 'live' | 'mock'
 type InsoleSize = 'm' | 's'
 type FootSide = 'left' | 'right'
-type ViewMode = 'therapist' | 'patient'
+type ViewMode = 'therapist' | 'patient' | 'control'
 type TherapistSection = 'live' | 'progress'
 type PatientContactKey = 'both' | 'left' | 'none' | 'right'
 
@@ -144,17 +144,20 @@ type TherapistPageProps = {
   dashboard: FootDashboard
   frame: FramePayload | null
   liveInactive: boolean
+  setShowSensors: (update: (value: boolean) => boolean) => void
+  setSource: (source: SourceMode) => void
+  showSensors: boolean
+  source: SourceMode
+  status: string
+}
+
+type ControlPageProps = {
   runtime: RuntimePayload
   runtimeActionError: string | null
   runtimePending: boolean
   startCalibration: () => Promise<void>
   startGame: (params: GameLaunchParams) => Promise<void>
   stopRuntime: () => Promise<void>
-  setShowSensors: (update: (value: boolean) => boolean) => void
-  setSource: (source: SourceMode) => void
-  showSensors: boolean
-  source: SourceMode
-  status: string
 }
 
 type PatientPageProps = {
@@ -296,29 +299,36 @@ function App() {
     <main className="dashboard">
       <PageTabs activeView={activeView} setActiveView={setActiveView} />
 
-      {activeView === 'therapist' ? (
+      {activeView === 'therapist' && (
         <TherapistPage
           dashboard={dashboard}
           frame={frame}
           liveInactive={liveInactive}
-          runtime={runtime.state}
-          runtimeActionError={runtime.actionError}
-          runtimePending={runtime.pending}
-          startCalibration={runtime.startCalibration}
-          startGame={runtime.startGame}
-          stopRuntime={runtime.stopRuntime}
           setShowSensors={setShowSensors}
           setSource={setSource}
           showSensors={showSensors}
           source={source}
           status={status}
         />
-      ) : (
+      )}
+
+      {activeView === 'patient' && (
         <PatientPage
           dashboard={dashboard}
           frame={frame}
           liveInactive={liveInactive}
           movementMessage={patientSuggestion}
+        />
+      )}
+
+      {activeView === 'control' && (
+        <ControlPage
+          runtime={runtime.state}
+          runtimeActionError={runtime.actionError}
+          runtimePending={runtime.pending}
+          startCalibration={runtime.startCalibration}
+          startGame={runtime.startGame}
+          stopRuntime={runtime.stopRuntime}
         />
       )}
     </main>
@@ -342,7 +352,46 @@ function PageTabs({ activeView, setActiveView }: PageTabsProps) {
       >
         Patient
       </button>
+      <button
+        type="button"
+        className={activeView === 'control' ? 'active' : ''}
+        onClick={() => setActiveView('control')}
+      >
+        Управление
+      </button>
     </nav>
+  )
+}
+
+function ControlPage({
+  runtime,
+  runtimeActionError,
+  runtimePending,
+  startCalibration,
+  startGame,
+  stopRuntime,
+}: ControlPageProps) {
+  return (
+    <>
+      <section className="hero hero--compact">
+        <div>
+          <p className="eyebrow">Сеанс</p>
+          <h1>Управление игрой и калибровкой</h1>
+          <p className="lede">
+            Запуск и остановка сценариев на проекторе. Стельки в режиме «Живой» активируются вместе с игрой.
+          </p>
+        </div>
+      </section>
+
+      <RuntimeControls
+        runtime={runtime}
+        actionError={runtimeActionError}
+        pending={runtimePending}
+        startCalibration={startCalibration}
+        startGame={startGame}
+        stopRuntime={stopRuntime}
+      />
+    </>
   )
 }
 
@@ -350,12 +399,6 @@ function TherapistPage({
   dashboard,
   frame,
   liveInactive,
-  runtime,
-  runtimeActionError,
-  runtimePending,
-  startCalibration,
-  startGame,
-  stopRuntime,
   setShowSensors,
   setSource,
   showSensors,
@@ -367,13 +410,12 @@ function TherapistPage({
 
   return (
     <>
-      <section className="hero">
+      <section className="hero hero--compact">
         <div>
-          <p className="eyebrow">Визуализатор давления Insolex</p>
-          <h1>Живые и мок-карты давления стоп</h1>
+          <p className="eyebrow">Данные стелек</p>
+          <h1>Карты давления в реальном времени</h1>
           <p className="lede">
-            FastAPI транслирует кадры WaveX bridge через WebSocket. Мок-режим использует ту же модель походки,
-            что и Python-визуализатор, для проверки интерфейса без стелек.
+            Мок — для проверки интерфейса. Живой — после запуска игры во вкладке «Управление».
           </p>
         </div>
 
@@ -384,15 +426,6 @@ function TherapistPage({
 
       {activeSection === 'live' ? (
         <>
-          <RuntimeControls
-            runtime={runtime}
-            actionError={runtimeActionError}
-            pending={runtimePending}
-            startCalibration={startCalibration}
-            startGame={startGame}
-            stopRuntime={stopRuntime}
-          />
-
           <DashboardControls
             frame={frame}
             setShowSensors={setShowSensors}

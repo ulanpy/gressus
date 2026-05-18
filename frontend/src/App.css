@@ -30,7 +30,13 @@
 }
 
 .page-tabs button {
-  min-width: 116px;
+  min-width: 100px;
+}
+
+@media (min-width: 720px) {
+  .page-tabs button {
+    min-width: 116px;
+  }
 }
 
 .page-tabs button.active {
@@ -44,6 +50,14 @@
   grid-template-columns: minmax(0, 1fr) 360px;
   gap: 32px;
   align-items: end;
+}
+
+.hero--compact {
+  margin-bottom: 8px;
+}
+
+.hero--compact h1 {
+  font-size: clamp(32px, 6vw, 56px);
 }
 
 .eyebrow {
