@@ -1,0 +1,2 @@
+export const FOOT_CONTOUR_CORNER_RADIUS = 160
+export const FOOT_CONTOUR_DIP_FILL = 400
