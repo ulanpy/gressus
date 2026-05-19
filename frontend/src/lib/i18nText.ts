@@ -29,10 +29,10 @@ export function patientMessageText(message: string, t: Translation) {
 
 export function presetLabel(id: string, t: Translation) {
   switch (id) {
-    case 'demo':
-      return t.control.demo
-    case 'easy':
-      return t.control.easy
+    case 'slow':
+      return t.control.slow
+    case 'medium':
+      return t.control.medium
     case 'fast':
       return t.control.fast
     default:

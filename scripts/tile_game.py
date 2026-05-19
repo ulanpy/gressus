@@ -315,6 +315,7 @@ def main() -> None:
     shift_x, shift_y = load_shift(args.calibration)
     shift_dirty = False
     shift_saved_msg_t = -1e9
+    session_intro_played = False
 
     fps_ema = 0.0
     t_prev = time.perf_counter()
@@ -362,6 +363,10 @@ def main() -> None:
             tile_p.clear()
 
             if state == "play":
+                if not session_intro_played:
+                    audio.play_intro_start()
+                    session_intro_played = True
+
                 while now >= next_spawn_t:
                     tiles.append(
                         FallingTile(
@@ -426,8 +431,9 @@ def main() -> None:
                             if combo_count >= 10:
                                 combo_count = 0
                                 combo_burst_t = now
+                                audio.play_motivation()
                             last_hit_t = now
-                            audio.play_hit()
+                            audio.play_positive()
                             break
 
                 kept: list[FallingTile] = []
@@ -439,6 +445,7 @@ def main() -> None:
                     if t.y > play_bottom + t.h:
                         misses += 1
                         combo_count = 0
+                        audio.play_correction()
                         continue
                     kept.append(t)
                 tiles = kept
@@ -499,9 +506,11 @@ def main() -> None:
 
             for e in pygame.event.get():
                 if e.type == pygame.QUIT:
+                    audio.play_intro_end()
                     running = False
                 elif e.type == pygame.KEYDOWN:
                     if e.key in (pygame.K_ESCAPE, pygame.K_q):
+                        audio.play_intro_end()
                         running = False
                     elif e.key == pygame.K_SPACE:
                         if not args.demo and pipe is not None and align is not None:
@@ -512,6 +521,7 @@ def main() -> None:
                                 floor_mm = new_floor
                                 baseline_gray = new_gray
                                 state = "play"
+                                session_intro_played = False
                                 tiles.clear()
                                 next_lane = 0
                                 next_spawn_t = time.perf_counter() + 0.8

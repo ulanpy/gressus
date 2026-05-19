@@ -2,3 +2,10 @@ Audio (check each page on Freesound for current license and attribution rules):
 
 - 716637__audiocoffee__happy-music-loop1.wav — https://freesound.org/s/716637/ (audiocoffee)
 - 402288__lilmati__retro-coin-02.wav — https://freesound.org/s/402288/ (lilmati)
+
+Kazakh UI voice prompts (project-provided, assets/ui_phrases/):
+
+- positive_* — praise on successful tile hit (rotating)
+- correction_* — hint on missed tile (rotating)
+- motivation_* — combo / bonus (rotating)
+- intro_* — session start / end

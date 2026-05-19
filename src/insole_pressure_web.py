@@ -35,7 +35,7 @@ class StartRuntimeRequest(BaseModel):
     outputRotation: Literal[0, 90, 180, 270] = 270
     insoleThresholdKpa: float = Field(DEFAULT_THRESHOLD_KPA, ge=0.0)
     speed: float = Field(0.35, ge=0.05, le=1.5)
-    stepTimeS: float = Field(1.2, ge=0.2, le=2.8)
+    stepTimeS: float = Field(2.5, ge=0.2, le=2.8)
 
 
 class StopRuntimeRequest(BaseModel):

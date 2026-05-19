@@ -4,13 +4,24 @@ import sys
 import threading
 import wave
 from pathlib import Path
+from typing import Protocol
 
 import numpy as np
 import pygame
 
+from .ui_phrases import (
+    PHRASE_GROUPS,
+    PhraseCategory,
+    PhraseRotator,
+    default_phrases_dir,
+)
+
 # Default files under repo `assets/` (see assets/CREDITS.txt).
 MUSIC_LOOP_FILENAME = "716637__audiocoffee__happy-music-loop1.wav"
 HIT_SFX_FILENAME = "402288__lilmati__retro-coin-02.wav"
+
+# Play Kazakh praise phrases on every Nth successful hit (3× less often than each hit).
+POSITIVE_PHRASE_STRIDE = 3
 
 
 def default_assets_dir() -> Path:
@@ -24,7 +35,6 @@ def _clip01(x: float) -> float:
 def _pygame_mixer_usable() -> bool:
     """True if pygame was built with SDL_mixer (some distro wheels omit it)."""
     try:
-        # Attribute access alone can succeed lazily; calling get_init forces real load.
         pygame.mixer.get_init()
     except NotImplementedError:
         return False
@@ -64,20 +74,134 @@ def _resample_stereo_linear(data: np.ndarray, sr_in: int, sr_out: int) -> np.nda
     return out
 
 
+class _PhrasePlayback(Protocol):
+    def play_phrase(self, category: PhraseCategory, *, interrupt: bool = False) -> bool: ...
+
+
+class _PygamePhrasePlayer:
+    def __init__(self, phrases_dir: Path, *, volume: float) -> None:
+        self._rotator = PhraseRotator()
+        self._sounds: dict[str, pygame.mixer.Sound] = {}
+        self._channel = pygame.mixer.Channel(2)
+        self._channel.set_volume(float(_clip01(volume)))
+        loaded = 0
+        for filenames in PHRASE_GROUPS.values():
+            for fn in filenames:
+                if fn in self._sounds:
+                    continue
+                path = phrases_dir / fn
+                if path.is_file():
+                    self._sounds[fn] = pygame.mixer.Sound(str(path))
+                    loaded += 1
+                else:
+                    print(f"GameAudio: missing phrase: {path}", file=sys.stderr)
+        if loaded == 0:
+            print(f"GameAudio: no UI phrases in {phrases_dir}", file=sys.stderr)
+
+    def play_phrase(self, category: PhraseCategory, *, interrupt: bool = False) -> bool:
+        if self._channel.get_busy() and not interrupt:
+            return False
+        fn = self._rotator.next_filename(category)
+        snd = self._sounds.get(fn)
+        if snd is None:
+            return False
+        if interrupt and self._channel.get_busy():
+            self._channel.stop()
+        self._channel.play(snd)
+        return True
+
+
+class _SounddeviceVoiceQueue:
+    """Mix one voice clip at a time into the PortAudio callback."""
+
+    def __init__(self, lock: threading.Lock) -> None:
+        self._lock = lock
+        self._pending: list[np.ndarray] = []
+        self._active: np.ndarray | None = None
+        self._pos = 0
+
+    def enqueue(self, data: np.ndarray, *, interrupt: bool) -> bool:
+        with self._lock:
+            if self._active is not None or self._pending:
+                if not interrupt:
+                    return False
+                self._active = None
+                self._pending.clear()
+            self._active = data
+            self._pos = 0
+        return True
+
+    def mix_into(self, outdata: np.ndarray) -> None:
+        total = len(outdata)
+        offset = 0
+        with self._lock:
+            while offset < total:
+                if self._active is None:
+                    if not self._pending:
+                        return
+                    self._active = self._pending.pop(0)
+                    self._pos = 0
+                voice = self._active
+                pos = self._pos
+                take = min(total - offset, len(voice) - pos)
+                outdata[offset : offset + take] += voice[pos : pos + take]
+                self._pos = pos + take
+                offset += take
+                if self._pos >= len(voice):
+                    self._active = None
+
+
+class _SounddevicePhrasePlayer:
+    def __init__(self, phrases_dir: Path, *, volume: float, target_sr: int, lock: threading.Lock) -> None:
+        self._rotator = PhraseRotator()
+        self._volume = float(_clip01(volume))
+        self._target_sr = target_sr
+        self._voice = _SounddeviceVoiceQueue(lock)
+        self._buffers: dict[str, np.ndarray] = {}
+        for filenames in PHRASE_GROUPS.values():
+            for fn in filenames:
+                if fn in self._buffers:
+                    continue
+                path = phrases_dir / fn
+                if not path.is_file():
+                    print(f"GameAudio: missing phrase: {path}", file=sys.stderr)
+                    continue
+                data, sr = _load_wav_stereo_f32(path)
+                if sr != target_sr:
+                    data = _resample_stereo_linear(data, sr, target_sr)
+                self._buffers[fn] = (data * self._volume).astype(np.float32, copy=False)
+
+    @property
+    def voice(self) -> _SounddeviceVoiceQueue:
+        return self._voice
+
+    def play_phrase(self, category: PhraseCategory, *, interrupt: bool = False) -> bool:
+        fn = self._rotator.next_filename(category)
+        buf = self._buffers.get(fn)
+        if buf is None:
+            return False
+        return self._voice.enqueue(buf, interrupt=interrupt)
+
+
 class _PygameGameAudio:
     def __init__(
         self,
         *,
         music_path: Path,
         hit_path: Path,
+        phrases_dir: Path,
         music_volume: float,
         sfx_volume: float,
+        phrase_volume: float,
+        phrases_enabled: bool,
     ) -> None:
         self._hit: pygame.mixer.Sound | None = None
         self._music_started = False
+        self._phrases: _PygamePhrasePlayer | None = None
 
         if not pygame.mixer.get_init():
             pygame.mixer.init(frequency=44100, size=-16, channels=2, buffer=4096)
+        pygame.mixer.set_num_channels(8)
 
         if hit_path.is_file():
             self._hit = pygame.mixer.Sound(str(hit_path))
@@ -93,9 +217,17 @@ class _PygameGameAudio:
         else:
             print(f"GameAudio: missing music loop: {music_path}", file=sys.stderr)
 
+        if phrases_enabled and phrases_dir.is_dir():
+            self._phrases = _PygamePhrasePlayer(phrases_dir, volume=phrase_volume)
+
     def play_hit(self) -> None:
         if self._hit is not None:
             self._hit.play()
+
+    def play_phrase(self, category: PhraseCategory, *, interrupt: bool = False) -> bool:
+        if self._phrases is None:
+            return False
+        return self._phrases.play_phrase(category, interrupt=interrupt)
 
     def stop(self) -> None:
         if self._music_started:
@@ -106,27 +238,31 @@ class _PygameGameAudio:
 
 
 class _SounddeviceGameAudio:
-    """Loop BGM + one-shot SFX in one PortAudio stream (no pygame.mixer)."""
+    """Loop BGM + one-shot SFX + voice phrases in one PortAudio stream."""
 
     def __init__(
         self,
         *,
         music_path: Path,
         hit_path: Path,
+        phrases_dir: Path,
         music_volume: float,
         sfx_volume: float,
+        phrase_volume: float,
+        phrases_enabled: bool,
     ) -> None:
         import sounddevice as sd
 
         self._sd = sd
         mv = float(_clip01(music_volume))
         sv = float(_clip01(sfx_volume))
-        self._lock = threading.Lock()
+        self._lock = threading.RLock()
         self._music: np.ndarray
         self._music_i = 0
         self._hit_full: np.ndarray | None = None
         self._hit_pos: int | None = None
         self._stream: object | None = None
+        self._phrases: _SounddevicePhrasePlayer | None = None
 
         music_buf: np.ndarray | None = None
         sr_m = 44100
@@ -159,6 +295,14 @@ class _SounddeviceGameAudio:
         self._hit_full = hit_buf
         self._sr = int(sr_out)
 
+        if phrases_enabled and phrases_dir.is_dir():
+            self._phrases = _SounddevicePhrasePlayer(
+                phrases_dir,
+                volume=phrase_volume,
+                target_sr=self._sr,
+                lock=self._lock,
+            )
+
         def callback(outdata: np.ndarray, frames: int, _time, status) -> None:  # type: ignore[no-untyped-def]
             if status:
                 pass
@@ -174,6 +318,8 @@ class _SounddeviceGameAudio:
                         take = min(frames, len(hdata) - hp)
                         outdata[:take] += hdata[hp : hp + take]
                         self._hit_pos = hp + take if hp + take < len(hdata) else None
+                if self._phrases is not None:
+                    self._phrases.voice.mix_into(outdata)
 
             np.clip(outdata, -1.0, 1.0, out=outdata)
             self._music_i = (self._music_i + frames) % ml
@@ -193,6 +339,11 @@ class _SounddeviceGameAudio:
         with self._lock:
             self._hit_pos = 0
 
+    def play_phrase(self, category: PhraseCategory, *, interrupt: bool = False) -> bool:
+        if self._phrases is None:
+            return False
+        return self._phrases.play_phrase(category, interrupt=interrupt)
+
     def stop(self) -> None:
         if self._stream is not None:
             try:
@@ -204,40 +355,73 @@ class _SounddeviceGameAudio:
 
 
 class GameAudio:
-    """Background music (looped) + hit SFX: pygame.mixer when available, else sounddevice."""
+    """Background music + Kazakh UI voice phrases for the projector tile game."""
 
     def __init__(
         self,
         *,
         assets_dir: Path,
-        music_volume: float = 0.32,
+        music_volume: float = 0.28,
         sfx_volume: float = 0.85,
+        phrase_volume: float = 0.95,
+        phrases_enabled: bool = True,
     ) -> None:
         assets_dir = assets_dir.resolve()
         music_path = assets_dir / MUSIC_LOOP_FILENAME
         hit_path = assets_dir / HIT_SFX_FILENAME
+        phrases_dir = default_phrases_dir(assets_dir)
+        common = dict(
+            music_path=music_path,
+            hit_path=hit_path,
+            phrases_dir=phrases_dir,
+            music_volume=music_volume,
+            sfx_volume=sfx_volume,
+            phrase_volume=phrase_volume,
+            phrases_enabled=phrases_enabled,
+        )
 
         if _pygame_mixer_usable():
-            self._impl: _PygameGameAudio | _SounddeviceGameAudio = _PygameGameAudio(
-                music_path=music_path,
-                hit_path=hit_path,
-                music_volume=music_volume,
-                sfx_volume=sfx_volume,
-            )
+            self._impl: _PygameGameAudio | _SounddeviceGameAudio = _PygameGameAudio(**common)
         else:
             print(
                 "GameAudio: pygame.mixer not in this build — using sounddevice for audio.",
                 file=sys.stderr,
             )
-            self._impl = _SounddeviceGameAudio(
-                music_path=music_path,
-                hit_path=hit_path,
-                music_volume=music_volume,
-                sfx_volume=sfx_volume,
-            )
+            self._impl = _SounddeviceGameAudio(**common)
+
+        self._positive_hit_count = 0
+
+    def _play(self, category: PhraseCategory, *, interrupt: bool = False) -> bool:
+        return self._impl.play_phrase(category, interrupt=interrupt)
+
+    def play_positive(self) -> bool:
+        """Successful tile hit — praise phrase every ``POSITIVE_PHRASE_STRIDE`` hits."""
+        self._positive_hit_count += 1
+        if self._positive_hit_count < POSITIVE_PHRASE_STRIDE:
+            return False
+        self._positive_hit_count = 0
+        return self._play("positive")
+
+    def play_correction(self) -> bool:
+        """Missed tile — rotates through correction_* phrases."""
+        return self._play("correction")
+
+    def play_motivation(self) -> bool:
+        """Combo / bonus — rotates through motivation_* phrases."""
+        return self._play("motivation", interrupt=True)
+
+    def play_intro_start(self) -> bool:
+        """Session start — intro_01 / intro_02 alternates."""
+        return self._play("intro_start", interrupt=True)
+
+    def play_intro_end(self) -> bool:
+        """Session end — «сеанс аяқталды»."""
+        return self._play("intro_end", interrupt=True)
 
     def play_hit(self) -> None:
-        self._impl.play_hit()
+        """Backward-compatible: voice praise on hit (no coin SFX)."""
+        if not self.play_positive():
+            self._impl.play_hit()
 
     def stop(self) -> None:
         self._impl.stop()

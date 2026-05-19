@@ -87,13 +87,6 @@ export function RuntimeControls({
                 {presetLabel(preset.id, t)}
               </button>
             ))}
-            <button
-              type="button"
-              className="runtime__preset"
-              onClick={() => setGameParams(GAME_DEFAULTS)}
-            >
-              {t.control.reset}
-            </button>
           </div>
         </header>
 
