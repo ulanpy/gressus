@@ -2049,3 +2049,170 @@ label {
   }
 }
 
+.garden {
+  width: min(1280px, 100%);
+  margin: 16px auto 0;
+  display: grid;
+  gap: 12px;
+}
+
+.garden__stage {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 10;
+  border-radius: 28px;
+  overflow: hidden;
+  border: 1px solid var(--panel-border);
+  box-shadow: 0 30px 80px rgb(15 23 42 / 0.18);
+  background: rgb(186 230 253);
+}
+
+.garden__canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.garden__hint {
+  margin: 0;
+  text-align: center;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.garden-feet {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  display: flex;
+  justify-content: center;
+  align-items: flex-end;
+  gap: clamp(12px, 4vw, 48px);
+  padding-bottom: 4%;
+}
+
+.garden-feet__side {
+  position: relative;
+  width: 16%;
+  max-width: 180px;
+  min-width: 86px;
+  aspect-ratio: 100 / 112;
+  flex-shrink: 0;
+  filter: drop-shadow(0 18px 28px rgb(15 23 42 / 0.28));
+}
+
+.garden-feet__side svg {
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+.garden-feet__side .foot-outline {
+  stroke: rgb(15 23 42 / 0.35);
+  stroke-width: 1.1;
+}
+
+.garden-hud {
+  position: absolute;
+  inset: 0;
+  padding: 22px 26px;
+  pointer-events: none;
+  color: rgb(15 23 42);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-rows: auto auto 1fr;
+  gap: 14px;
+}
+
+.garden-hud__counter {
+  grid-column: 2 / 3;
+  grid-row: 1 / 2;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 22px 10px 18px;
+  background: rgb(255 255 255 / 0.85);
+  border-radius: 999px;
+  box-shadow: 0 18px 40px rgb(15 23 42 / 0.18);
+  backdrop-filter: blur(10px);
+}
+
+.garden-hud__counter-icon {
+  font-size: 36px;
+  line-height: 1;
+}
+
+.garden-hud__counter-value {
+  font-size: clamp(36px, 6vw, 64px);
+  line-height: 1;
+  letter-spacing: -0.04em;
+  font-variant-numeric: tabular-nums;
+  color: rgb(15 23 42);
+}
+
+.garden-hud__counter-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: rgb(71 85 105);
+  max-width: 120px;
+  line-height: 1.2;
+}
+
+.garden-hud__stage {
+  grid-column: 1 / 2;
+  grid-row: 1 / 2;
+  display: grid;
+  gap: 6px;
+  align-self: start;
+  padding: 10px 16px;
+  background: rgb(255 255 255 / 0.85);
+  border-radius: 16px;
+  box-shadow: 0 18px 40px rgb(15 23 42 / 0.16);
+  backdrop-filter: blur(10px);
+  width: fit-content;
+}
+
+.garden-hud__stage-label {
+  font-size: 13px;
+  font-weight: 700;
+  color: rgb(15 23 42);
+  letter-spacing: 0.02em;
+}
+
+.garden-hud__stage-bar {
+  width: 160px;
+  height: 8px;
+  border-radius: 999px;
+  background: rgb(226 232 240);
+  overflow: hidden;
+}
+
+.garden-hud__stage-fill {
+  height: 100%;
+  background: linear-gradient(90deg, rgb(132 204 22), rgb(34 197 94), rgb(22 163 74));
+  transition: width 220ms ease;
+}
+
+@media (max-width: 720px) {
+  .garden-hud {
+    padding: 14px;
+    gap: 10px;
+  }
+  .garden-hud__counter {
+    padding: 8px 16px;
+    gap: 8px;
+  }
+  .garden-hud__counter-icon {
+    font-size: 28px;
+  }
+  .garden-hud__counter-label {
+    display: none;
+  }
+  .garden-hud__stage-bar {
+    width: 110px;
+  }
+  .garden-feet__side {
+    width: 14%;
+  }
+}
+
