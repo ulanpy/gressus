@@ -52,11 +52,13 @@ BG_COLOR = (6, 12, 32)
 FG_COLOR = (255, 255, 255)
 
 # Per-tile gates (no CLI knobs; tuned in code).
-LIFT_MM_MIN = 40.0
+# Lowered for mannequin / light-touch demos: even a foot resting on the tile
+# (~1.5–2 cm above floor) over ~15% of the tile area should register.
+LIFT_MM_MIN = 18.0
 LIFT_MM_MAX = 250.0
-DEPTH_FILL_THRESH = 0.30
-RGB_FILL_THRESH = 0.40
-RGB_LIT_DELTA = 30
+DEPTH_FILL_THRESH = 0.15
+RGB_FILL_THRESH = 0.20
+RGB_LIT_DELTA = 22
 HIT_COOLDOWN_S = 0.18
 INSOLE_MAX_AGE_S = 0.40
 
@@ -394,7 +396,8 @@ def main() -> None:
                         ready = abs(tile_center_y - hit_y) <= hit_window * 0.5
                         tile_d[i] = 1.0 if ready else 0.0
                         tile_r[i] = 1.0 if ready else 0.0
-                        tile_p[i] = pressure_ok(t.lane, insole_snap, insole_enabled)
+                        # Auto-press in demo: ignore insole pressure entirely.
+                        tile_p[i] = True
                 elif depth_mm is not None and floor_mm is not None:
                     for i, t in enumerate(tiles):
                         if t.hit:

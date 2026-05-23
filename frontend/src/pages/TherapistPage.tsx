@@ -26,10 +26,15 @@ export function TherapistPage({
 
   return (
     <>
-      <section className="hero hero--compact">
-        <div>
-          <p className="eyebrow">{t.therapist.eyebrow}</p>
-          <h1>{t.therapist.title}</h1>
+      <section className="hero hero--compact hero--attract">
+        <div className="hero-attract__text">
+          <p className="eyebrow eyebrow--attract">
+            <span className="live-dot" aria-hidden />
+            {t.therapist.eyebrow}
+          </p>
+          <h1 className="hero-attract__title">
+            <span className="hero-attract__title-text">{t.therapist.title}</span>
+          </h1>
           <p className="lede">{t.therapist.lede}</p>
         </div>
 

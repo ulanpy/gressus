@@ -1,6 +1,19 @@
-# Treadmill feedback game
+# ExoStep - Treadmill feedback game
+
+<table>
+<tr>
+<td width="58%" valign="top">
 
 Интерактивная реабилитация для детей с ДЦП на беговой дорожке: проектор даёт визуальную обратную связь, камера и стельки фиксируют шаг. Прототип на имеющемся стеке (RealSense depth, калибровка AprilTag, опционально Insolex).
+
+</td>
+<td width="42%" valign="top" align="right">
+
+<img src="assets/demo.gif" alt="Демо игры на беговой дорожке" width="240" />
+
+</td>
+</tr>
+</table>
 
 ## Содержание
 
@@ -16,7 +29,7 @@
 
 **Сценарий:** depth (aligned-to-color), калибровка в `config/calibration.json`, основная игра — `scripts/tile_game.py`.
 
-### Железо (май 2026)
+### Железо
 
 
 | Компонент | Модель               | Заметка                                                                   |
@@ -66,21 +79,6 @@ deno task dev
 INSOLE_PORT=9101 poetry run uvicorn src.insole_pressure_web:app --host 0.0.0.0 --port 8000
 ```
 
-### Старый режим (stdin JSONL, pygame)
-
-```bash
-poetry run python scripts/listener.py 0.0.0.0 9100 \
-  | QT_QPA_PLATFORM=xcb poetry run python scripts/insole_pressure_viz.py --size m
-```
-
-Без стелек — мок для отладки:
-
-```bash
-QT_QPA_PLATFORM=xcb poetry run python scripts/insole_pressure_viz.py --mock --size m
-```
-
-Для размера **S** — `--size s`.
-
 ## 3. Прочие команды запуска
 
 ### Калибровка (AprilTag на проекторе)
@@ -101,32 +99,12 @@ QT_QPA_PLATFORM=xcb poetry run python scripts/calibrate_apriltag.py \
 
 Enter — сохранить, Esc — выход, `S` — снимок `calibrate_debug.jpg` (в `.gitignore`).
 
-### Pre-warp проекции на ленту
-
-Четыре угла в `config/calibration.json` как `proj_quad` (не затирает поля AprilTag):
-
-```bash
-poetry run python scripts/adjust_projection_quad.py -d 1
-```
-
-Клавиши: `1/2/3/4` — угол (TL/TR/BR/BL), `h j k l` или стрелки — сдвиг, Shift — ×10, `[` / `]` — шаг, `g` — паттерн, `r` — сброс, Enter/`S` — сохранить, Esc — выход. Клетки сетки должны быть равными квадратами **на ленте**.
 
 ### RealSense debug (без проектора)
 
 ```bash
 # color + depth, FPS, USB
 QT_QPA_PLATFORM=xcb poetry run python scripts/realsense_depth_preview.py --align-to-color
-
-# SPACE = пустой пол, дальше маска «ближе пола»
-QT_QPA_PLATFORM=xcb poetry run python scripts/realsense_floor_debug.py --align-to-color --lift-mm 70
-```
-
-При «Couldn't resolve requests» / таймауте кадра — облегчённый профиль:
-
-```bash
-poetry run python scripts/realsense_depth_preview.py --align-to-color \
-  --depth-width 640 --depth-height 480 --depth-fps 15 \
-  --color-width 640 --color-height 480 --color-fps 15
 ```
 
 ### Игра по плиткам (`tile_game.py`)
@@ -160,29 +138,7 @@ QT_QPA_PLATFORM=xcb poetry run python scripts/tile_game.py \
 
 **Разрешение:** в JSON — `camera_resolution`, `proj_resolution`; игра на том же дисплее (`-d`) и разрешении проектора, что при калибровке; камера — 640×480.
 
-## 4. Структура репозитория
-
-
-| Путь                                              | Назначение                                                        |
-| ------------------------------------------------- | ----------------------------------------------------------------- |
-| `scripts/listener.py`                             | TCP JSONL от Windows WaveX-bridge → stdout                        |
-| `config/calibration.json`                         | Гомография, разрешения, `proj_quad` (локально, коммит по желанию) |
-| `src/calibration.py`                              | `cam_to_proj` и загрузка JSON                                     |
-| `src/insole_stream.py`                            | Приём Insolex: TCP, парсинг L/R, статистика                       |
-| `src/insole_pressure_web.py`                      | FastAPI + WebSocket для веб-визуализации                          |
-| `src/insole_sensors_m.py` / `insole_sensors_s.py` | Координаты 64 сенсоров M / S                                      |
-| `scripts/tile_game.py`                            | Основная игра                                                     |
-| `scripts/insole_pressure_viz.py`                  | 2D-давление (stdin); `--size m|s`, `--mock`                       |
-| `scripts/calibrate_apriltag.py`                   | Калибровка AprilTag 36h11                                         |
-| `scripts/adjust_projection_quad.py`               | Pre-warp четырёхугольника                                         |
-| `scripts/realsense_depth_preview.py`              | Отладка depth/color                                               |
-| `scripts/realsense_floor_debug.py`                | Сегментация пол / человек                                         |
-| `scripts/display_utils.py`                        | Полноэкранный pygame, выбор дисплея                               |
-| `frontend/`                                       | React/Vite UI давления                                            |
-| `docs/`                                           | Подробные заметки (см. ниже)                                      |
-
-
-## 5. Документация
+## 4. Документация
 
 
 | Документ                                                           | О чём                                           |

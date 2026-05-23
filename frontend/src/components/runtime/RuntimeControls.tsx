@@ -111,16 +111,18 @@ export function RuntimeControls({
             step={0.1}
             format={(value) => `${value.toFixed(2)} s`}
           />
-          <SliderField
-            label={t.control.pressureThreshold}
-            hint={t.control.thresholdHint}
-            value={gameParams.insoleThresholdKpa}
-            onChange={(value) => setGameParams((prev) => ({ ...prev, insoleThresholdKpa: value }))}
-            min={0}
-            max={30}
-            step={0.5}
-            format={(value) => `${value.toFixed(1)} ${t.live.kpa}`}
-          />
+          {!gameParams.noInsole && (
+            <SliderField
+              label={t.control.pressureThreshold}
+              hint={t.control.thresholdHint}
+              value={gameParams.insoleThresholdKpa}
+              onChange={(value) => setGameParams((prev) => ({ ...prev, insoleThresholdKpa: value }))}
+              min={0}
+              max={30}
+              step={0.5}
+              format={(value) => `${value.toFixed(1)} ${t.live.kpa}`}
+            />
+          )}
         </div>
 
         <button
@@ -167,13 +169,48 @@ export function RuntimeControls({
             <CameraIcon />
             {t.control.cameraCalibration}
           </button>
+          <label
+            className={`runtime__switch${gameParams.noInsole || gameParams.demo ? ' runtime__switch--on' : ''}`}
+            title={t.control.noInsoleHint}
+          >
+            <input
+              type="checkbox"
+              checked={gameParams.noInsole || gameParams.demo}
+              disabled={gameParams.demo}
+              onChange={(event) => {
+                const checked = event.target.checked
+                setGameParams((prev) => ({ ...prev, noInsole: checked }))
+              }}
+            />
+            <span className="runtime__switch-track" aria-hidden />
+            <span className="runtime__switch-label">{t.control.noInsole}</span>
+          </label>
+          <label
+            className={`runtime__switch runtime__switch--demo${gameParams.demo ? ' runtime__switch--on' : ''}`}
+            title={t.control.demoHint}
+          >
+            <input
+              type="checkbox"
+              checked={gameParams.demo}
+              onChange={(event) => {
+                const checked = event.target.checked
+                setGameParams((prev) => ({ ...prev, demo: checked }))
+              }}
+            />
+            <span className="runtime__switch-track" aria-hidden />
+            <span className="runtime__switch-label">{t.control.demo}</span>
+          </label>
           <button
             type="button"
             className="runtime__primary"
             onClick={() => void startGame(gameParams)}
             disabled={!canStart}
           >
-            {t.control.startGame}
+            {gameParams.demo
+              ? t.control.startGameDemo
+              : gameParams.noInsole
+              ? t.control.startGameNoInsole
+              : t.control.startGame}
           </button>
         </footer>
       </article>

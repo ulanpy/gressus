@@ -34,6 +34,8 @@ class StartRuntimeRequest(BaseModel):
     display: int | None = None
     outputRotation: Literal[0, 90, 180, 270] = 270
     insoleThresholdKpa: float = Field(DEFAULT_THRESHOLD_KPA, ge=0.0)
+    noInsole: bool = False
+    demo: bool = False
     speed: float = Field(0.35, ge=0.05, le=1.5)
     stepTimeS: float = Field(2.5, ge=0.2, le=2.8)
 
@@ -65,6 +67,10 @@ def _command_for_job(cfg: StartRuntimeRequest) -> list[str]:
             "--insole-frame-url",
             f"{DEFAULT_LOOPBACK_BASE}/api/frame?source=live",
         ]
+        if cfg.demo:
+            cmd.append("--demo")
+        if cfg.noInsole or cfg.demo:
+            cmd.append("--no-insole")
         if cfg.display is not None:
             cmd.extend(["-d", str(cfg.display)])
         return cmd

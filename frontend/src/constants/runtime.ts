@@ -5,6 +5,8 @@ export const GAME_DEFAULTS: GameLaunchParams = {
   display: null,
   outputRotation: 270,
   insoleThresholdKpa: 8,
+  noInsole: false,
+  demo: false,
   speed: 0.35,
   stepTimeS: 2.5,
 }
@@ -18,16 +20,16 @@ export const GAME_PRESETS: { id: string; label: string; values: Partial<GameLaun
   {
     id: 'slow',
     label: 'slow',
-    values: { speed: 0.45, stepTimeS: 2.5, insoleThresholdKpa: 8 },
+    values: { speed: 0.45, stepTimeS: 2.5, insoleThresholdKpa: 8, noInsole: false },
   },
   {
     id: 'medium',
     label: 'medium',
-    values: { speed: 0.75, stepTimeS: 1.6, insoleThresholdKpa: 8 },
+    values: { speed: 0.75, stepTimeS: 1.6, insoleThresholdKpa: 8, noInsole: false },
   },
   {
     id: 'fast',
     label: 'fast',
-    values: { speed: 1.10, stepTimeS: 1.0, insoleThresholdKpa: 10 },
+    values: { speed: 1.10, stepTimeS: 1.0, insoleThresholdKpa: 10, noInsole: false },
   },
 ]
