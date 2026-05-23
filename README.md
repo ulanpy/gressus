@@ -29,6 +29,10 @@
 
 **Сценарий:** depth (aligned-to-color), калибровка в `config/calibration.json`, основная игра — `scripts/tile_game.py`.
 
+<p align="center">
+  <img src="assets/insole-viz-screenshot.png" alt="Визуализатор давления Insolex" width="640" />
+</p>
+
 ### Железо
 
 
