@@ -1,96 +1,85 @@
-# ExoStep - Treadmill feedback game
+# Gressus — Gait Feedback System
 
 <table>
 <tr>
 <td width="58%" valign="top">
 
-Интерактивная реабилитация для детей с ДЦП на беговой дорожке: проектор даёт визуальную обратную связь, камера и стельки фиксируют шаг. Прототип на имеющемся стеке (RealSense depth, калибровка AprilTag, опционально Insolex).
+**Gressus** (from the Latin for *"step"* or *"progress"*) is the visual feedback module of **A-GEAR**, a gait exoskeleton-assisted rehabilitation system for children with cerebral palsy. A projector guides steps on the treadmill; a depth camera and Insolex insoles confirm each footfall in real time.
+
+The prototype uses RealSense depth, AprilTag camera–projector calibration, and optional insole pressure (Insolex/WaveX). Demonstrated at **KIHE-2026 — Kazakhstan International Healthcare Exhibition**, Almaty, 20–22 May 2026.
 
 </td>
 <td width="42%" valign="top" align="right">
 
-<img src="assets/demo.gif" alt="Демо игры на беговой дорожке" width="240" />
+<img src="assets/demo.gif" alt="ExoStep treadmill demo" width="240" />
 
 </td>
 </tr>
 </table>
 
-## Содержание
+## 1. About the project
 
-1. [О проекте](#1-о-проекте)
-2. [Веб-визуализация давления](#2-веб-визуализация-давления)
-3. [Прочие команды запуска](#3-прочие-команды-запуска)
-4. [Структура репозитория](#4-структура-репозитория)
-5. [Документация](#5-документация)
+The child walks on the treadmill and steps on falling tiles (left/right lane). A hit counts only when three signals agree inside the tile zone: **depth** lift above the floor, **occlusion** of projected light by the foot, and **pressure** on the matching Insolex insole (`D AND R AND P`). The goal is rhythmic alternating load and clear feedback without a complex UI.
 
-## 1. О проекте
-
-Ребёнок идёт по дорожке и наступает на падающие плитки (левая/правая дорожка). Попадание засчитывается только при согласовании трёх сигналов в зоне плитки: подъём по **depth** над полом, **окклюзия** проецируемого света стопой и **давление** на соответствующей стельке Insolex (`D AND R AND P`). Цель — ритмичная поочерёдная нагрузка и понятная обратная связь без сложного интерфейса.
-
-**Сценарий:** depth (aligned-to-color), калибровка в `config/calibration.json`, основная игра — `scripts/tile_game.py`.
+**Workflow:** depth (aligned-to-color), calibration in `config/calibration.json`, game logic in `scripts/tile_game.py`. In normal use the therapist starts sessions from the web GUI (see below); the same scripts can also be run from the terminal.
 
 <p align="center">
-  <img src="assets/insole-viz-screenshot.png" alt="Визуализатор давления Insolex" width="640" />
+  <img src="assets/insole-viz-screenshot.png" alt="Therapist view — Insolex pressure visualizer" width="640" />
 </p>
 
-### Железо
+## 2. Web GUI
 
+The web app (`frontend/`) is the primary operator interface:
 
-| Компонент | Модель               | Заметка                                                                   |
-| --------- | -------------------- | ------------------------------------------------------------------------- |
-| Проектор  | Frbby P40 Pro        | FHD 1920×1080; под углом к ленте — pre-warp (`adjust_projection_quad.py`) |
-| Камера    | Intel RealSense D435 | Stereo depth + RGB; трекинг стоп по depth, не по яркости RGB              |
-| Стельки   | Insolex / WaveX      | Давление по TCP JSONL с Windows-bridge (порт по умолчанию `9100`)         |
+- **Therapist** — live insole pressure heatmaps (left/right foot).
+- **Control** — start/stop the tile game and AprilTag calibration, speed and threshold sliders, demo and no-insole modes.
+- **Patient** — simplified view for the session.
 
+The FastAPI backend (`src/insole_pressure_web.py`) receives Insolex/WaveX frames over TCP JSONL on `0.0.0.0:9100`, streams them to the frontend over WebSocket, and spawns game/calibration processes on demand.
 
-### Стек
+<p align="center">
+  <img src="assets/web-control-panel-screenshot.png" alt="Web control panel — game and calibration" width="640" />
+</p>
 
+### Setup and launch
 
-| Слой           | Технологии                                                                      |
-| -------------- | ------------------------------------------------------------------------------- |
-| Runtime        | Python ≥3.14, [Poetry](https://python-poetry.org/)                              |
-| Захват и игра  | OpenCV, NumPy, pygame, pyrealsense2, pupil-apriltags, sounddevice               |
-| Давление (веб) | FastAPI, uvicorn; фронт — React/Vite, [Deno](https://deno.land/) (`frontend/`)  |
-| Конфиг         | `config/calibration.json` — гомография камера→проектор, `proj_quad`, разрешения |
-
-
-Установка зависимостей:
+**Backend** — Python dependencies:
 
 ```bash
 poetry install
 ```
 
-При ошибках Qt/Wayland в OpenCV-скриптах добавляйте `QT_QPA_PLATFORM=xcb`.
+**Frontend** — requires [Deno](https://docs.deno.com/runtime/getting_started/installation/) (npm deps are resolved from `frontend/deno.lock` on first run):
 
-## 2. Веб-визуализация давления
+```bash
+curl -fsSL https://deno.land/install.sh | sh   # Linux/macOS; see Deno docs for other platforms
+```
 
-Backend принимает кадры Insolex/WaveX по TCP JSONL на `0.0.0.0:9100` и отдаёт их во фронт по WebSocket. В UI — переключатель mock без стелек и размер стельки **M/S**.
+Start the backend:
 
 ```bash
 poetry run uvicorn src.insole_pressure_web:app --host 0.0.0.0 --port 8000
 ```
 
-В отдельном терминале:
+In a separate terminal, start the frontend:
 
 ```bash
 cd frontend
 deno task dev
 ```
 
-Откройте `http://localhost:5173`. Другой TCP-порт для bridge:
+Open `http://localhost:5173`. Use the **Control** tab to start the game; live insole data appears on **Therapist** once a session is running.
+
+## 3. Terminal launch
+
+For debugging or setups without the web UI, run scripts directly.
+
+### Calibration (AprilTag on the projector)
+
+Via RealSense color stream (no manual `/dev/videoN`):
 
 ```bash
-INSOLE_PORT=9101 poetry run uvicorn src.insole_pressure_web:app --host 0.0.0.0 --port 8000
-```
-
-## 3. Прочие команды запуска
-
-### Калибровка (AprilTag на проекторе)
-
-Через RealSense color stream (без ручного `/dev/videoN`):
-
-```bash
-QT_QPA_PLATFORM=xcb poetry run python scripts/calibrate_apriltag.py \
+poetry run python scripts/calibrate_apriltag.py \
   -c realsense \
   --width 640 \
   --height 480 \
@@ -101,23 +90,22 @@ QT_QPA_PLATFORM=xcb poetry run python scripts/calibrate_apriltag.py \
   -o config/calibration.json
 ```
 
-Enter — сохранить, Esc — выход, `S` — снимок `calibrate_debug.jpg` (в `.gitignore`).
+Enter — save, Esc — quit, `S` — snapshot `calibrate_debug.jpg` (listed in `.gitignore`).
 
-
-### RealSense debug (без проектора)
+### RealSense debug (no projector)
 
 ```bash
 # color + depth, FPS, USB
-QT_QPA_PLATFORM=xcb poetry run python scripts/realsense_depth_preview.py --align-to-color
+poetry run python scripts/realsense_depth_preview.py --align-to-color
 ```
 
-### Игра по плиткам (`tile_game.py`)
+### Tile game (`tile_game.py`)
 
-Две дорожки; хит при **D AND R AND P** в зоне плитки:
+Two lanes; a hit requires **D AND R AND P** inside the tile zone:
 
-1. **D** — depth-пиксели с подъёмом **40–250 мм** над baseline-полом.
-2. **R** — пиксели, не подсвеченные проектором (окклюзия стопой).                                   
-3. **P** — давление стельки выше `--insole-thresh-kpa`.
+1. **D** — depth pixels lifted **40–250 mm** above the baseline floor.
+2. **R** — pixels not lit by the projector (foot occlusion).
+3. **P** — insole pressure above `--insole-thresh-kpa`.
 
 ```bash
 QT_QPA_PLATFORM=xcb poetry run python scripts/tile_game.py \
@@ -130,29 +118,22 @@ QT_QPA_PLATFORM=xcb poetry run python scripts/tile_game.py \
   --step-time-s 1.2
 ```
 
-**Скорость:** `-S` / `--speed` / `--treadmill-speed-mps` — **0.05–1.5** (условные м/с); в px/s: `speed × 420`, лимит ~45–620. Для ускорения сначала уменьшайте `--step-time-s`, затем `--speed` до ~1.0–1.5.
+**Speed:** `-S` / `--speed` / `--treadmill-speed-mps` — **0.05–1.5** (nominal m/s); in px/s: `speed × 420`, range ~45–620. To speed up, first lower `--step-time-s`, then raise `--speed` to ~1.0–1.5.
 
-**Сдвиг проекции:** стрелки (Shift = ×5), затем `S` — запись `hit_shift_canvas` в тот же JSON.
+**Projection offset:** arrow keys (Shift = ×5), then `S` — writes `hit_shift_canvas` to the same JSON.
 
-Без стелек: `--no-insole`.
+Without insoles: `--no-insole`.
 
-**Ход сессии:** встать вне зоны проекции → `SPACE` (baseline пола + старт) → наступать по плиткам поочерёдно → `R` сброс, `Esc`/`Q` выход.
+**Session flow:** stand outside the projection zone → `SPACE` (floor baseline + start) → step on tiles alternately → `R` reset, `Esc`/`Q` quit.
 
-Флаги: `--calibration`, `-d/--display`, `--output-rotation`, `--no-insole`, `--insole-port`, `--insole-thresh-kpa`, `-S/--speed/--treadmill-speed-mps`, `--step-time-s`.
+Flags: `--calibration`, `-d/--display`, `--output-rotation`, `--no-insole`, `--insole-port`, `--insole-thresh-kpa`, `-S/--speed/--treadmill-speed-mps`, `--step-time-s`.
 
-**Разрешение:** в JSON — `camera_resolution`, `proj_resolution`; игра на том же дисплее (`-d`) и разрешении проектора, что при калибровке; камера — 640×480.
+**Resolution:** JSON fields `camera_resolution`, `proj_resolution`; run the game on the same display (`-d`) and projector resolution as during calibration; camera — 640×480.
 
-## 4. Документация
+## 4. Documentation
 
-
-| Документ                                                           | О чём                                           |
-| ------------------------------------------------------------------ | ----------------------------------------------- |
-| [docs/occlusion-and-treadmill.md](docs/occlusion-and-treadmill.md) | Тень, окклюзия, зачем depth, свет и установка   |
-| [docs/system-spec.md](docs/system-spec.md)                         | Железо, pipeline D435, чеклист                  |
-| [docs/insole-sensors-m.md](docs/insole-sensors-m.md)               | Координаты сенсоров стельки M                   |
-| `[scripts/listener.py](scripts/listener.py)`                       | Приём давления с Windows (TCP JSONL), docstring |
-
-
-## Лицензия
-
-Не выбрана.
+| Document                                                           | Description                                   |
+| ------------------------------------------------------------------ | --------------------------------------------- |
+| [docs/occlusion-and-treadmill.md](docs/occlusion-and-treadmill.md) | Shadow, occlusion, why depth, lighting, setup |
+| [docs/system-spec.md](docs/system-spec.md)                         | Hardware, D435 pipeline, checklist            |
+| [docs/roadmap.md](docs/roadmap.md)                                 | Development vectors, priorities, 3–6 month plan |
