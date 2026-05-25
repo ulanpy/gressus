@@ -32,9 +32,9 @@ except ImportError as e:
     print("pyrealsense2 is not installed. Run: poetry install", file=sys.stderr)
     raise SystemExit(1) from e
 
-from backend.modules.insole.ws_client import (
+from shared.insole_ws_client import (
     DEFAULT_INSOLE_WS_BASE,
-    BackendInsoleWsClient,
+    InsoleWsClient,
     build_insole_ws_url,
 )
 from shared.insole_types import InsoleSnapshot
@@ -205,7 +205,7 @@ def main() -> None:
     cw, ch = output_canvas_size(scr_w, scr_h, rot)
     audio = GameAudio(assets_dir=default_assets_dir())
 
-    insole_client: BackendInsoleWsClient | None = None
+    insole_client: InsoleWsClient | None = None
     pipe = None
     align = None
     depth_scale_m = 0.0
@@ -215,7 +215,7 @@ def main() -> None:
                 args.insole_ws_url,
                 threshold_kpa=args.insole_thresh_kpa,
             )
-            insole_client = BackendInsoleWsClient(ws_url)
+            insole_client = InsoleWsClient(ws_url)
             insole_client.start()
         if not args.demo:
             pipe, align, depth_scale_m = start_realsense(

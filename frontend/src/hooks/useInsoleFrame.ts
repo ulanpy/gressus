@@ -64,7 +64,7 @@ export function useInsoleFrame(
       return () => window.cancelAnimationFrame(rafId)
     }
 
-    const ws = new WebSocket(websocketUrl(source, size))
+    const ws = new WebSocket(websocketUrl(size))
 
     ws.onopen = () => setStatus('подключено')
     ws.onmessage = (event) => {

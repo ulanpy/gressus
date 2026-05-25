@@ -1,8 +1,7 @@
-"""Insole frame assembly and live/mock sources."""
+"""Insole frame assembly from live TCP ingest."""
 
 from __future__ import annotations
 
-import time
 from typing import Any
 
 import numpy as np
@@ -11,13 +10,11 @@ from backend.core.configs.config import Config
 from backend.modules.insole.receiver import InsoleTcpReceiver
 from shared.insole_types import N_SENSORS, pressure_stats
 from backend.modules.insole.geometry import load_insole_geometry
-from backend.modules.insole.mock import mock_pressure_pair
 from backend.modules.insole.schemas import (
     InsoleFrameResponse,
     InsoleGeometryResponse,
     InsoleSize,
     PressureStatsResponse,
-    SourceMode,
 )
 from backend.runtime.process_manager import ProcessManager
 
@@ -30,12 +27,10 @@ class InsoleService:
         *,
         receiver: InsoleTcpReceiver | None,
         process_manager: ProcessManager,
-        started_at: float,
         config: Config,
     ) -> None:
         self._receiver = receiver
         self._process_manager = process_manager
-        self._started_at = started_at
         self._config = config
 
     def geometry(self, size: InsoleSize) -> InsoleGeometryResponse:
@@ -47,40 +42,12 @@ class InsoleService:
             right=right_mm,
         )
 
-    def frame(self, *, size: InsoleSize, source: SourceMode, threshold_kpa: float) -> InsoleFrameResponse:
-        if source == "mock":
-            return self.mock_frame(size=size, threshold_kpa=threshold_kpa)
-        return self.live_frame(size=size, threshold_kpa=threshold_kpa)
-
-    def mock_frame(self, *, size: InsoleSize, threshold_kpa: float) -> InsoleFrameResponse:
-        t_sec = time.monotonic() - self._started_at
-        left, right = mock_pressure_pair(size, t_sec)
-        return self._build_frame(
-            size=size,
-            source="mock",
-            obj={
-                "seq": int(t_sec * 50),
-                "dtMs": 20.0,
-                "L_online": True,
-                "R_online": True,
-            },
-            left=left,
-            right=right,
-            threshold_kpa=threshold_kpa,
-            connected=True,
-            age_s=0.0,
-            error=None,
-            available=True,
-            game_running=self.is_game_running(),
-        )
-
-    def live_frame(self, *, size: InsoleSize, threshold_kpa: float) -> InsoleFrameResponse:
+    def frame(self, *, size: InsoleSize, threshold_kpa: float) -> InsoleFrameResponse:
         if self._receiver is None:
             return self._passive_live_frame(size)
         snapshot = self._receiver.latest_snapshot(threshold_kpa)
         return self._build_frame(
             size=size,
-            source="live",
             obj=snapshot.obj,
             left=snapshot.left,
             right=snapshot.right,
@@ -100,7 +67,6 @@ class InsoleService:
     def _passive_live_frame(self, size: InsoleSize) -> InsoleFrameResponse:
         return self._build_frame(
             size=size,
-            source="live",
             obj={},
             left=None,
             right=None,
@@ -116,7 +82,6 @@ class InsoleService:
         self,
         *,
         size: InsoleSize,
-        source: SourceMode,
         obj: dict[str, Any],
         left: np.ndarray | None,
         right: np.ndarray | None,
@@ -129,7 +94,7 @@ class InsoleService:
     ) -> InsoleFrameResponse:
         return InsoleFrameResponse(
             size=size,
-            source=source,
+            source="live",
             available=available,
             gameRunning=game_running,
             seq=obj.get("seq"),

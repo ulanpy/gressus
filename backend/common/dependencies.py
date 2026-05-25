@@ -27,7 +27,6 @@ def get_insole_service(request: Request) -> InsoleService:
     return InsoleService(
         receiver=get_insole_receiver(request),
         process_manager=request.app.state.process_manager,
-        started_at=request.app.state.started_at,
         config=request.app.state.config,
     )
 

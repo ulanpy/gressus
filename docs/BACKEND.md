@@ -13,7 +13,7 @@ station/          # Station runtime: game library, runners, debug tools
   assets/         # Game audio, UI voice phrases (Pygame runtime)
   runners/        # tile_game, calibrate_apriltag (spawned by backend or CLI)
   tools/          # RealSense debug utilities
-shared/           # Cross-layer code contracts (DTOs, schemas — not runtime data)
+shared/           # Cross-layer contracts (DTOs, WS client — not runtime data)
 frontend/         # Web UI (public/ + src/assets/ for bundled static)
 config/           # Machine-local JSON (calibration.json gitignored; see example)
 docs/media/       # README / marketing screenshots
@@ -30,7 +30,7 @@ docs/media/       # README / marketing screenshots
 | `backend/app_state/` | Setup/cleanup for TCP receiver and process manager |
 | `backend/common/dependencies.py` | FastAPI `Depends` wiring |
 | `backend/modules/health/` | `/api/health` |
-| `backend/modules/insole/` | Frames, geometry, WebSocket, game WS client |
+| `backend/modules/insole/` | Live frames, geometry, WebSocket fanout |
 | `backend/modules/runtime/` | Game/calibration subprocess control |
 | `backend/modules/insole/receiver.py` | TCP JSONL receiver (WaveX bridge) |
 | `backend/modules/insole/sensors_m.py`, `sensors_s.py` | Static sensor layout (mm) |
@@ -42,6 +42,7 @@ docs/media/       # README / marketing screenshots
 | Path | Role |
 |------|------|
 | `shared/insole_types.py` | `InsoleSnapshot`, `PressureStats` — used by game + backend |
+| `shared/insole_ws_client.py` | `/ws/insole` consumer for `tile_game` (no backend import) |
 | `station/lib/game/` | Pygame loop, hit logic, RealSense, render |
 | `station/lib/calibration.py` | AprilTag / projector calibration |
 | `station/lib/display.py` | Fullscreen projector window helper |
@@ -63,9 +64,15 @@ WaveX (Windows) ──TCP JSONL :9100──► InsoleTcpReceiver
                                          │
                                     InsoleService
                                          │
-                         /api/frame   /ws/insole   tile_game (WS client)
+                         /api/frame   /ws/insole ──► frontend (live)
+                                         │
+                                         └──► tile_game via shared/insole_ws_client.py
 ```
 
 ```
 Control UI ──POST /api/runtime/start──► RuntimeService ──► ProcessManager ──► station/runners/tile_game.py
 ```
+
+**Mock / demo gait:** synthetic insole frames are generated in the frontend (`useInsoleFrame.ts`) when the operator selects mock mode. The backend serves **live TCP ingest only**; `/api/frame` and `/ws/insole` have no `source=mock` parameter.
+
+**Insole threshold:** the Control panel slider sets `--insole-thresh-kpa` at game start. The running game subscribes to `/ws/insole?threshold_kpa=…` with that value; `pressed` stats in each frame use the same threshold.

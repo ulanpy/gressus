@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import threading
 from typing import Any
 from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
@@ -10,10 +11,9 @@ from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 import numpy as np
 from websockets.sync.client import connect
 
-from backend.core.configs.config import config
 from shared.insole_types import InsoleSnapshot, PressureStats
 
-DEFAULT_INSOLE_WS_BASE = config.INSOLE_WS_URL
+DEFAULT_INSOLE_WS_BASE = os.environ.get("INSOLE_WS_URL", "ws://127.0.0.1:8000/ws/insole")
 
 
 def build_insole_ws_url(
@@ -21,13 +21,11 @@ def build_insole_ws_url(
     *,
     threshold_kpa: float,
     size: str = "m",
-    source: str = "live",
     hz: float = 50.0,
 ) -> str:
     """Merge runtime query params into a `/ws/insole` URL."""
     parsed = urlparse(base)
     params = dict(parse_qsl(parsed.query, keep_blank_values=True))
-    params.setdefault("source", source)
     params.setdefault("size", size)
     params["threshold_kpa"] = f"{threshold_kpa:.3f}"
     params.setdefault("hz", str(hz))
@@ -86,7 +84,7 @@ def _offline_snapshot(error: str | None = None) -> InsoleSnapshot:
     )
 
 
-class BackendInsoleWsClient:
+class InsoleWsClient:
     """Background consumer for `/ws/insole`; game loop reads the latest frame."""
 
     def __init__(self, ws_url: str) -> None:

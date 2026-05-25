@@ -35,7 +35,7 @@ The web app (`frontend/`) is the primary operator interface:
 - **Control** — start/stop the tile game and AprilTag calibration, speed and threshold sliders, demo and no-insole modes.
 - **Patient** — simplified view for the session.
 
-The FastAPI backend (`backend/`) receives Insolex/WaveX frames over TCP JSONL on `0.0.0.0:9100` while it is running, streams them to the frontend and tile game over WebSocket (`/ws/insole`), and spawns game/calibration processes on demand. Game library code lives under `station/lib/`.
+The FastAPI backend (`backend/`) receives Insolex/WaveX frames over TCP JSONL on `0.0.0.0:9100` while it is running, streams live frames to the frontend and tile game over WebSocket (`/ws/insole`), and spawns game/calibration processes on demand. Demo gait without hardware uses client-side mock pressure in the frontend; game library code lives under `station/lib/`.
 
 <p align="center">
   <img src="docs/media/web-control-panel-screenshot.png" alt="Web control panel — game and calibration" width="640" />

@@ -8,38 +8,6 @@ def insole_stats_for_lane(lane: int, snapshot: InsoleSnapshot, swap_lanes: bool)
     return snapshot.left_stats if mapped_lane == 0 else snapshot.right_stats
 
 
-def insole_allows_lane(
-    lane: int,
-    snapshot: InsoleSnapshot | None,
-    max_age_s: float,
-    *,
-    swap_lanes: bool,
-    dominance_kpa: float = 15.0,
-) -> bool:
-    """Lane's foot must (a) be above threshold and (b) dominate the other foot.
-
-    Both feet usually rest on the treadmill, so an absolute threshold alone
-    fires on the supporting foot too. Requiring dominance over the other side
-    identifies the actively-stepping foot.
-
-    Fail-open semantics: returns True when there is no fresh insole data at
-    all, so depth/RGB gates remain the source of truth while debugging.
-    """
-    if snapshot is None or not snapshot.has_recent_data:
-        return True
-    if snapshot.age_s is not None and snapshot.age_s > max_age_s:
-        return True
-    own = insole_stats_for_lane(lane, snapshot, swap_lanes)
-    other = insole_stats_for_lane(1 - lane, snapshot, swap_lanes)
-    if not own.has_data:
-        return False
-    if not other.has_data:
-        return own.pressed
-    if not own.pressed:
-        return False
-    return (own.max_kpa - other.max_kpa) >= dominance_kpa
-
-
 def insole_hud_line(
     snapshot: InsoleSnapshot | None,
     threshold_kpa: float,
@@ -71,4 +39,3 @@ def insole_hud_line(
         f"R {r_stats.max_kpa:.0f}kPa {right} | "
         f"thr {threshold_kpa:.0f}  dom {dominance_kpa:.0f} → {dom}({diff:+.0f})  age {age_txt}"
     )
-
