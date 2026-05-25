@@ -11,7 +11,7 @@ The prototype uses RealSense depth, AprilTag camera–projector calibration, and
 </td>
 <td width="42%" valign="top" align="right">
 
-<img src="assets/demo.gif" alt="ExoStep treadmill demo" width="240" />
+<img src="docs/media/demo.gif" alt="ExoStep treadmill demo" width="240" />
 
 </td>
 </tr>
@@ -21,10 +21,10 @@ The prototype uses RealSense depth, AprilTag camera–projector calibration, and
 
 The child walks on the treadmill and steps on falling tiles (left/right lane). A hit counts only when three signals agree inside the tile zone: **depth** lift above the floor, **occlusion** of projected light by the foot, and **pressure** on the matching Insolex insole (`D AND R AND P`). The goal is rhythmic alternating load and clear feedback without a complex UI.
 
-**Workflow:** depth (aligned-to-color), calibration in `config/calibration.json`, game logic in `scripts/tile_game.py`. In normal use the therapist starts sessions from the web GUI (see below); the same scripts can also be run from the terminal.
+**Workflow:** depth (aligned-to-color), calibration in `config/calibration.json`, game logic in `station/runners/tile_game.py`. In normal use the therapist starts sessions from the web GUI (see below); the same runners can also be started from the terminal.
 
 <p align="center">
-  <img src="assets/insole-viz-screenshot.png" alt="Therapist view — Insolex pressure visualizer" width="640" />
+  <img src="docs/media/insole-viz-screenshot.png" alt="Therapist view — Insolex pressure visualizer" width="640" />
 </p>
 
 ## 2. Web GUI
@@ -35,10 +35,10 @@ The web app (`frontend/`) is the primary operator interface:
 - **Control** — start/stop the tile game and AprilTag calibration, speed and threshold sliders, demo and no-insole modes.
 - **Patient** — simplified view for the session.
 
-The FastAPI backend (`src/insole_pressure_web.py`) receives Insolex/WaveX frames over TCP JSONL on `0.0.0.0:9100`, streams them to the frontend over WebSocket, and spawns game/calibration processes on demand.
+The FastAPI backend (`backend/`) receives Insolex/WaveX frames over TCP JSONL on `0.0.0.0:9100` while it is running, streams them to the frontend and tile game over WebSocket (`/ws/insole`), and spawns game/calibration processes on demand. Game library code lives under `station/lib/`.
 
 <p align="center">
-  <img src="assets/web-control-panel-screenshot.png" alt="Web control panel — game and calibration" width="640" />
+  <img src="docs/media/web-control-panel-screenshot.png" alt="Web control panel — game and calibration" width="640" />
 </p>
 
 ### Setup and launch
@@ -58,7 +58,7 @@ curl -fsSL https://deno.land/install.sh | sh   # Linux/macOS; see Deno docs for 
 Start the backend:
 
 ```bash
-poetry run uvicorn src.insole_pressure_web:app --host 0.0.0.0 --port 8000
+poetry run uvicorn backend.main:app --host 0.0.0.0 --port 8000
 ```
 
 In a separate terminal, start the frontend:
@@ -76,10 +76,16 @@ For debugging or setups without the web UI, run scripts directly.
 
 ### Calibration (AprilTag on the projector)
 
+Copy the template on a fresh checkout (actual geometry is machine-specific and gitignored):
+
+```bash
+cp config/calibration.example.json config/calibration.json
+```
+
 Via RealSense color stream (no manual `/dev/videoN`):
 
 ```bash
-poetry run python scripts/calibrate_apriltag.py \
+poetry run python station/runners/calibrate_apriltag.py \
   -c realsense \
   --width 640 \
   --height 480 \
@@ -96,7 +102,7 @@ Enter — save, Esc — quit, `S` — snapshot `calibrate_debug.jpg` (listed in 
 
 ```bash
 # color + depth, FPS, USB
-poetry run python scripts/realsense_depth_preview.py --align-to-color
+poetry run python station/tools/realsense_depth_preview.py --align-to-color
 ```
 
 ### Tile game (`tile_game.py`)
@@ -107,16 +113,19 @@ Two lanes; a hit requires **D AND R AND P** inside the tile zone:
 2. **R** — pixels not lit by the projector (foot occlusion).
 3. **P** — insole pressure above `--insole-thresh-kpa`.
 
+Live insole data is streamed from the FastAPI backend over WebSocket (`/ws/insole`). Start the backend first (see **Setup and launch** above), then run the game in another terminal:
+
 ```bash
-QT_QPA_PLATFORM=xcb poetry run python scripts/tile_game.py \
+QT_QPA_PLATFORM=xcb poetry run python station/runners/tile_game.py \
   --calibration config/calibration.json \
   -d 0 \
   --output-rotation 270 \
-  --insole-port 9100 \
   --insole-thresh-kpa 8 \
   --speed 0.35 \
   --step-time-s 1.2
 ```
+
+Optional: override the WebSocket URL with `--insole-ws-url` or `INSOLE_WS_URL` (default `ws://127.0.0.1:8000/ws/insole`).
 
 **Speed:** `-S` / `--speed` / `--treadmill-speed-mps` — **0.05–1.5** (nominal m/s); in px/s: `speed × 420`, range ~45–620. To speed up, first lower `--step-time-s`, then raise `--speed` to ~1.0–1.5.
 
@@ -126,7 +135,7 @@ Without insoles: `--no-insole`.
 
 **Session flow:** stand outside the projection zone → `SPACE` (floor baseline + start) → step on tiles alternately → `R` reset, `Esc`/`Q` quit.
 
-Flags: `--calibration`, `-d/--display`, `--output-rotation`, `--no-insole`, `--insole-port`, `--insole-thresh-kpa`, `-S/--speed/--treadmill-speed-mps`, `--step-time-s`.
+Flags: `--calibration`, `-d/--display`, `--output-rotation`, `--no-insole`, `--insole-ws-url`, `--insole-thresh-kpa`, `-S/--speed/--treadmill-speed-mps`, `--step-time-s`.
 
 **Resolution:** JSON fields `camera_resolution`, `proj_resolution`; run the game on the same display (`-d`) and projector resolution as during calibration; camera — 640×480.
 
@@ -134,6 +143,7 @@ Flags: `--calibration`, `-d/--display`, `--output-rotation`, `--no-insole`, `--i
 
 | Document                                                           | Description                                   |
 | ------------------------------------------------------------------ | --------------------------------------------- |
+| [docs/BACKEND.md](docs/BACKEND.md)                                 | FastAPI layout: modules, services, app_state  |
 | [docs/occlusion-and-treadmill.md](docs/occlusion-and-treadmill.md) | Shadow, occlusion, why depth, lighting, setup |
 | [docs/system-spec.md](docs/system-spec.md)                         | Hardware, D435 pipeline, checklist            |
 | [docs/roadmap.md](docs/roadmap.md)                                 | Development vectors, priorities, 3–6 month plan |

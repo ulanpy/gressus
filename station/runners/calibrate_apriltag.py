@@ -10,12 +10,15 @@ import time
 from pathlib import Path
 from typing import Protocol
 
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+
 import cv2
 import numpy as np
 import pygame
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-import display_utils  # noqa: E402
+from station.lib.display import open_fullscreen
 
 TAG_FAMILY = "DICT_APRILTAG_36h11"
 TAG_IDS = (0, 1, 2, 3)
@@ -517,7 +520,7 @@ def main() -> None:
     opencv_detector = _make_aruco_detector() if args.backend == "opencv" else None
     pupil_detector = _make_pupil_detector() if args.backend == "pupil" else None
 
-    screen, proj_w, proj_h, _didx = display_utils.open_fullscreen(
+    screen, proj_w, proj_h, _didx = open_fullscreen(
         args.display, "AprilTag calibration"
     )
 

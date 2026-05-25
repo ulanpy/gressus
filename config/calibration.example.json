@@ -1,0 +1,26 @@
+{
+  "version": 1,
+  "method": "apriltag_centers",
+  "detector_backend": "opencv",
+  "camera_backend": "realsense",
+  "tag_family": "DICT_APRILTAG_36h11",
+  "tag_ids": [0, 1, 2, 3],
+  "proj_resolution": [1920, 1080],
+  "camera_index": "realsense",
+  "camera_resolution": [640, 480],
+  "flip_horizontal": false,
+  "margin_px": 30,
+  "tag_size_px": 280,
+  "tag_center_offset_in_cell_xy": [0, 0],
+  "H_cam_to_proj": [
+    [1.0, 0.0, 0.0],
+    [0.0, 1.0, 0.0],
+    [0.0, 0.0, 1.0]
+  ],
+  "H_proj_to_cam": [
+    [1.0, 0.0, 0.0],
+    [0.0, 1.0, 0.0],
+    [0.0, 0.0, 1.0]
+  ],
+  "hit_shift_canvas": [0, 0]
+}

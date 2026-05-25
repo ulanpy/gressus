@@ -16,7 +16,7 @@
 Engineering implications:
 
 - При установке под углом к ленте «прямоугольник» на поверхности становится трапецией.
-- Для игровой геометрии используем программный pre-warp через `scripts/adjust_projection_quad.py` и `proj_quad` в `config/calibration.json`.
+- Для игровой геометрии используем программный pre-warp через `station/tools/adjust_projection_quad.py` и `proj_quad` в `config/calibration.json`.
 - Keystone проектора можно использовать как coarse correction, но финальная форма должна фиксироваться в нашем JSON для воспроизводимости.
 
 ### Camera: Intel RealSense D435
@@ -62,7 +62,7 @@ Engineering implications:
 
 ## 5) Open items
 
-- [done] `scripts/realsense_depth_preview.py` добавлен (debug depth/color, FPS, USB mode, clipping range).
+- [done] `station/tools/realsense_depth_preview.py` добавлен (debug depth/color, FPS, USB mode, clipping range).
 - Добавить новую игру/режим с depth-сегментацией вместо RGB `absdiff`.
-- [in progress] `scripts/realsense_floor_debug.py` добавлен как промежуточный режим (SPACE -> floor model -> depth mask).
+- [in progress] `station/tools/realsense_floor_debug.py` добавлен как промежуточный режим (SPACE -> floor model -> depth mask).
 - Отдельно проверить, какие функции Frbby P40 Pro реально доступны в конкретной поставке (zoom/lens shift/keystone), и зафиксировать фактические лимиты после стендовых тестов.

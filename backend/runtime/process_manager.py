@@ -24,7 +24,7 @@ class ProcessManager:
     """Single-active-job process manager for local demo runtime."""
 
     def __init__(self, cwd: Path, logs_dir: Path | None = None) -> None:
-        self._cwd = cwd
+        self._cwd = cwd # current working directory
         self._logs_dir = logs_dir or (cwd / "logs")
         self._logs_dir.mkdir(parents=True, exist_ok=True)
         self._lock = threading.Lock()

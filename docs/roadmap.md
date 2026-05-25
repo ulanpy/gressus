@@ -8,10 +8,10 @@
 
 **Что уже работает**
 
-- Multimodal hit gate в `scripts/tile_game.py`: **D AND R AND P** (depth lift, RGB-окклюзия проектора, давление Insolex).
-- RealSense D435: depth aligned-to-color, baseline пола, сигналы в `src/game/realsense_depth.py`.
+- Multimodal hit gate в `station/runners/tile_game.py`: **D AND R AND P** (depth lift, RGB-окклюзия проектора, давление Insolex).
+- RealSense D435: depth aligned-to-color, baseline пола, сигналы в `station/lib/game/realsense_depth.py`.
 - AprilTag-калибровка камера–проектор → `config/calibration.json`.
-- Web GUI (`frontend/` + `src/insole_pressure_web.py`): Therapist / Control / Patient, live insole heatmaps, запуск игры и калибровки.
+- Web GUI (`frontend/` + `backend/`): Therapist / Control / Patient, live insole heatmaps, запуск игры и калибровки.
 - Patient view: сад (`AppleTreeGarden`), голосовые фразы (kk/ru).
 - CEMRR-аналитика и progress dashboard во frontend (загрузка CSV, mock history).
 
@@ -137,9 +137,9 @@ Gressus — модуль обратной связи внутри **A-GEAR** (ga
 
 Перенос и актуализация пунктов из [system-spec.md §5](system-spec.md):
 
-- [done] `scripts/realsense_depth_preview.py` — debug depth/color, FPS, USB.
-- [done] Depth-сегментация в `tile_game.py` (D gate); RGB остаётся R gate.
-- [in progress] `scripts/realsense_floor_debug.py` — floor model → depth mask.
+- [done] `station/tools/realsense_depth_preview.py` — debug depth/color, FPS, USB.
+- [done] Depth-сегментация в `station/runners/tile_game.py` (D gate); RGB остаётся R gate.
+- [in progress] `station/tools/realsense_floor_debug.py` — floor model → depth mask.
 - [ ] Проверить фактические лимиты Frbby P40 Pro (zoom, lens shift, keystone) на стенде.
 - [ ] Session log API и интеграция с frontend progress.
 - [ ] Wizard калибровки в web Control.
