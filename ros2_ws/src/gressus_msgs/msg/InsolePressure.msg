@@ -1,0 +1,12 @@
+std_msgs/Header header
+float32[64] left
+float32[64] right
+float32 left_max_kpa
+float32 right_max_kpa
+float32 left_mean_kpa
+float32 right_mean_kpa
+bool left_pressed
+bool right_pressed
+bool connected
+float32 age_s
+string error

@@ -24,3 +24,8 @@ htmlcov/
 dist/
 build/
 *.egg-info/
+
+# ROS 2 colcon
+ros2_ws/build/
+ros2_ws/install/
+ros2_ws/log/

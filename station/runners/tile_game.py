@@ -26,15 +26,8 @@ import cv2
 import numpy as np
 import pygame
 
-try:
-    import pyrealsense2 as rs
-except ImportError as e:
-    print("pyrealsense2 is not installed. Run: poetry install", file=sys.stderr)
-    raise SystemExit(1) from e
-
 from station.lib.insole_ws_client import (
     DEFAULT_INSOLE_WS_BASE,
-    InsoleWsClient,
     build_insole_ws_url,
 )
 from shared.insole_types import InsoleSnapshot
@@ -43,11 +36,8 @@ from station.lib.display import open_fullscreen
 from station.lib.game.audio import GameAudio, default_assets_dir
 from station.lib.game.insole_gate import insole_hud_line
 from station.lib.game.models import FallingTile
-from station.lib.game.realsense_depth import (
-    capture_floor_and_color,
-    start_realsense,
-    tile_signals,
-)
+from station.lib.game.realsense_depth import tile_signals
+from station.lib.game.sources import CameraFeed, InsoleFeed, LocalRealSenseFeed, LocalWsInsoleFeed
 from station.lib.game.render import draw_scene, hud_surface, lane_rects
 
 LANE_NAMES = ("LEFT", "RIGHT")
@@ -154,7 +144,7 @@ def save_shift(cal_path: Path, shift: tuple[int, int]) -> None:
         json.dump(raw, f, indent=2, ensure_ascii=False)
 
 
-def parse_args() -> argparse.Namespace:
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p = argparse.ArgumentParser(description="2-lane treadmill tile game.")
     p.add_argument("--calibration", type=Path, default=Path("config/calibration.json"))
     p.add_argument("-d", "--display", type=int, default=None)
@@ -192,11 +182,15 @@ def parse_args() -> argparse.Namespace:
         default=0.4,
         help="Интервал между появлением плиток (сек).",
     )
-    return p.parse_args()
+    return p.parse_args(argv)
 
 
-def main() -> None:
-    args = parse_args()
+def run_tile_game(
+    args: argparse.Namespace,
+    *,
+    insole_feed: InsoleFeed | None = None,
+    camera_feed: CameraFeed | None = None,
+) -> None:
     rot = args.output_rotation
     insole_enabled = not args.no_insole
 
@@ -205,23 +199,17 @@ def main() -> None:
     cw, ch = output_canvas_size(scr_w, scr_h, rot)
     audio = GameAudio(assets_dir=default_assets_dir())
 
-    insole_client: InsoleWsClient | None = None
-    pipe = None
-    align = None
-    depth_scale_m = 0.0
+    owns_insole_feed = insole_feed is None and insole_enabled
+    owns_camera_feed = camera_feed is None and not args.demo
     try:
-        if insole_enabled:
+        if owns_insole_feed:
             ws_url = build_insole_ws_url(
                 args.insole_ws_url,
                 threshold_kpa=args.insole_thresh_kpa,
             )
-            insole_client = InsoleWsClient(ws_url)
-            insole_client.start()
-        if not args.demo:
-            pipe, align, depth_scale_m = start_realsense(
-                rs, depth_width=640, depth_height=480, depth_fps=15,
-                color_width=640, color_height=480, color_fps=15,
-            )
+            insole_feed = LocalWsInsoleFeed(ws_url)
+        if owns_camera_feed:
+            camera_feed = LocalRealSenseFeed()
     except Exception:
         audio.stop()
         raise
@@ -274,26 +262,16 @@ def main() -> None:
             t_prev = now
             fps_ema = 1.0 / dt if fps_ema <= 0.0 else 0.9 * fps_ema + 0.1 / dt
 
-            insole_snap = insole_client.latest_snapshot() if insole_client is not None else None
+            insole_snap = (
+                insole_feed.latest(args.insole_thresh_kpa)
+                if insole_feed is not None
+                else None
+            )
 
-            frames = None
-            if pipe is not None:
-                try:
-                    frames = pipe.wait_for_frames(timeout_ms=5000)
-                except RuntimeError:
-                    frames = None
             depth_mm: np.ndarray | None = None
             color_gray: np.ndarray | None = None
-            if frames is not None:
-                frames = align.process(frames)
-                d = frames.get_depth_frame()
-                c = frames.get_color_frame()
-                if d:
-                    depth_mm = (
-                        np.asanyarray(d.get_data()).astype(np.float32) * depth_scale_m * 1000.0
-                    )
-                if c is not None:
-                    color_gray = cv2.cvtColor(np.asanyarray(c.get_data()), cv2.COLOR_BGR2GRAY)
+            if camera_feed is not None:
+                depth_mm, color_gray = camera_feed.latest()
 
             rects = lane_rects(cw, play_top, play_bottom)
             tile_d.clear()
@@ -452,10 +430,8 @@ def main() -> None:
                         audio.play_intro_end()
                         running = False
                     elif e.key == pygame.K_SPACE:
-                        if not args.demo and pipe is not None and align is not None:
-                            new_floor, new_gray = capture_floor_and_color(
-                                pipe, align, depth_scale_m, FLOOR_CAPTURE_FRAMES,
-                            )
+                        if not args.demo and camera_feed is not None:
+                            new_floor, new_gray = camera_feed.capture_floor(FLOOR_CAPTURE_FRAMES)
                             if new_floor is not None:
                                 floor_mm = new_floor
                                 baseline_gray = new_gray
@@ -494,14 +470,15 @@ def main() -> None:
             clock.tick(60)
     finally:
         audio.stop()
-        if insole_client is not None:
-            insole_client.stop()
-        if pipe is not None:
-            try:
-                pipe.stop()
-            except Exception:
-                pass
+        if insole_feed is not None and owns_insole_feed:
+            insole_feed.close()
+        if camera_feed is not None and owns_camera_feed:
+            camera_feed.close()
         pygame.quit()
+
+
+def main() -> None:
+    run_tile_game(parse_args())
 
 
 if __name__ == "__main__":
