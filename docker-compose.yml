@@ -1,0 +1,37 @@
+services:
+  ros2:
+    image: gressus-ros2
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: gressus-ros2
+    network_mode: host
+    privileged: true
+    ipc: host
+    restart: unless-stopped
+    tty: true
+    stdin_open: true
+    group_add:
+      - dialout
+      - video
+      - audio
+    environment:
+      DISPLAY: ${DISPLAY:-}
+      WAYLAND_DISPLAY: ${WAYLAND_DISPLAY:-}
+      XDG_RUNTIME_DIR: ${XDG_RUNTIME_DIR:-}
+      PULSE_SERVER: ${PULSE_SERVER:-}
+      XAUTHORITY: /root/.Xauthority
+      QT_X11_NO_MITSHM: "1"
+      GRESSUS_ROOT: /gressus
+      ROS_DOMAIN_ID: ${ROS_DOMAIN_ID:-0}
+      RMW_IMPLEMENTATION: ${RMW_IMPLEMENTATION:-rmw_fastrtps_cpp}
+    volumes:
+      - ./ros2_ws:/root/ros2_ws:rw
+      - .:/gressus:rw
+      - /tmp/.X11-unix:/tmp/.X11-unix:rw
+      - ${HOME}/.Xauthority:/root/.Xauthority:ro
+      - ${XDG_RUNTIME_DIR:-/dev/null}:${XDG_RUNTIME_DIR:-/dev/null}:rw
+      - /dev:/dev
+    working_dir: /root/ros2_ws
+    entrypoint: ["/gressus/docker/entrypoint.sh"]
+    command: bash
