@@ -13,7 +13,7 @@ station/          # Station runtime: game library, runners, debug tools
   assets/         # Game audio, UI voice phrases (Pygame runtime)
   runners/        # tile_game, calibrate_apriltag (spawned by backend or CLI)
   tools/          # RealSense debug utilities
-shared/           # Cross-layer contracts (DTOs, WS client — not runtime data)
+shared/           # Cross-layer contracts (DTOs — not runtime data)
 frontend/         # Web UI (public/ + src/assets/ for bundled static)
 config/           # Machine-local JSON (calibration.json gitignored; see example)
 docs/media/       # README / marketing screenshots
@@ -42,7 +42,7 @@ docs/media/       # README / marketing screenshots
 | Path | Role |
 |------|------|
 | `shared/insole_types.py` | `InsoleSnapshot`, `PressureStats` — used by game + backend |
-| `shared/insole_ws_client.py` | `/ws/insole` consumer for `tile_game` (no backend import) |
+| `station/lib/insole_ws_client.py` | `/ws/insole` consumer for `tile_game` |
 | `station/lib/game/` | Pygame loop, hit logic, RealSense, render |
 | `station/lib/calibration.py` | AprilTag / projector calibration |
 | `station/lib/display.py` | Fullscreen projector window helper |
@@ -66,7 +66,7 @@ WaveX (Windows) ──TCP JSONL :9100──► InsoleTcpReceiver
                                          │
                          /api/frame   /ws/insole ──► frontend (live)
                                          │
-                                         └──► tile_game via shared/insole_ws_client.py
+                                         └──► tile_game via station/lib/insole_ws_client.py
 ```
 
 ```

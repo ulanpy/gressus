@@ -32,7 +32,7 @@ except ImportError as e:
     print("pyrealsense2 is not installed. Run: poetry install", file=sys.stderr)
     raise SystemExit(1) from e
 
-from shared.insole_ws_client import (
+from station.lib.insole_ws_client import (
     DEFAULT_INSOLE_WS_BASE,
     InsoleWsClient,
     build_insole_ws_url,

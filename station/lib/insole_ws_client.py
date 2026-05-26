@@ -1,4 +1,4 @@
-"""WebSocket client for live insole frames (tile game and other consumers)."""
+"""WebSocket client for live insole frames consumed by station runners."""
 
 from __future__ import annotations
 
