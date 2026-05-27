@@ -33,6 +33,9 @@ if [ -d /gressus/ros2_ws/src ] && [ -n "$(find /gressus/ros2_ws/src -mindepth 1 
   if [ -n "$stale_cache" ] && grep -q '/root/ros2_ws' "$stale_cache" 2>/dev/null; then
     echo "[entrypoint] stale colcon artifacts (old /root/ros2_ws paths) — cleaning build/install/log"
     rm -rf build install log
+  elif [ -d build/gressus_msgs ] && ! python3 -c "import os, numpy; raise SystemExit(0 if os.path.isfile(os.path.join(numpy.get_include(), 'numpy', 'ndarrayobject.h')) else 1)" 2>/dev/null; then
+    echo "[entrypoint] stale gressus_msgs build (numpy headers changed) — cleaning build/install/log"
+    rm -rf build install log
   fi
   colcon build --symlink-install
   # shellcheck disable=SC1091

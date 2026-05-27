@@ -50,6 +50,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libsndfile1 \
     libasound2t64 \
     portaudio19-dev \
+    python3-numpy \
     ros-jazzy-rviz2 \
     ros-jazzy-rqt-plot \
     ros-jazzy-cv-bridge \
@@ -76,10 +77,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends gnupg && \
     && rm -rf /var/lib/apt/lists/*
 
 
-    # Keep NumPy 1.x for ros-jazzy cv_bridge; pip overlay must not upgrade to 2.x.
-RUN pip3 install --no-cache-dir --break-system-packages --ignore-installed \
-    "numpy>=1.26.0,<2" \
-    "opencv-contrib-python>=4.13.0,<5" \
+# Extra Python deps for game/calibration. Use apt NumPy (headers for rosidl); OpenCV 4.13+ needs NumPy 2.
+RUN pip3 install --no-cache-dir --break-system-packages --no-deps \
+    "opencv-contrib-python>=4.10.0,<4.13" && \
+    pip3 install --no-cache-dir --break-system-packages \
     "pygame>=2.6.1,<3" \
     "pyrealsense2>=2.57.7,<3" \
     "pupil-apriltags>=1.0.4.post11,<2" \

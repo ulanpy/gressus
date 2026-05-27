@@ -83,7 +83,7 @@ ros2 run gressus_insole insole_bridge_node
 # 2 — RealSense topics
 ros2 run gressus_realsense realsense_node
 
-# 3 — tile game (subscribes to insole + camera topics)
+# 3 — tile game (subscribes to insole + camera topics; see defaults below)
 ros2 run gressus_game tile_game_node
 ```
 
@@ -93,6 +93,8 @@ The web **Control** panel starts the game via `ros2 run gressus_game tile_game_n
 
 ### Calibration (AprilTag)
 
+Project defaults (RealSense D435, same as the web **Control** panel and `backend/modules/runtime/service.py`):
+
 ```bash
 docker compose exec ros2 bash
 ros2 run gressus_calibration calibrate_apriltag -- \
@@ -100,7 +102,33 @@ ros2 run gressus_calibration calibrate_apriltag -- \
   --display 0 --tag-size 280 --margin 30
 ```
 
-### Tile game flags (after `--`)
+Bare run without `--` flags:
+
+```bash
+ros2 run gressus_calibration calibrate_apriltag
+```
+
+…uses the node’s argparse defaults (`--camera 0`, `1920×1080`, auto display, tag size from screen) — **not** the RealSense setup above. Prefer the explicit command for the treadmill rig.
+
+List all calibration flags: `ros2 run gressus_calibration calibrate_apriltag -- --help`.
+
+**Controls:** align four AprilTags on the projector → `Enter` save to `config/calibration.json`, `Esc` quit, `S` snapshot JPG.
+
+### Tile game
+
+Project defaults (live insole + camera topics; gameplay flags only — topic names stay at ROS defaults):
+
+```bash
+ros2 run gressus_game tile_game_node -- \
+  --output-rotation 270 \
+  --insole-thresh-kpa 8 \
+  --speed 0.22 \
+  --step-time-s 0.4
+```
+
+Same as bare `ros2 run gressus_game tile_game_node` (no flags required when insole, RealSense, and calibration are already up). Omit `-d` / `--display` to pick the first available monitor; add e.g. `-d 0` for a specific projector.
+
+List all game flags: `ros2 run gressus_game tile_game_node -- --help`.
 
 Two lanes; a hit requires **D AND R AND P**:
 
@@ -109,6 +137,8 @@ Two lanes; a hit requires **D AND R AND P**:
 3. **P** — insole pressure above `--insole-thresh-kpa` from `/insole/pressure`.
 
 `--demo` — no camera topics (auto-press). `--no-insole` — skip pressure gate. `-S` / `--speed`, `--step-time-s`, `-d`, `--output-rotation`.
+
+**Note:** the web **Control** panel uses different game defaults (`speed` 0.35, `stepTimeS` 2.5) when starting via `POST /api/runtime/start`.
 
 **Session flow:** stand outside the projection zone → `SPACE` (floor baseline + start) → step on tiles alternately → `R` reset, `Esc`/`Q` quit.
 
