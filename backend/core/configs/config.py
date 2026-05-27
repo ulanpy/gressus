@@ -19,6 +19,8 @@ class Config(BaseSettings):
 
     INSOLE_THRESHOLD_KPA: float = 8.0
     INSOLE_WS_URL: str = "ws://127.0.0.1:8765/ws/insole"
+    ROS_CONTAINER: str | None = None
+    ROS_SETUP: str = "/opt/ros/jazzy/setup.bash"
     CORS_ORIGINS: list[str] = [
         "http://localhost:5173",
         "http://127.0.0.1:5173",

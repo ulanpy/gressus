@@ -1,0 +1,18 @@
+[tool.poetry]
+package-mode = false
+
+[project]
+name = "gressus-backend"
+version = "0.1.0"
+description = "Gressus FastAPI backend"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi (>=0.136.1,<0.137.0)",
+    "uvicorn[standard] (>=0.47.0,<0.48.0)",
+    "pydantic (>=2.13.4,<3.0.0)",
+    "pydantic-settings (>=2.14.1,<3.0.0)",
+]
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"

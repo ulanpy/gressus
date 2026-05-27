@@ -370,7 +370,7 @@ class RealSenseColorCapture:
         try:
             import pyrealsense2 as rs
         except ImportError as e:
-            print("pyrealsense2 is not installed. Run: poetry install", file=sys.stderr)
+            print("pyrealsense2 is not installed. Use the gressus-ros2 Docker image.", file=sys.stderr)
             raise SystemExit(1) from e
 
         self._rs = rs
@@ -500,8 +500,7 @@ def main() -> None:
 
     if args.backend == "pupil" and not _pupil_apriltags_available():
         print(
-            "[calib] модуль pupil_apriltags не установлен в текущем venv. "
-            "Из корня проекта выполните: poetry install\n"
+            "[calib] pupil_apriltags is not installed. Use the gressus-ros2 Docker image.\n"
             "Переключаюсь на --backend opencv.",
             file=sys.stderr,
         )

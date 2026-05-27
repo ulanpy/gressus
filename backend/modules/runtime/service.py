@@ -22,12 +22,18 @@ class RuntimeService:
         return self._manager.snapshot()
 
     def _ros2_shell_prefix(self) -> str:
-        ros_setup = os.environ.get("ROS_SETUP", "/opt/ros/jazzy/setup.bash")
+        ros_setup = self._config.ROS_SETUP
         install_setup = self._config.repo_root / "ros2_ws" / "install" / "setup.bash"
         return (
             f"source {shlex.quote(ros_setup)} && "
             f"source {shlex.quote(str(install_setup))} && "
         )
+
+    def _shell_command(self, inner: str) -> list[str]:
+        container = self._config.ROS_CONTAINER
+        if container:
+            return ["docker", "exec", container, "bash", "-lc", inner]
+        return ["bash", "-lc", inner]
 
     def build_command(self, cfg: StartRuntimeRequest) -> list[str]:
         if cfg.job == "game":
@@ -52,7 +58,7 @@ class RuntimeService:
                 f"{self._ros2_shell_prefix()}"
                 f"exec ros2 run gressus_game tile_game_node -- {args_str}"
             )
-            return ["bash", "-lc", shell]
+            return self._shell_command(shell)
 
         cal_args = [
             "-c",
@@ -75,7 +81,7 @@ class RuntimeService:
             f"{self._ros2_shell_prefix()}"
             f"exec ros2 run gressus_calibration calibrate_apriltag -- {args_str}"
         )
-        return ["bash", "-lc", shell]
+        return self._shell_command(shell)
 
     def start(self, cfg: StartRuntimeRequest) -> dict[str, Any]:
         cmd = self.build_command(cfg)

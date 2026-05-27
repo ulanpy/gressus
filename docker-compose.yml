@@ -33,3 +33,39 @@ services:
     working_dir: /gressus/ros2_ws
     entrypoint: ["/gressus/docker/entrypoint.sh"]
     command: bash
+
+  backend:
+    image: gressus-backend
+    build:
+      context: .
+      dockerfile: docker/backend/Dockerfile
+    container_name: gressus-backend
+    network_mode: host
+    restart: unless-stopped
+    depends_on:
+      - ros2
+    environment:
+      ROS_CONTAINER: gressus-ros2
+      QT_QPA_PLATFORM: ${QT_QPA_PLATFORM:-xcb}
+    volumes:
+      - .:/gressus:rw
+      - /var/run/docker.sock:/var/run/docker.sock
+
+  frontend:
+    image: gressus-frontend
+    build:
+      context: .
+      dockerfile: docker/frontend/Dockerfile
+    container_name: gressus-frontend
+    network_mode: host
+    restart: unless-stopped
+    depends_on:
+      - backend
+    environment:
+      IS_DEBUG: ${IS_DEBUG:-true}
+    volumes:
+      - ./frontend:/gressus/frontend
+      - frontend_node_modules:/gressus/frontend/node_modules
+
+volumes:
+  frontend_node_modules:

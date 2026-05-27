@@ -58,6 +58,22 @@ Each feature module uses:
 
 Imports use absolute paths (`from backend.modules.insole.service import InsoleService`). No barrel `__init__.py` re-exports.
 
+## Docker Compose (phase 1)
+
+Three services, all `network_mode: host`:
+
+| Service | Image | Role |
+|---------|-------|------|
+| `ros2` | `gressus-ros2` | ROS workspace, RealSense, insole bridge, display |
+| `backend` | `gressus-backend` | FastAPI on `:8000`; runtime via `docker exec gressus-ros2` |
+| `frontend` | `gressus-frontend` | Vite dev on `:5173` (proxies `/api` and `/ws`) |
+
+```bash
+docker compose up -d --build
+```
+
+Backend deps live in `backend/pyproject.toml` (FastAPI only — no OpenCV/pygame in the API image). Set `ROS_CONTAINER=gressus-ros2` so `/api/runtime/start` runs `ros2` inside the ROS container.
+
 ## Data flow
 
 ```

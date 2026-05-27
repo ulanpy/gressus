@@ -43,32 +43,38 @@ The FastAPI backend (`backend/`) serves geometry and runtime control. Live insol
 
 ### Setup and launch
 
-**Backend** — Python dependencies:
+All services use `network_mode: host` (shared localhost for API `:8000`, Vite `:5173`, insole WS `:8765`).
 
 ```bash
-poetry install
+docker compose up -d --build
 ```
 
-**Frontend** — requires [Deno](https://docs.deno.com/runtime/getting_started/installation/) (npm deps are resolved from `frontend/deno.lock` on first run):
+| Service | URL / role |
+|---------|------------|
+| `frontend` | http://localhost:5173 |
+| `backend` | http://localhost:8000/api/health |
+| `ros2` | ROS nodes, RealSense, insole bridge |
+
+Set `IS_DEBUG=false` in compose for Vite preview (frontend). Backend always runs uvicorn.
+
+Interactive ROS shell:
 
 ```bash
-curl -fsSL https://deno.land/install.sh | sh   # Linux/macOS; see Deno docs for other platforms
+docker compose exec ros2 bash
 ```
 
-Start the backend:
+**Without Docker** — backend only (`backend/pyproject.toml`):
 
 ```bash
-poetry run uvicorn backend.main:app --host 0.0.0.0 --port 8000
+poetry -C backend install
+PYTHONPATH=. poetry -C backend run uvicorn backend.main:app --host 0.0.0.0 --port 8000
 ```
 
-In a separate terminal, start the frontend:
+**Without Docker** — frontend (npm):
 
 ```bash
-cd frontend
-deno task dev
+cd frontend && npm install && npm run dev
 ```
-
-Open `http://localhost:5173`. Use the **Control** tab to start the game; live insole data appears on **Therapist** once a session is running.
 
 ## 3. ROS 2 runtime
 
