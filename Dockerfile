@@ -75,8 +75,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends gnupg && \
     ros-jazzy-realsense2-camera \
     && rm -rf /var/lib/apt/lists/*
 
-# Station Python stack (matches pyproject.toml; separate from host Poetry/FastAPI).
-# --ignore-installed: ROS base ships debian numpy; pip must overlay without uninstalling it.
+
+    # --ignore-installed: ROS base ships debian numpy; pip must overlay without uninstalling it.
 RUN pip3 install --no-cache-dir --break-system-packages --ignore-installed \
     "numpy>=2.4.4,<3" \
     "opencv-contrib-python>=4.13.0,<5" \
@@ -94,7 +94,13 @@ COPY docker/entrypoint.sh /usr/local/bin/gressus-entrypoint.sh
 COPY docker/gui-env.sh /usr/local/bin/gressus-gui-env.sh
 RUN chmod +x /usr/local/bin/gressus-entrypoint.sh /usr/local/bin/gressus-gui-env.sh
 
-RUN echo "source /opt/ros/jazzy/setup.bash" >> /root/.bashrc
+RUN cat >> /root/.bashrc <<'EOF'
+# ROS 2 + workspace (interactive shells via docker compose exec)
+source /opt/ros/jazzy/setup.bash
+if [ -f /gressus/ros2_ws/install/setup.bash ]; then
+  source /gressus/ros2_ws/install/setup.bash
+fi
+EOF
 
 WORKDIR /gressus/ros2_ws
 

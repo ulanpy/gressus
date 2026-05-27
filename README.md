@@ -72,11 +72,10 @@ Open `http://localhost:5173`. Use the **Control** tab to start the game; live in
 
 ## 3. ROS 2 runtime
 
-Build the workspace once inside the ROS container (see `docker-compose.yml`), then run three nodes in separate terminals:
+The ROS container entrypoint builds the workspace on start when `ros2_ws/src` has packages. Interactive shells (`docker compose exec ros2 bash`) auto-source ROS and the workspace via `/root/.bashrc`. Run three nodes in separate terminals:
 
 ```bash
 docker compose exec ros2 bash
-source /opt/ros/jazzy/setup.bash && source /gressus/ros2_ws/install/setup.bash
 
 # 1 — insole TCP + WebSocket + /insole/pressure
 ros2 run gressus_insole insole_bridge_node
@@ -95,8 +94,7 @@ The web **Control** panel starts the game via `ros2 run gressus_game tile_game_n
 ### Calibration (AprilTag)
 
 ```bash
-source /opt/ros/jazzy/setup.bash
-source /gressus/ros2_ws/install/setup.bash
+docker compose exec ros2 bash
 ros2 run gressus_calibration calibrate_apriltag -- \
   -c realsense --width 640 --height 480 --fps 30 \
   --display 0 --tag-size 280 --margin 30
