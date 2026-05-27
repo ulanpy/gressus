@@ -76,9 +76,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends gnupg && \
     && rm -rf /var/lib/apt/lists/*
 
 
-    # --ignore-installed: ROS base ships debian numpy; pip must overlay without uninstalling it.
+    # Keep NumPy 1.x for ros-jazzy cv_bridge; pip overlay must not upgrade to 2.x.
 RUN pip3 install --no-cache-dir --break-system-packages --ignore-installed \
-    "numpy>=2.4.4,<3" \
+    "numpy>=1.26.0,<2" \
     "opencv-contrib-python>=4.13.0,<5" \
     "pygame>=2.6.1,<3" \
     "pyrealsense2>=2.57.7,<3" \
@@ -91,16 +91,10 @@ RUN rosdep update
 RUN mkdir -p /gressus/ros2_ws/src
 
 COPY docker/entrypoint.sh /usr/local/bin/gressus-entrypoint.sh
+COPY docker/ros-env.sh /usr/local/bin/gressus-ros-env.sh
+COPY docker/ros-env.sh /etc/profile.d/gressus-ros.sh
 COPY docker/gui-env.sh /usr/local/bin/gressus-gui-env.sh
-RUN chmod +x /usr/local/bin/gressus-entrypoint.sh /usr/local/bin/gressus-gui-env.sh
-
-RUN cat >> /root/.bashrc <<'EOF'
-# ROS 2 + workspace (interactive shells via docker compose exec)
-source /opt/ros/jazzy/setup.bash
-if [ -f /gressus/ros2_ws/install/setup.bash ]; then
-  source /gressus/ros2_ws/install/setup.bash
-fi
-EOF
+RUN chmod +x /usr/local/bin/gressus-entrypoint.sh /usr/local/bin/gressus-ros-env.sh /etc/profile.d/gressus-ros.sh /usr/local/bin/gressus-gui-env.sh
 
 WORKDIR /gressus/ros2_ws
 
