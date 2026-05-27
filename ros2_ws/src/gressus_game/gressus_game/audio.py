@@ -16,7 +16,7 @@ from .ui_phrases import (
     default_phrases_dir,
 )
 
-# Default files under `station/assets/` (see station/assets/CREDITS.txt).
+# Default files under `gressus_game/assets/` (see assets/CREDITS.txt).
 MUSIC_LOOP_FILENAME = "716637__audiocoffee__happy-music-loop1.wav"
 HIT_SFX_FILENAME = "402288__lilmati__retro-coin-02.wav"
 
@@ -25,7 +25,7 @@ POSITIVE_PHRASE_STRIDE = 3
 
 
 def default_assets_dir() -> Path:
-    return Path(__file__).resolve().parents[2] / "assets"
+    return Path(__file__).resolve().parent / "assets"
 
 
 def _clip01(x: float) -> float:

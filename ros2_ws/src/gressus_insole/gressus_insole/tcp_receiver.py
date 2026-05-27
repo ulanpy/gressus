@@ -8,7 +8,7 @@ import threading
 import time
 from typing import Any
 
-from shared.insole_types import InsoleSnapshot, latest_scan, pressure_stats
+from gressus_common.insole_types import InsoleSnapshot, latest_scan, pressure_stats
 
 
 class InsoleTcpReceiver:

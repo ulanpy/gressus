@@ -1,10 +1,4 @@
-#!/usr/bin/env python3
-"""Two-lane treadmill tile game.
-
-Per-tile hit gate: depth-lift AND rgb-occlusion AND insole-pressure.
-Foot-plane offset is stored in calibration.json (`hit_shift_canvas`).
-Live tuning: arrows (Shift = x5). Press S to save the current shift.
-"""
+"""Two-lane treadmill tile game loop (ROS topic feeds)."""
 
 from __future__ import annotations
 
@@ -15,39 +9,25 @@ import sys
 import time
 from pathlib import Path
 
-_REPO_ROOT = Path(__file__).resolve().parents[2]
-if str(_REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(_REPO_ROOT))
-
-if os.environ.get("WAYLAND_DISPLAY") and not os.environ.get("QT_QPA_PLATFORM"):
-    os.environ["QT_QPA_PLATFORM"] = "xcb"
-
 import cv2
 import numpy as np
 import pygame
 
-from station.lib.insole_ws_client import (
-    DEFAULT_INSOLE_WS_BASE,
-    build_insole_ws_url,
-)
-from shared.insole_types import InsoleSnapshot
-from station.lib.calibration import CameraCalibration, load_calibration
-from station.lib.display import open_fullscreen
-from station.lib.game.audio import GameAudio, default_assets_dir
-from station.lib.game.insole_gate import insole_hud_line
-from station.lib.game.models import FallingTile
-from station.lib.game.realsense_depth import tile_signals
-from station.lib.game.sources import CameraFeed, InsoleFeed, LocalRealSenseFeed, LocalWsInsoleFeed
-from station.lib.game.render import draw_scene, hud_surface, lane_rects
+from gressus_common.insole_types import InsoleSnapshot
+from gressus_game.audio import GameAudio, default_assets_dir
+from gressus_game.calibration import CameraCalibration, load_calibration
+from gressus_game.display import open_fullscreen
+from gressus_game.insole_gate import insole_hud_line
+from gressus_game.models import FallingTile
+from gressus_game.render import draw_scene, hud_surface, lane_rects
+from gressus_game.sources import CameraFeed, InsoleFeed
+from gressus_realsense.realsense_depth import tile_signals
 
 LANE_NAMES = ("LEFT", "RIGHT")
 LANE_COLORS = ((48, 210, 255), (246, 88, 220))
 BG_COLOR = (6, 12, 32)
 FG_COLOR = (255, 255, 255)
 
-# Per-tile gates (no CLI knobs; tuned in code).
-# Lowered for mannequin / light-touch demos: even a foot resting on the tile
-# (~1.5–2 cm above floor) over ~15% of the tile area should register.
 LIFT_MM_MIN = 18.0
 LIFT_MM_MAX = 250.0
 DEPTH_FILL_THRESH = 0.15
@@ -56,9 +36,7 @@ RGB_LIT_DELTA = 22
 HIT_COOLDOWN_S = 0.18
 INSOLE_MAX_AGE_S = 0.40
 
-# Tile / lane geometry.
 TILE_HEIGHT_FRAC = 0.42
-SAME_LANE_GAP_FRAC = 0.08
 FLOOR_CAPTURE_FRAMES = 45
 
 
@@ -113,7 +91,6 @@ def pressure_ok(
     snapshot: InsoleSnapshot | None,
     insole_enabled: bool,
 ) -> bool:
-    """STRICT gate. Returns True only if we have a fresh, pressed reading for THIS lane."""
     if not insole_enabled:
         return True
     if snapshot is None or not snapshot.has_recent_data:
@@ -145,25 +122,16 @@ def save_shift(cal_path: Path, shift: tuple[int, int]) -> None:
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
-    p = argparse.ArgumentParser(description="2-lane treadmill tile game.")
+    p = argparse.ArgumentParser(description="2-lane treadmill tile game (ROS feeds).")
     p.add_argument("--calibration", type=Path, default=Path("config/calibration.json"))
     p.add_argument("-d", "--display", type=int, default=None)
     p.add_argument("--output-rotation", type=int, choices=(0, 90, 180, 270), default=270)
     p.add_argument(
         "--demo",
         action="store_true",
-        help="Run visual demo mode without a RealSense camera.",
+        help="Run visual demo mode without camera topics.",
     )
     p.add_argument("--no-insole", action="store_true")
-    p.add_argument(
-        "--insole-ws-url",
-        type=str,
-        default=DEFAULT_INSOLE_WS_BASE,
-        help=(
-            "FastAPI /ws/insole base URL "
-            f"(default: {DEFAULT_INSOLE_WS_BASE!r}, or INSOLE_WS_URL env)."
-        ),
-    )
     p.add_argument("--insole-thresh-kpa", type=float, default=8.0)
     p.add_argument(
         "-S",
@@ -173,15 +141,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default=0.22,
         metavar="MPS",
         dest="tile_speed_mps",
-        help="Скорость падения плиток: условные «м/с» вдоль ленты (0.05–1.5). "
-        "Внутри переводится в px/s и ограничивается ~620 px/s.",
     )
-    p.add_argument(
-        "--step-time-s",
-        type=float,
-        default=0.4,
-        help="Интервал между появлением плиток (сек).",
-    )
+    p.add_argument("--step-time-s", type=float, default=0.4)
     return p.parse_args(argv)
 
 
@@ -191,28 +152,19 @@ def run_tile_game(
     insole_feed: InsoleFeed | None = None,
     camera_feed: CameraFeed | None = None,
 ) -> None:
+    if os.environ.get("WAYLAND_DISPLAY") and not os.environ.get("QT_QPA_PLATFORM"):
+        os.environ["QT_QPA_PLATFORM"] = "xcb"
+
     rot = args.output_rotation
     insole_enabled = not args.no_insole
+
+    if not args.demo and camera_feed is None:
+        raise RuntimeError("camera_feed is required unless --demo is set")
 
     cal: CameraCalibration = load_calibration(args.calibration)
     screen, scr_w, scr_h, _ = open_fullscreen(args.display, "Treadmill tile rhythm")
     cw, ch = output_canvas_size(scr_w, scr_h, rot)
     audio = GameAudio(assets_dir=default_assets_dir())
-
-    owns_insole_feed = insole_feed is None and insole_enabled
-    owns_camera_feed = camera_feed is None and not args.demo
-    try:
-        if owns_insole_feed:
-            ws_url = build_insole_ws_url(
-                args.insole_ws_url,
-                threshold_kpa=args.insole_thresh_kpa,
-            )
-            insole_feed = LocalWsInsoleFeed(ws_url)
-        if owns_camera_feed:
-            camera_feed = LocalRealSenseFeed()
-    except Exception:
-        audio.stop()
-        raise
 
     proj_w, proj_h = cal.proj_resolution
     sx = scr_w / float(proj_w)
@@ -310,7 +262,6 @@ def run_tile_game(
                         ready = abs(tile_center_y - hit_y) <= hit_window * 0.5
                         tile_d[i] = 1.0 if ready else 0.0
                         tile_r[i] = 1.0 if ready else 0.0
-                        # Auto-press in demo: ignore insole pressure entirely.
                         tile_p[i] = True
                 elif depth_mm is not None and floor_mm is not None:
                     for i, t in enumerate(tiles):
@@ -470,16 +421,4 @@ def run_tile_game(
             clock.tick(60)
     finally:
         audio.stop()
-        if insole_feed is not None and owns_insole_feed:
-            insole_feed.close()
-        if camera_feed is not None and owns_camera_feed:
-            camera_feed.close()
         pygame.quit()
-
-
-def main() -> None:
-    run_tile_game(parse_args())
-
-
-if __name__ == "__main__":
-    main()

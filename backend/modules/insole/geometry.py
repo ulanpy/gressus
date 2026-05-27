@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from backend.modules.insole.schemas import InsoleSize
+from typing import Literal
+
+InsoleSize = Literal["m", "s"]
 
 
 def load_insole_geometry(size: InsoleSize) -> tuple[

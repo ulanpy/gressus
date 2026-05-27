@@ -21,7 +21,7 @@ The prototype uses RealSense depth, AprilTag camera–projector calibration, and
 
 The child walks on the treadmill and steps on falling tiles (left/right lane). A hit counts only when three signals agree inside the tile zone: **depth** lift above the floor, **occlusion** of projected light by the foot, and **pressure** on the matching Insolex insole (`D AND R AND P`). The goal is rhythmic alternating load and clear feedback without a complex UI.
 
-**Workflow:** depth (aligned-to-color), calibration in `config/calibration.json`, game logic in `station/runners/tile_game.py`. In normal use the therapist starts sessions from the web GUI (see below); the same runners can also be started from the terminal.
+**Workflow:** depth (aligned-to-color), calibration in `config/calibration.json`, game loop in `ros2_ws/src/gressus_game/` started via `ros2 run gressus_game tile_game_node`. The therapist normally starts sessions from the web GUI.
 
 <p align="center">
   <img src="docs/media/insole-viz-screenshot.png" alt="Therapist view — Insolex pressure visualizer" width="640" />
@@ -35,7 +35,7 @@ The web app (`frontend/`) is the primary operator interface:
 - **Control** — start/stop the tile game and AprilTag calibration, speed and threshold sliders, demo and no-insole modes.
 - **Patient** — simplified view for the session.
 
-The FastAPI backend (`backend/`) receives Insolex/WaveX frames over TCP JSONL on `0.0.0.0:9100` while it is running, streams live frames to the frontend and tile game over WebSocket (`/ws/insole`), and spawns game/calibration processes on demand. Demo gait without hardware uses client-side mock pressure in the frontend; game library code lives under `station/lib/`.
+The FastAPI backend (`backend/`) serves geometry and runtime control. Live insole pressure is streamed by `insole_bridge_node` over WebSocket (`ws://127.0.0.1:8765/ws/insole`) and ROS topic `/insole/pressure`. TCP ingest from Insolex/WaveX runs in the same node on `0.0.0.0:9100`. Demo gait without hardware uses client-side mock pressure in the frontend; game code lives in the ROS package `gressus_game`.
 
 <p align="center">
   <img src="docs/media/web-control-panel-screenshot.png" alt="Web control panel — game and calibration" width="640" />
@@ -70,74 +70,48 @@ deno task dev
 
 Open `http://localhost:5173`. Use the **Control** tab to start the game; live insole data appears on **Therapist** once a session is running.
 
-## 3. Terminal launch
+## 3. ROS 2 runtime
 
-For debugging or setups without the web UI, run scripts directly.
-
-### Calibration (AprilTag on the projector)
-
-Copy the template on a fresh checkout (actual geometry is machine-specific and gitignored):
+Build the workspace once inside the ROS container (see `docker-compose.yml`), then run three nodes in separate terminals:
 
 ```bash
-cp config/calibration.example.json config/calibration.json
+docker compose exec ros2 bash
+source /opt/ros/jazzy/setup.bash && source /root/ros2_ws/install/setup.bash
+
+# 1 — insole TCP + WebSocket + /insole/pressure
+ros2 run gressus_insole insole_bridge_node
+
+# 2 — RealSense topics
+ros2 run gressus_realsense realsense_node
+
+# 3 — tile game (subscribes to insole + camera topics)
+ros2 run gressus_game tile_game_node -- --calibration /gressus/config/calibration.json
 ```
 
-Via RealSense color stream (no manual `/dev/videoN`):
+The web **Control** panel starts the game via `ros2 run gressus_game tile_game_node` automatically when the backend runs with ROS sourced.
+
+### Calibration (AprilTag)
 
 ```bash
-poetry run python station/runners/calibrate_apriltag.py \
-  -c realsense \
-  --width 640 \
-  --height 480 \
-  --fps 30 \
-  --display 0 \
-  --tag-size 280 \
-  --margin 30 \
-  -o config/calibration.json
+source /opt/ros/jazzy/setup.bash
+source /gressus/ros2_ws/install/setup.bash
+ros2 run gressus_calibration calibrate_apriltag -- \
+  -c realsense --width 640 --height 480 --fps 30 \
+  --display 0 --tag-size 280 --margin 30 \
+  -o /gressus/config/calibration.json
 ```
 
-Enter — save, Esc — quit, `S` — snapshot `calibrate_debug.jpg` (listed in `.gitignore`).
+### Tile game flags (after `--`)
 
-### RealSense debug (no projector)
+Two lanes; a hit requires **D AND R AND P**:
 
-```bash
-# color + depth, FPS, USB
-poetry run python station/tools/realsense_depth_preview.py --align-to-color
-```
-
-### Tile game (`tile_game.py`)
-
-Two lanes; a hit requires **D AND R AND P** inside the tile zone:
-
-1. **D** — depth pixels lifted **40–250 mm** above the baseline floor.
+1. **D** — depth pixels lifted above the baseline floor.
 2. **R** — pixels not lit by the projector (foot occlusion).
-3. **P** — insole pressure above `--insole-thresh-kpa`.
+3. **P** — insole pressure above `--insole-thresh-kpa` from `/insole/pressure`.
 
-Live insole data is streamed from the FastAPI backend over WebSocket (`/ws/insole`). Start the backend first (see **Setup and launch** above), then run the game in another terminal:
-
-```bash
-QT_QPA_PLATFORM=xcb poetry run python station/runners/tile_game.py \
-  --calibration config/calibration.json \
-  -d 0 \
-  --output-rotation 270 \
-  --insole-thresh-kpa 8 \
-  --speed 0.35 \
-  --step-time-s 1.2
-```
-
-Optional: override the WebSocket URL with `--insole-ws-url` or `INSOLE_WS_URL` (default `ws://127.0.0.1:8000/ws/insole`).
-
-**Speed:** `-S` / `--speed` / `--treadmill-speed-mps` — **0.05–1.5** (nominal m/s); in px/s: `speed × 420`, range ~45–620. To speed up, first lower `--step-time-s`, then raise `--speed` to ~1.0–1.5.
-
-**Projection offset:** arrow keys (Shift = ×5), then `S` — writes `hit_shift_canvas` to the same JSON.
-
-Without insoles: `--no-insole`.
+`--demo` — no camera topics (auto-press). `--no-insole` — skip pressure gate. `-S` / `--speed`, `--step-time-s`, `-d`, `--output-rotation`, `--calibration`.
 
 **Session flow:** stand outside the projection zone → `SPACE` (floor baseline + start) → step on tiles alternately → `R` reset, `Esc`/`Q` quit.
-
-Flags: `--calibration`, `-d/--display`, `--output-rotation`, `--no-insole`, `--insole-ws-url`, `--insole-thresh-kpa`, `-S/--speed/--treadmill-speed-mps`, `--step-time-s`.
-
-**Resolution:** JSON fields `camera_resolution`, `proj_resolution`; run the game on the same display (`-d`) and projector resolution as during calibration; camera — 640×480.
 
 ## 4. Documentation
 

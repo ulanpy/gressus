@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import os
-import sys
+import shlex
 from typing import Any
 
 from fastapi import HTTPException
@@ -21,13 +21,18 @@ class RuntimeService:
     def snapshot(self) -> dict[str, Any]:
         return self._manager.snapshot()
 
+    def _ros2_shell_prefix(self) -> str:
+        ros_setup = os.environ.get("ROS_SETUP", "/opt/ros/jazzy/setup.bash")
+        install_setup = self._config.repo_root / "ros2_ws" / "install" / "setup.bash"
+        return (
+            f"source {shlex.quote(ros_setup)} && "
+            f"source {shlex.quote(str(install_setup))} && "
+        )
+
     def build_command(self, cfg: StartRuntimeRequest) -> list[str]:
-        python_bin = sys.executable
         calibration = str(self._config.calibration_path)
         if cfg.job == "game":
-            cmd = [
-                python_bin,
-                "station/runners/tile_game.py",
+            game_args = [
                 "--calibration",
                 calibration,
                 "--output-rotation",
@@ -40,16 +45,19 @@ class RuntimeService:
                 str(cfg.stepTimeS),
             ]
             if cfg.demo:
-                cmd.append("--demo")
+                game_args.append("--demo")
             if cfg.noInsole or cfg.demo:
-                cmd.append("--no-insole")
+                game_args.append("--no-insole")
             if cfg.display is not None:
-                cmd.extend(["-d", str(cfg.display)])
-            return cmd
+                game_args.extend(["-d", str(cfg.display)])
+            args_str = " ".join(shlex.quote(arg) for arg in game_args)
+            shell = (
+                f"{self._ros2_shell_prefix()}"
+                f"exec ros2 run gressus_game tile_game_node -- {args_str}"
+            )
+            return ["bash", "-lc", shell]
 
-        return [
-            python_bin,
-            "station/runners/calibrate_apriltag.py",
+        cal_args = [
             "-c",
             "realsense",
             "--width",
@@ -67,19 +75,20 @@ class RuntimeService:
             "-o",
             calibration,
         ]
+        args_str = " ".join(shlex.quote(arg) for arg in cal_args)
+        shell = (
+            f"{self._ros2_shell_prefix()}"
+            f"exec ros2 run gressus_calibration calibrate_apriltag -- {args_str}"
+        )
+        return ["bash", "-lc", shell]
 
     def start(self, cfg: StartRuntimeRequest) -> dict[str, Any]:
         cmd = self.build_command(cfg)
         try:
-            repo_root = str(self._config.repo_root)
-            py_path = repo_root
-            if existing := os.environ.get("PYTHONPATH"):
-                py_path = f"{repo_root}{os.pathsep}{existing}"
             job = self._manager.start(
                 name=cfg.job,
                 command=cmd,
                 env={
-                    "PYTHONPATH": py_path,
                     "QT_QPA_PLATFORM": os.environ.get("QT_QPA_PLATFORM", self._config.QT_QPA_PLATFORM),
                 },
             )

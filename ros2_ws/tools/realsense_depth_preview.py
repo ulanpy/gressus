@@ -21,6 +21,8 @@ except ImportError as e:  # pragma: no cover
     print("pyrealsense2 is not installed. Run: poetry add pyrealsense2", file=sys.stderr)
     raise SystemExit(1) from e
 
+from gressus_realsense.realsense_depth import start_realsense
+
 
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Preview Intel RealSense color + depth.")
@@ -122,31 +124,23 @@ def _print_supported_profiles(dev: rs.device) -> None:
                 continue
 
 
-def _start_pipeline(
-    pipe: rs.pipeline,
-    args: argparse.Namespace,
-) -> tuple[rs.pipeline_profile, tuple[int, int, int, int, int, int]]:
-    dw = args.depth_width
-    dh = args.depth_height
-    dfps = args.depth_fps
-    cw = args.color_width
-    ch = args.color_height
-    cfps = args.color_fps
-    cfg = rs.config()
-    cfg.enable_stream(rs.stream.depth, dw, dh, rs.format.z16, dfps)
-    cfg.enable_stream(rs.stream.color, cw, ch, rs.format.bgr8, cfps)
-    profile = pipe.start(cfg)
-    return profile, (dw, dh, dfps, cw, ch, cfps)
-
-
 def main() -> None:
     args = parse_args()
 
-    pipe = rs.pipeline()
     started = False
     try:
-        profile, used = _start_pipeline(pipe, args)
+        pipe, align, depth_scale_m = start_realsense(
+            rs,
+            depth_width=args.depth_width,
+            depth_height=args.depth_height,
+            depth_fps=args.depth_fps,
+            color_width=args.color_width,
+            color_height=args.color_height,
+            color_fps=args.color_fps,
+            align_to_color=args.align_to_color,
+        )
         started = True
+        profile = pipe.get_active_profile()
         dev = profile.get_device()
     except RuntimeError as e:
         print("failed to start pipeline with requested profile.", file=sys.stderr)
@@ -163,10 +157,6 @@ def main() -> None:
         raise SystemExit(2) from e
 
     info = _device_info(dev)
-    depth_sensor = dev.first_depth_sensor()
-    depth_scale_m = float(depth_sensor.get_depth_scale())
-    align = rs.align(rs.stream.color) if args.align_to_color else None
-
     print(f"device: {info['name']}")
     print(f"serial: {info['serial']}")
     print(f"usb:    {info['usb']}")
@@ -174,7 +164,8 @@ def main() -> None:
     print(f"depth_scale_m: {depth_scale_m:.6f}")
     print(
         "active profile: "
-        f"depth {used[0]}x{used[1]}@{used[2]}, color {used[3]}x{used[4]}@{used[5]}"
+        f"depth {args.depth_width}x{args.depth_height}@{args.depth_fps}, "
+        f"color {args.color_width}x{args.color_height}@{args.color_fps}"
     )
     print("keys: q/esc - quit, s - save snapshot")
 
@@ -201,7 +192,6 @@ def main() -> None:
             fps_inst = 1.0 / dt
             fps_ema = fps_inst if fps_ema <= 0.0 else 0.9 * fps_ema + 0.1 * fps_inst
 
-            center_mm = 0.0
             cy, cx = depth_mm.shape[0] // 2, depth_mm.shape[1] // 2
             center_mm = float(depth_mm[cy, cx])
             hud = [

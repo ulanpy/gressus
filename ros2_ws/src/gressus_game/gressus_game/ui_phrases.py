@@ -1,6 +1,6 @@
 """Kazakh voice UI phrases for the projector tile / piano game.
 
-Files live in ``station/assets/ui_phrases/``. Names encode meaning; variants in a group
+Files live in ``gressus_game/assets/ui_phrases/``. Names encode meaning; variants in a group
 are played in round-robin order.
 """
 

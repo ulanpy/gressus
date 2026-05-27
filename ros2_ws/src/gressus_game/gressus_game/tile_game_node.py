@@ -2,11 +2,7 @@
 
 from __future__ import annotations
 
-import argparse
-import os
-import sys
 import threading
-from pathlib import Path
 
 import cv2
 import rclpy
@@ -18,14 +14,6 @@ from std_msgs.msg import Float32
 from gressus_msgs.msg import InsolePressure
 
 
-def _ensure_gressus_path() -> Path:
-    root = Path(os.environ.get("GRESSUS_ROOT", "/gressus")).resolve()
-    root_str = str(root)
-    if root_str not in sys.path:
-        sys.path.insert(0, root_str)
-    return root
-
-
 class TileGameNode(Node):
     def __init__(self) -> None:
         super().__init__("tile_game_node")
@@ -34,7 +22,8 @@ class TileGameNode(Node):
         self.declare_parameter("depth_topic", "/camera/aligned_depth_to_color/image_raw")
         self.declare_parameter("depth_scale_topic", "/camera/depth_scale_m")
 
-        from station.lib.game.sources import RosCameraFeed, RosInsoleFeed
+        from gressus_game.insole_ros_feed import RosInsoleFeed
+        from gressus_game.sources import RosCameraFeed
 
         self.insole_feed = RosInsoleFeed()
         self.camera_feed = RosCameraFeed()
@@ -72,14 +61,7 @@ class TileGameNode(Node):
         self.camera_feed.update_color_gray(color_gray)
 
 
-def _parse_game_args(argv: list[str]) -> argparse.Namespace:
-    from station.runners.tile_game import parse_args
-
-    return parse_args(argv)
-
-
 def main(args=None) -> None:
-    _ensure_gressus_path()
     rclpy.init(args=args)
     node = TileGameNode()
 
@@ -88,10 +70,10 @@ def main(args=None) -> None:
 
     from rclpy.utilities import remove_ros_args
 
-    game_argv = remove_ros_args(args=sys.argv)[1:]
-    game_args = _parse_game_args(game_argv)
+    from gressus_game.tile_game import parse_args, run_tile_game
 
-    from station.runners.tile_game import run_tile_game
+    game_argv = remove_ros_args(args=sys.argv)[1:]
+    game_args = parse_args(game_argv)
 
     try:
         insole_feed = None if game_args.no_insole else node.insole_feed

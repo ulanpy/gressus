@@ -1,4 +1,4 @@
-"""Shared insole pressure types used by the game and backend."""
+"""Shared insole pressure types used by ROS nodes."""
 
 from __future__ import annotations
 

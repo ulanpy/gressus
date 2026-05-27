@@ -3,12 +3,13 @@
 <package format="3">
   <name>gressus_insole</name>
   <version>0.0.0</version>
-  <description>Insole TCP bridge node</description>
+  <description>Insole TCP ingest and ROS bridge nodes</description>
   <maintainer email="ulan.sharipov@nu.edu.kz">root</maintainer>
   <license>Apache-2.0</license>
 
   <depend>rclpy</depend>
   <depend>gressus_msgs</depend>
+  <depend>gressus_common</depend>
   <depend>std_msgs</depend>
 
   <test_depend>ament_copyright</test_depend>

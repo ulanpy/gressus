@@ -1,22 +1,11 @@
 from setuptools import find_packages, setup
-from pathlib import Path
 
-package_name = 'gressus_game'
-
-asset_files = [
-    str(path.relative_to('gressus_game'))
-    for path in Path('gressus_game/assets').rglob('*')
-    if path.is_file()
-]
+package_name = 'gressus_common'
 
 setup(
     name=package_name,
     version='0.0.0',
     packages=find_packages(exclude=['test']),
-    package_data={
-        package_name: asset_files,
-    },
-    include_package_data=True,
     data_files=[
         ('share/ament_index/resource_index/packages',
             ['resource/' + package_name]),
@@ -26,7 +15,7 @@ setup(
     zip_safe=True,
     maintainer='root',
     maintainer_email='ulan.sharipov@nu.edu.kz',
-    description='Gressus treadmill tile game',
+    description='Shared Python helpers for Gressus ROS nodes',
     license='Apache-2.0',
     extras_require={
         'test': [
@@ -35,7 +24,6 @@ setup(
     },
     entry_points={
         'console_scripts': [
-            'tile_game_node = gressus_game.tile_game_node:main'
         ],
     },
 )

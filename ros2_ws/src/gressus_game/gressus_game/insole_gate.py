@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from shared.insole_types import InsoleSnapshot
+from gressus_common.insole_types import InsoleSnapshot
 
 
 def insole_stats_for_lane(lane: int, snapshot: InsoleSnapshot, swap_lanes: bool):

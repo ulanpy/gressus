@@ -2,9 +2,8 @@ FROM osrf/ros:jazzy-desktop-full
 
 ENV DEBIAN_FRONTEND=noninteractive
 ENV ROS_DISTRO=jazzy
-ENV GRESSUS_ROOT=/gressus
 
-# Base tooling + GUI (X11 + Wayland) + audio + RealSense + station Python deps
+# Base tooling + GUI (X11 + Wayland) + audio + RealSense + ROS game Python deps
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     cmake \

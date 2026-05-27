@@ -62,7 +62,7 @@ Engineering implications:
 
 ## 5) Open items
 
-- [done] `station/tools/realsense_depth_preview.py` добавлен (debug depth/color, FPS, USB mode, clipping range).
+- [done] `ros2_ws/tools/realsense_depth_preview.py` добавлен (debug depth/color, FPS, USB mode, clipping range).
 - Добавить новую игру/режим с depth-сегментацией вместо RGB `absdiff`.
-- [in progress] `station/tools/realsense_floor_debug.py` добавлен как промежуточный режим (SPACE -> floor model -> depth mask).
+- [in progress] `ros2_ws/tools/realsense_floor_debug.py` — floor model → depth mask.
 - Отдельно проверить, какие функции Frbby P40 Pro реально доступны в конкретной поставке (zoom/lens shift/keystone), и зафиксировать фактические лимиты после стендовых тестов.

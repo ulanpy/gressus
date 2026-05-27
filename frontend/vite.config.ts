@@ -9,7 +9,7 @@ export default defineConfig({
     proxy: {
       '/api': 'http://127.0.0.1:8000',
       '/ws': {
-        target: 'ws://127.0.0.1:8000',
+        target: 'ws://127.0.0.1:8765',
         ws: true,
       },
     },

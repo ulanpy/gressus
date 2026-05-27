@@ -22,7 +22,6 @@ services:
       PULSE_SERVER: ${PULSE_SERVER:-}
       XAUTHORITY: /root/.Xauthority
       QT_X11_NO_MITSHM: "1"
-      GRESSUS_ROOT: /gressus
       ROS_DOMAIN_ID: ${ROS_DOMAIN_ID:-0}
       RMW_IMPLEMENTATION: ${RMW_IMPLEMENTATION:-rmw_fastrtps_cpp}
     volumes:

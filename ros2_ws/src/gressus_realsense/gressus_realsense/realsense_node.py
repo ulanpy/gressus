@@ -2,23 +2,12 @@
 
 from __future__ import annotations
 
-import os
-import sys
-from pathlib import Path
-
 import numpy as np
 import rclpy
 from cv_bridge import CvBridge
 from rclpy.node import Node
 from sensor_msgs.msg import Image
 from std_msgs.msg import Float32
-
-
-def _ensure_gressus_path() -> None:
-    root = Path(os.environ.get("GRESSUS_ROOT", "/gressus")).resolve()
-    root_str = str(root)
-    if root_str not in sys.path:
-        sys.path.insert(0, root_str)
 
 
 class RealSenseNode(Node):
@@ -48,7 +37,7 @@ class RealSenseNode(Node):
 
         import pyrealsense2 as rs
 
-        from station.lib.game.realsense_depth import start_realsense
+        from gressus_realsense.realsense_depth import start_realsense
 
         self._bridge = CvBridge()
         self._pipe, self._align, self._depth_scale_m = start_realsense(
@@ -117,7 +106,6 @@ class RealSenseNode(Node):
 
 
 def main(args=None) -> None:
-    _ensure_gressus_path()
     rclpy.init(args=args)
     node = RealSenseNode()
     try:

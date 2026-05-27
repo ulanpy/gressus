@@ -1,19 +1,13 @@
 <?xml version="1.0"?>
 <?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
 <package format="3">
-  <name>gressus_game</name>
+  <name>gressus_common</name>
   <version>0.0.0</version>
-  <description>Gressus treadmill tile game</description>
+  <description>Shared Python helpers for Gressus ROS nodes</description>
   <maintainer email="ulan.sharipov@nu.edu.kz">root</maintainer>
   <license>Apache-2.0</license>
 
-  <depend>rclpy</depend>
-  <depend>gressus_msgs</depend>
-  <depend>gressus_common</depend>
-  <depend>gressus_realsense</depend>
-  <depend>cv_bridge</depend>
-  <depend>std_msgs</depend>
-  <depend>sensor_msgs</depend>
+  <exec_depend>python3-numpy</exec_depend>
 
   <test_depend>ament_copyright</test_depend>
   <test_depend>ament_flake8</test_depend>

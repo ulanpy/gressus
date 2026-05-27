@@ -20,7 +20,6 @@ def health(
 ) -> dict:
     return {
         "ok": True,
-        "insoleHost": cfg.INSOLE_HOST,
-        "insolePort": cfg.INSOLE_PORT,
+        "insoleWsUrl": cfg.INSOLE_WS_URL,
         "runtime": service.snapshot(),
     }

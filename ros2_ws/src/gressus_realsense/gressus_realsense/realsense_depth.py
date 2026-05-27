@@ -15,7 +15,8 @@ def start_realsense(
     color_width: int,
     color_height: int,
     color_fps: int,
-) -> tuple[Any, Any, float]:
+    align_to_color: bool = True,
+) -> tuple[Any, Any | None, float]:
     pipe = rs.pipeline()
     cfg = rs.config()
     cfg.enable_stream(rs.stream.depth, depth_width, depth_height, rs.format.z16, depth_fps)
@@ -23,7 +24,7 @@ def start_realsense(
     profile = pipe.start(cfg)
     dev = profile.get_device()
     depth_scale_m = float(dev.first_depth_sensor().get_depth_scale())
-    align = rs.align(rs.stream.color)
+    align = rs.align(rs.stream.color) if align_to_color else None
     return pipe, align, depth_scale_m
 
 

@@ -17,10 +17,8 @@ class Config(BaseSettings):
         extra="ignore",
     )
 
-    INSOLE_HOST: str = "0.0.0.0"
-    INSOLE_PORT: int = 9100
     INSOLE_THRESHOLD_KPA: float = 8.0
-    INSOLE_WS_URL: str = "ws://127.0.0.1:8000/ws/insole"
+    INSOLE_WS_URL: str = "ws://127.0.0.1:8765/ws/insole"
     CALIBRATION_PATH: str = "config/calibration.json"
     CORS_ORIGINS: list[str] = [
         "http://localhost:5173",
