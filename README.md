@@ -78,35 +78,51 @@ cd frontend && npm install && npm run dev
 
 ## 3. ROS 2 runtime
 
-The ROS container entrypoint builds the workspace on start when `ros2_ws/src` has packages. Interactive shells (`docker compose exec ros2 bash`) auto-source ROS and the workspace via `/root/.bashrc`. Run three nodes in separate terminals:
+The ROS container entrypoint builds the workspace and starts `session_manager` on `http://127.0.0.1:9090`. Interactive shells (`docker compose exec ros2 bash`) auto-source ROS via `/root/.bashrc`.
+
+### Launch files (`gressus_bringup`)
 
 ```bash
 docker compose exec ros2 bash
 
-# 1 — insole TCP + WebSocket + /insole/pressure
+# individual stacks
+ros2 launch gressus_bringup insole.launch.py
+ros2 launch gressus_bringup camera.launch.py
+ros2 launch gressus_bringup game.launch.py
+ros2 launch gressus_bringup game_camera.launch.py
+ros2 launch gressus_bringup calibrate.launch.py
+
+# full session: insole + camera + game
+ros2 launch gressus_bringup session.launch.py speed:=0.35 step_time_s:=2.5
+```
+
+Manual node runs (same as before):
+
+```bash
 ros2 run gressus_insole insole_bridge_node
-
-# 2 — RealSense topics
 ros2 run gressus_realsense realsense_node
-
-# 3 — tile game (subscribes to insole + camera topics; see defaults below)
 ros2 run gressus_game tile_game_node
 ```
 
 Game and calibration read/write `config/calibration.json` at the repo root (`/gressus/config/…` in Docker).
 
-The web **Control** panel starts the game via `ros2 run gressus_game tile_game_node` automatically when the backend runs with ROS sourced.
+The web **Control** panel calls `POST /api/runtime/start` → backend → `session_manager` → launch by mode:
+
+| UI flags | Launch |
+|----------|--------|
+| Demo | `game.launch.py` only |
+| No insoles | `game_camera.launch.py` (camera + game) |
+| neither | `session.launch.py` (insole + camera + game) |
 
 ### Calibration (AprilTag)
 
 Project defaults (RealSense D435, same as the web **Control** panel and `backend/modules/runtime/service.py`):
 
 ```bash
-docker compose exec ros2 bash
-ros2 run gressus_calibration calibrate_apriltag -- \
-  -c realsense --width 640 --height 480 --fps 30 \
-  --display 0 --tag-size 280 --margin 30
+ros2 launch gressus_bringup calibrate.launch.py
 ```
+
+Or explicitly:
 
 Bare run without `--` flags:
 
@@ -122,19 +138,22 @@ List all calibration flags: `ros2 run gressus_calibration calibrate_apriltag -- 
 
 ### Tile game
 
-Project defaults (live insole + camera topics; gameplay flags only — topic names stay at ROS defaults):
+Project defaults (live insole + camera topics; matches Control UI defaults):
+
+```bash
+ros2 launch gressus_bringup game.launch.py \
+  output_rotation:=270 \
+  insole_thresh_kpa:=8 \
+  speed:=0.35 \
+  step_time_s:=2.5
+```
+
+Equivalent bare node run:
 
 ```bash
 ros2 run gressus_game tile_game_node -- \
-  --output-rotation 270 \
-  --insole-thresh-kpa 8 \
-  --speed 0.22 \
-  --step-time-s 0.4
+  --output-rotation 270 --insole-thresh-kpa 8 --speed 0.35 --step-time-s 2.5
 ```
-
-Same as bare `ros2 run gressus_game tile_game_node` (no flags required when insole, RealSense, and calibration are already up). Omit `-d` / `--display` to pick the first available monitor; add e.g. `-d 0` for a specific projector.
-
-List all game flags: `ros2 run gressus_game tile_game_node -- --help`.
 
 Two lanes; a hit requires **D AND R AND P**:
 
@@ -142,9 +161,7 @@ Two lanes; a hit requires **D AND R AND P**:
 2. **R** — pixels not lit by the projector (foot occlusion).
 3. **P** — insole pressure above `--insole-thresh-kpa` from `/insole/pressure`.
 
-`--demo` — no camera topics (auto-press). `--no-insole` — skip pressure gate. `-S` / `--speed`, `--step-time-s`, `-d`, `--output-rotation`.
-
-**Note:** the web **Control** panel uses different game defaults (`speed` 0.35, `stepTimeS` 2.5) when starting via `POST /api/runtime/start`.
+`--demo` — no camera topics (auto-press). `--no-insole` — skip pressure gate. Launch: `demo:=true`, `no_insole:=true`.
 
 **Session flow:** stand outside the projection zone → `SPACE` (floor baseline + start) → step on tiles alternately → `R` reset, `Esc`/`Q` quit.
 

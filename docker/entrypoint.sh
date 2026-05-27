@@ -40,6 +40,10 @@ if [ -d /gressus/ros2_ws/src ] && [ -n "$(find /gressus/ros2_ws/src -mindepth 1 
   colcon build --symlink-install
   # shellcheck disable=SC1091
   source /gressus/docker/ros-env.sh
+  if [ "${GRESSUS_SESSION_MANAGER:-1}" != "0" ]; then
+    echo "[entrypoint] starting session_manager on 127.0.0.1:${GRESSUS_SESSION_PORT:-9090}"
+    ros2 run gressus_session session_manager --port "${GRESSUS_SESSION_PORT:-9090}" &
+  fi
 else
   echo "[entrypoint] ros2_ws/src is empty — skipping colcon build"
 fi

@@ -1,4 +1,4 @@
-"""Runtime control routes (game/calibration subprocesses)."""
+"""Runtime control routes (game/calibration via session manager)."""
 
 from __future__ import annotations
 

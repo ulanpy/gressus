@@ -15,7 +15,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     bash \
     build-essential \
     curl \
-    docker.io \
     && pip install --no-cache-dir poetry \
     && rm -rf /var/lib/apt/lists/*
 

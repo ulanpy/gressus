@@ -8,7 +8,7 @@ Layering follows the NU Space backend pattern: **API → Service → infrastruct
 
 ```
 backend/          # FastAPI server, runtime control, pgear telemetry
-ros2_ws/src/    # ROS 2 packages (common, calibration, game, insole, realsense, msgs)
+ros2_ws/src/    # ROS 2 packages (common, calibration, game, insole, realsense, msgs, bringup, session)
 ros2_ws/tools/  # dev scripts (realsense_depth_preview; source install/setup.bash first)
 frontend/       # Web UI (public/ + src/assets/ for bundled static)
 config/         # Machine-local JSON (calibration.json gitignored; see example)
@@ -23,13 +23,14 @@ docs/media/     # README / marketing screenshots
 | `backend/lifespan.py` | Startup/shutdown, router registration |
 | `backend/routers.py` | Router list (no re-export `__init__.` files) |
 | `backend/core/configs/config.py` | `pydantic-settings` (env / `.env`) |
-| `backend/app_state/` | Setup/cleanup for process manager |
+| `backend/app_state/` | Lifespan hooks (stop session on shutdown) |
 | `backend/common/dependencies.py` | FastAPI `Depends` wiring |
 | `backend/modules/health/` | `/api/health` |
 | `backend/modules/insole/` | Static sensor geometry API (`/api/geometry`; data in `sensors_m.py` / `sensors_s.py`) |
-| `backend/modules/runtime/` | Game/calibration subprocess control |
-| `backend/runtime/process_manager.py` | Subprocess manager |
+| `backend/modules/runtime/` | HTTP client for session manager |
 | `backend/modules/pgear/` | Exoskeleton UDP schemas + codec (receiver/service later) |
+| `ros2_ws/src/gressus_bringup/` | Launch files (`game`, `calibrate`, `session`, …) |
+| `ros2_ws/src/gressus_session/` | HTTP session manager (`session_manager` on `:9090`) |
 | `ros2_ws/src/gressus_insole/` | TCP ingest, `/insole/pressure`, WebSocket fanout |
 | `ros2_ws/src/gressus_game/` | Tile game library + `tile_game_node` |
 | `ros2_ws/src/gressus_calibration/` | AprilTag calibration (`calibrate_apriltag`) |
@@ -58,21 +59,21 @@ Each feature module uses:
 
 Imports use absolute paths (`from backend.modules.insole.service import InsoleService`). No barrel `__init__.py` re-exports.
 
-## Docker Compose (phase 1)
+## Docker Compose
 
 Three services, all `network_mode: host`:
 
 | Service | Image | Role |
 |---------|-------|------|
-| `ros2` | `gressus-ros2` | ROS workspace, RealSense, insole bridge, display |
-| `backend` | `gressus-backend` | FastAPI on `:8000`; runtime via `docker exec gressus-ros2` |
+| `ros2` | `gressus-ros2` | ROS workspace, `session_manager` on `:9090`, hardware |
+| `backend` | `gressus-backend` | FastAPI on `:8000` |
 | `frontend` | `gressus-frontend` | Vite dev on `:5173` (proxies `/api` and `/ws`) |
 
 ```bash
 docker compose up -d --build
 ```
 
-Backend deps live in `backend/pyproject.toml` (FastAPI only — no OpenCV/pygame in the API image). Set `ROS_CONTAINER=gressus-ros2` so `/api/runtime/start` runs `ros2` inside the ROS container.
+Backend deps live in `backend/pyproject.toml` (FastAPI + httpx only). Runtime control goes to `SESSION_MANAGER_URL` (default `http://127.0.0.1:9090`).
 
 ## Data flow
 
@@ -88,9 +89,13 @@ WaveX (Windows) ──TCP JSONL :9100──► gressus_insole/insole_bridge_node
 ```
 
 ```
-Control UI ──POST /api/runtime/start──► RuntimeService ──► ProcessManager ──► ros2 run gressus_game tile_game_node
+Control UI ──POST /api/runtime/start──► RuntimeService ──HTTP──► session_manager (:9090)
+                                                                        │
+                                                                        └── ros2 launch gressus_bringup …
 ```
 
-**Mock / demo gait:** synthetic insole frames are generated in the frontend (`useInsoleFrame.ts`) when the operator selects mock mode. Live WebSocket requires `ros2 run gressus_insole insole_bridge_node`.
+**Mock / demo gait:** synthetic insole frames are generated in the frontend (`useInsoleFrame.ts`) when the operator selects mock mode. Live WebSocket requires `insole_bridge_node` (via `ros2 launch gressus_bringup insole.launch.py` or `session.launch.py`).
 
-**Insole threshold:** the Control panel slider sets `--insole-thresh-kpa` at game start. WebSocket clients pass `threshold_kpa=…`; `pressed` stats in each frame use the same threshold.
+**Insole threshold:** the Control panel slider sets `insole_thresh_kpa` at game start via launch arguments. WebSocket clients pass `threshold_kpa=…`; `pressed` stats in each frame use the same threshold.
+
+**Launch mode from Control UI:** demo → game only; no insoles → camera + game; default → insole + camera + game (`session.launch.py`).

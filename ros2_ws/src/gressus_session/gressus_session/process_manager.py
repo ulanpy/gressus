@@ -1,3 +1,5 @@
+"""Subprocess session tracking for ros2 launch jobs."""
+
 from __future__ import annotations
 
 import os
@@ -6,7 +8,6 @@ import subprocess
 import threading
 import time
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Any
 
 
@@ -18,11 +19,10 @@ class JobInfo:
     started_at: float
 
 
-class ProcessManager:
-    """Single-active-job process manager for local demo runtime."""
+class LaunchProcessManager:
+    """Single active ros2 launch job."""
 
-    def __init__(self, cwd: Path) -> None:
-        self._cwd = cwd
+    def __init__(self) -> None:
         self._lock = threading.Lock()
         self._proc: subprocess.Popen[str] | None = None
         self._job: JobInfo | None = None
@@ -40,7 +40,6 @@ class ProcessManager:
 
             proc = subprocess.Popen(
                 command,
-                cwd=self._cwd,
                 env=child_env,
                 stdin=subprocess.DEVNULL,
                 start_new_session=True,
@@ -62,7 +61,6 @@ class ProcessManager:
                 return False
             proc = self._proc
             job = self._job
-
             self._terminate_tree_locked(proc, timeout_s=timeout_s)
             self._refresh_locked(force=True, stopped_job=job)
             return True
@@ -84,11 +82,7 @@ class ProcessManager:
                 "lastExit": self._last_exit,
             }
 
-    def shutdown(self) -> None:
-        self.stop(timeout_s=2.0)
-
     def wait_briefly(self, seconds: float) -> bool:
-        """Return True if the process is still alive after the wait."""
         deadline = time.monotonic() + max(0.0, seconds)
         while time.monotonic() < deadline:
             with self._lock:
