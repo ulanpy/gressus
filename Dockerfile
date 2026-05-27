@@ -88,7 +88,7 @@ RUN pip3 install --no-cache-dir --break-system-packages --ignore-installed \
 
 RUN rosdep update
 
-RUN mkdir -p /root/ros2_ws/src
+RUN mkdir -p /gressus/ros2_ws/src
 
 COPY docker/entrypoint.sh /usr/local/bin/gressus-entrypoint.sh
 COPY docker/gui-env.sh /usr/local/bin/gressus-gui-env.sh
@@ -96,7 +96,7 @@ RUN chmod +x /usr/local/bin/gressus-entrypoint.sh /usr/local/bin/gressus-gui-env
 
 RUN echo "source /opt/ros/jazzy/setup.bash" >> /root/.bashrc
 
-WORKDIR /root/ros2_ws
+WORKDIR /gressus/ros2_ws
 
 ENTRYPOINT ["/usr/local/bin/gressus-entrypoint.sh"]
 CMD ["bash"]

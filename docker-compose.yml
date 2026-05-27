@@ -25,12 +25,11 @@ services:
       ROS_DOMAIN_ID: ${ROS_DOMAIN_ID:-0}
       RMW_IMPLEMENTATION: ${RMW_IMPLEMENTATION:-rmw_fastrtps_cpp}
     volumes:
-      - ./ros2_ws:/root/ros2_ws:rw
       - .:/gressus:rw
       - /tmp/.X11-unix:/tmp/.X11-unix:rw
       - ${HOME}/.Xauthority:/root/.Xauthority:ro
       - ${XDG_RUNTIME_DIR:-/dev/null}:${XDG_RUNTIME_DIR:-/dev/null}:rw
       - /dev:/dev
-    working_dir: /root/ros2_ws
+    working_dir: /gressus/ros2_ws
     entrypoint: ["/gressus/docker/entrypoint.sh"]
     command: bash

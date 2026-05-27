@@ -76,7 +76,7 @@ Build the workspace once inside the ROS container (see `docker-compose.yml`), th
 
 ```bash
 docker compose exec ros2 bash
-source /opt/ros/jazzy/setup.bash && source /root/ros2_ws/install/setup.bash
+source /opt/ros/jazzy/setup.bash && source /gressus/ros2_ws/install/setup.bash
 
 # 1 — insole TCP + WebSocket + /insole/pressure
 ros2 run gressus_insole insole_bridge_node

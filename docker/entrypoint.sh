@@ -14,14 +14,14 @@ elif [ -f /usr/local/bin/gressus-gui-env.sh ]; then
   source /usr/local/bin/gressus-gui-env.sh
 fi
 
-if [ -d /root/ros2_ws/src ] && [ -n "$(find /root/ros2_ws/src -mindepth 1 -maxdepth 1 -type d 2>/dev/null | head -1)" ]; then
-  cd /root/ros2_ws
+if [ -d /gressus/ros2_ws/src ] && [ -n "$(find /gressus/ros2_ws/src -mindepth 1 -maxdepth 1 -type d 2>/dev/null | head -1)" ]; then
+  cd /gressus/ros2_ws
   rosdep install --from-paths src --ignore-src -r -y || true
   colcon build --symlink-install
-  if [ -f /root/ros2_ws/install/setup.bash ]; then
+  if [ -f /gressus/ros2_ws/install/setup.bash ]; then
     set +u
     # shellcheck disable=SC1091
-    source /root/ros2_ws/install/setup.bash
+    source /gressus/ros2_ws/install/setup.bash
     set -u
   fi
 else
