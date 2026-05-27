@@ -94,9 +94,7 @@ class RuntimeService:
             raise HTTPException(
                 status_code=500,
                 detail={
-                    "message": f"{cfg.job} exited immediately",
-                    "logPath": str(job.log_path),
-                    "logTail": self._manager.tail_log(max_bytes=4096),
+                    "message": f"{cfg.job} exited immediately; see backend stdout",
                     "runtime": self.snapshot(),
                 },
             )
@@ -107,7 +105,6 @@ class RuntimeService:
                 "name": job.name,
                 "pid": job.pid,
                 "command": list(job.command),
-                "logPath": str(job.log_path),
             },
             "runtime": self.snapshot(),
         }
@@ -115,15 +112,3 @@ class RuntimeService:
     def stop(self, timeout_s: float) -> dict[str, Any]:
         stopped = self._manager.stop(timeout_s=timeout_s)
         return {"ok": True, "stopped": stopped, "runtime": self.snapshot()}
-
-    def log_tail(self, tail: int) -> dict[str, Any]:
-        snapshot = self.snapshot()
-        active = snapshot.get("activeJob") or {}
-        log_path = active.get("logPath")
-        if log_path is None:
-            last_exit = snapshot.get("lastExit") or {}
-            log_path = last_exit.get("logPath")
-        return {
-            "logPath": log_path,
-            "logTail": self._manager.tail_log(max_bytes=tail),
-        }

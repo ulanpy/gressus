@@ -677,38 +677,6 @@
   margin: 0;
 }
 
-.runtime__log {
-  width: min(1280px, 100%);
-  margin: 8px auto 0;
-  border: 1px solid var(--panel-border);
-  border-radius: 12px;
-  background: rgb(15 23 42 / 0.04);
-  padding: 10px 14px;
-  font-size: 13px;
-}
-
-.runtime__log > summary {
-  cursor: pointer;
-  user-select: none;
-  color: var(--text-strong);
-  font-weight: 500;
-}
-
-.runtime__log > pre {
-  margin: 8px 0 0;
-  max-height: 320px;
-  overflow: auto;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 12px;
-  line-height: 1.45;
-  white-space: pre-wrap;
-  word-break: break-word;
-  color: rgb(30 41 59);
-  background: rgb(248 250 252);
-  border-radius: 8px;
-  padding: 10px 12px;
-}
-
 .live-inactive {
   width: min(1280px, 100%);
   margin: 24px auto 0;

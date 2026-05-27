@@ -1,28 +1,17 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { GameLaunchParams, RuntimePayload } from '../types/runtime'
 
-
-type RuntimeErrorDetail = {
-  message?: string
-  logPath?: string | null
-  logTail?: string | null
-}
-
-function extractErrorDetail(text: string): { message: string; logTail: string | null } {
-  if (!text) return { message: 'runtime action failed', logTail: null }
+function extractErrorMessage(text: string): string {
+  if (!text) return 'runtime action failed'
   try {
-    const parsed = JSON.parse(text) as { detail?: RuntimeErrorDetail | string }
+    const parsed = JSON.parse(text) as { detail?: { message?: string } | string }
     const detail = parsed.detail
-    if (typeof detail === 'string') return { message: detail, logTail: null }
-    if (detail && typeof detail === 'object') {
-      const tail = detail.logTail ?? null
-      const message = detail.message ?? 'runtime action failed'
-      return { message, logTail: tail }
-    }
+    if (typeof detail === 'string') return detail
+    if (detail && typeof detail === 'object' && detail.message) return detail.message
   } catch {
     /* fall through to raw text */
   }
-  return { message: text, logTail: null }
+  return text
 }
 
 export function useRuntimeControls() {
@@ -33,7 +22,6 @@ export function useRuntimeControls() {
   })
   const [pending, setPending] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)
-  const [actionLogTail, setActionLogTail] = useState<string | null>(null)
 
   const refreshStatus = useCallback(async () => {
     const response = await fetch('/api/runtime/status')
@@ -48,7 +36,6 @@ export function useRuntimeControls() {
     async (path: string, body: object) => {
       setPending(true)
       setActionError(null)
-      setActionLogTail(null)
       try {
         const response = await fetch(path, {
           method: 'POST',
@@ -57,9 +44,7 @@ export function useRuntimeControls() {
         })
         if (!response.ok) {
           const text = await response.text()
-          const { message, logTail } = extractErrorDetail(text)
-          if (logTail) setActionLogTail(logTail)
-          throw new Error(message)
+          throw new Error(extractErrorMessage(text))
         }
         await refreshStatus()
       } catch (err) {
@@ -105,11 +90,10 @@ export function useRuntimeControls() {
       state,
       pending,
       actionError,
-      actionLogTail,
       startGame,
       startCalibration,
       stopRuntime,
     }),
-    [state, pending, actionError, actionLogTail, startGame, startCalibration, stopRuntime],
+    [state, pending, actionError, startGame, startCalibration, stopRuntime],
   )
 }

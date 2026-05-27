@@ -49,7 +49,6 @@ export const translations = {
       startGame: 'Запустить игру',
       backendUnavailable: 'Backend runtime недоступен',
       actionFailed: 'Не удалось выполнить действие',
-      logTail: 'Лог процесса (последние строки)',
     },
     live: {
       inactiveEyebrow: 'Стельки неактивны',
@@ -297,7 +296,6 @@ export const translations = {
       startGame: 'Start game',
       backendUnavailable: 'Backend runtime unavailable',
       actionFailed: 'Could not complete action',
-      logTail: 'Process log (last lines)',
     },
     live: {
       inactiveEyebrow: 'Insoles inactive',
@@ -545,7 +543,6 @@ export const translations = {
       startGame: 'Ойынды іске қосу',
       backendUnavailable: 'Backend runtime қолжетімсіз',
       actionFailed: 'Әрекетті орындау мүмкін болмады',
-      logTail: 'Процесс журналы (соңғы жолдар)',
     },
     live: {
       inactiveEyebrow: 'Ұлтарақтар белсенді емес',

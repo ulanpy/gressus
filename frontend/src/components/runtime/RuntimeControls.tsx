@@ -12,7 +12,6 @@ import { Segmented } from './controls/Segmented'
 
 export function RuntimeControls({
   actionError,
-  actionLogTail,
   pending,
   runtime,
   startCalibration,
@@ -20,7 +19,6 @@ export function RuntimeControls({
   stopRuntime,
 }: {
   actionError: string | null
-  actionLogTail: string | null
   pending: boolean
   runtime: RuntimePayload
   startCalibration: () => Promise<void>
@@ -216,12 +214,6 @@ export function RuntimeControls({
       </article>
 
       {actionError && <p className="error runtime__error">{runtimeErrorText(actionError, t)}</p>}
-      {actionLogTail && (
-        <details className="runtime__log" open>
-          <summary>{t.control.logTail}</summary>
-          <pre>{actionLogTail}</pre>
-        </details>
-      )}
     </section>
   )
 }

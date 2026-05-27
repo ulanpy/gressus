@@ -6,7 +6,6 @@ import { RuntimeControls } from '../components/runtime/RuntimeControls'
 export function ControlPage({
   runtime,
   runtimeActionError,
-  runtimeActionLogTail,
   runtimePending,
   startCalibration,
   startGame,
@@ -27,7 +26,6 @@ export function ControlPage({
       <RuntimeControls
         runtime={runtime}
         actionError={runtimeActionError}
-        actionLogTail={runtimeActionLogTail}
         pending={runtimePending}
         startCalibration={startCalibration}
         startGame={startGame}

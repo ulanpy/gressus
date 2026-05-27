@@ -75,7 +75,6 @@ function DashboardShell({ language, setLanguage }: DashboardShellProps) {
         <ControlPage
           runtime={runtime.state}
           runtimeActionError={runtime.actionError}
-          runtimeActionLogTail={runtime.actionLogTail}
           runtimePending={runtime.pending}
           startCalibration={runtime.startCalibration}
           startGame={runtime.startGame}

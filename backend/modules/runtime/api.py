@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends
 
 from backend.common.dependencies import get_runtime_service
 from backend.modules.runtime.schemas import StartRuntimeRequest, StopRuntimeRequest
@@ -34,11 +34,3 @@ def runtime_stop(
     service: Annotated[RuntimeService, Depends(get_runtime_service)],
 ) -> dict:
     return service.stop(payload.timeoutS)
-
-
-@router.get("/log")
-def runtime_log(
-    service: Annotated[RuntimeService, Depends(get_runtime_service)],
-    tail: int = Query(4096, ge=128, le=65536),
-) -> dict:
-    return service.log_tail(tail)

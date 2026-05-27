@@ -70,7 +70,6 @@ export type TherapistPageProps = {
 export type ControlPageProps = {
   runtime: RuntimePayload
   runtimeActionError: string | null
-  runtimeActionLogTail: string | null
   runtimePending: boolean
   startCalibration: () => Promise<void>
   startGame: (params: GameLaunchParams) => Promise<void>
