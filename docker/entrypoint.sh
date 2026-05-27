@@ -16,6 +16,11 @@ fi
 
 if [ -d /gressus/ros2_ws/src ] && [ -n "$(find /gressus/ros2_ws/src -mindepth 1 -maxdepth 1 -type d 2>/dev/null | head -1)" ]; then
   cd /gressus/ros2_ws
+  stale_cache=$(find build -name CMakeCache.txt -print -quit 2>/dev/null || true)
+  if [ -n "$stale_cache" ] && grep -q '/root/ros2_ws' "$stale_cache" 2>/dev/null; then
+    echo "[entrypoint] stale colcon artifacts (old /root/ros2_ws paths) — cleaning build/install/log"
+    rm -rf build install log
+  fi
   rosdep install --from-paths src --ignore-src -r -y || true
   colcon build --symlink-install
   if [ -f /gressus/ros2_ws/install/setup.bash ]; then

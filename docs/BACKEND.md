@@ -43,6 +43,7 @@ docs/media/     # README / marketing screenshots
 | `gressus_common/insole_frame_payload.py` | JSON frame builder for WebSocket clients |
 | `gressus_game/insole_ros_feed.py` | ROS topic → snapshot cache for the game |
 | `gressus_game/tile_game.py` | Pygame loop; fed by ROS topics via `tile_game_node` |
+| `gressus_game/paths.py` | Fixed repo paths (`config/calibration.json`) |
 | `gressus_game/calibration.py` | Load `config/calibration.json` |
 | `gressus_game/display.py` | Fullscreen projector window helper |
 | `gressus_realsense/realsense_depth.py` | RealSense pipeline + tile depth/RGB signals |

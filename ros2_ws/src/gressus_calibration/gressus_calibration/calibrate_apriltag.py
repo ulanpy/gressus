@@ -15,6 +15,7 @@ import numpy as np
 import pygame
 
 from gressus_game.display import open_fullscreen
+from gressus_game.paths import CALIBRATION_JSON
 
 TAG_FAMILY = "DICT_APRILTAG_36h11"
 TAG_IDS = (0, 1, 2, 3)
@@ -61,13 +62,6 @@ def parse_args() -> argparse.Namespace:
         default=None,
         metavar="N",
         help="Индекс монитора pygame (часто 1 = HDMI-проектор). По умолчанию — последний.",
-    )
-    p.add_argument(
-        "-o",
-        "--output",
-        type=Path,
-        default=Path("config/calibration.json"),
-        help="Куда сохранить JSON с гомографией.",
     )
     p.add_argument(
         "--tag-size",
@@ -501,7 +495,8 @@ def _hud_overlay_surface(lines: list[str]) -> pygame.Surface:
 def main() -> None:
     args = parse_args()
     use_mjpeg = not args.no_mjpeg
-    args.output.parent.mkdir(parents=True, exist_ok=True)
+    output = CALIBRATION_JSON
+    output.parent.mkdir(parents=True, exist_ok=True)
 
     if args.backend == "pupil" and not _pupil_apriltags_available():
         print(
@@ -674,9 +669,9 @@ def main() -> None:
                             if mask is not None
                             else None,
                         }
-                        with open(args.output, "w", encoding="utf-8") as f:
+                        with open(output, "w", encoding="utf-8") as f:
                             json.dump(payload, f, indent=2, ensure_ascii=False)
-                        print(f"Сохранено: {args.output.resolve()}", file=sys.stderr)
+                        print(f"Сохранено: {output.resolve()}", file=sys.stderr)
                         running = False
 
             clock.tick(30)

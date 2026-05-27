@@ -30,11 +30,8 @@ class RuntimeService:
         )
 
     def build_command(self, cfg: StartRuntimeRequest) -> list[str]:
-        calibration = str(self._config.calibration_path)
         if cfg.job == "game":
             game_args = [
-                "--calibration",
-                calibration,
                 "--output-rotation",
                 str(cfg.outputRotation),
                 "--insole-thresh-kpa",
@@ -72,8 +69,6 @@ class RuntimeService:
             "280",
             "--margin",
             "30",
-            "-o",
-            calibration,
         ]
         args_str = " ".join(shlex.quote(arg) for arg in cal_args)
         shell = (

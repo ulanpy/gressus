@@ -85,8 +85,10 @@ ros2 run gressus_insole insole_bridge_node
 ros2 run gressus_realsense realsense_node
 
 # 3 — tile game (subscribes to insole + camera topics)
-ros2 run gressus_game tile_game_node -- --calibration /gressus/config/calibration.json
+ros2 run gressus_game tile_game_node
 ```
+
+Game and calibration read/write `config/calibration.json` at the repo root (`/gressus/config/…` in Docker).
 
 The web **Control** panel starts the game via `ros2 run gressus_game tile_game_node` automatically when the backend runs with ROS sourced.
 
@@ -97,8 +99,7 @@ source /opt/ros/jazzy/setup.bash
 source /gressus/ros2_ws/install/setup.bash
 ros2 run gressus_calibration calibrate_apriltag -- \
   -c realsense --width 640 --height 480 --fps 30 \
-  --display 0 --tag-size 280 --margin 30 \
-  -o /gressus/config/calibration.json
+  --display 0 --tag-size 280 --margin 30
 ```
 
 ### Tile game flags (after `--`)
@@ -109,7 +110,7 @@ Two lanes; a hit requires **D AND R AND P**:
 2. **R** — pixels not lit by the projector (foot occlusion).
 3. **P** — insole pressure above `--insole-thresh-kpa` from `/insole/pressure`.
 
-`--demo` — no camera topics (auto-press). `--no-insole` — skip pressure gate. `-S` / `--speed`, `--step-time-s`, `-d`, `--output-rotation`, `--calibration`.
+`--demo` — no camera topics (auto-press). `--no-insole` — skip pressure gate. `-S` / `--speed`, `--step-time-s`, `-d`, `--output-rotation`.
 
 **Session flow:** stand outside the projection zone → `SPACE` (floor baseline + start) → step on tiles alternately → `R` reset, `Esc`/`Q` quit.
 

@@ -19,6 +19,7 @@ from gressus_game.calibration import CameraCalibration, load_calibration
 from gressus_game.display import open_fullscreen
 from gressus_game.insole_gate import insole_hud_line
 from gressus_game.models import FallingTile
+from gressus_game.paths import CALIBRATION_JSON
 from gressus_game.render import draw_scene, hud_surface, lane_rects
 from gressus_game.sources import CameraFeed, InsoleFeed
 from gressus_realsense.realsense_depth import tile_signals
@@ -123,7 +124,6 @@ def save_shift(cal_path: Path, shift: tuple[int, int]) -> None:
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p = argparse.ArgumentParser(description="2-lane treadmill tile game (ROS feeds).")
-    p.add_argument("--calibration", type=Path, default=Path("config/calibration.json"))
     p.add_argument("-d", "--display", type=int, default=None)
     p.add_argument("--output-rotation", type=int, choices=(0, 90, 180, 270), default=270)
     p.add_argument(
@@ -161,7 +161,7 @@ def run_tile_game(
     if not args.demo and camera_feed is None:
         raise RuntimeError("camera_feed is required unless --demo is set")
 
-    cal: CameraCalibration = load_calibration(args.calibration)
+    cal: CameraCalibration = load_calibration(CALIBRATION_JSON)
     screen, scr_w, scr_h, _ = open_fullscreen(args.display, "Treadmill tile rhythm")
     cw, ch = output_canvas_size(scr_w, scr_h, rot)
     audio = GameAudio(assets_dir=default_assets_dir())
@@ -196,7 +196,7 @@ def run_tile_game(
     next_spawn_t = time.perf_counter() + 1.0
     last_hit_t = -1e9
 
-    shift_x, shift_y = load_shift(args.calibration)
+    shift_x, shift_y = load_shift(CALIBRATION_JSON)
     shift_dirty = False
     shift_saved_msg_t = -1e9
     session_intro_played = False
@@ -399,7 +399,7 @@ def run_tile_game(
                         show_debug_hud = not show_debug_hud
                     elif e.key == pygame.K_s:
                         try:
-                            save_shift(args.calibration, (shift_x, shift_y))
+                            save_shift(CALIBRATION_JSON, (shift_x, shift_y))
                             shift_dirty = False
                             shift_saved_msg_t = now
                         except Exception as exc:
