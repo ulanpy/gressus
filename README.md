@@ -119,10 +119,13 @@ The web **Control** panel calls `POST /api/runtime/start` → backend → `sessi
 Project defaults (RealSense D435, same as the web **Control** panel and `backend/modules/runtime/service.py`):
 
 ```bash
-ros2 launch gressus_bringup calibrate.launch.py
+ros2 launch gressus_bringup calibrate.launch.py output_rotation:=270
 ```
 
-Or explicitly:
+> ⚠️ `output_rotation` **must** match what the game uses. The homography saved in
+> `config/calibration.json` is canvas→camera and includes that rotation. If you
+> change the rotation later, re-run calibration — otherwise the game refuses to
+> start with a canvas-size mismatch error.
 
 Bare run without `--` flags:
 
@@ -130,7 +133,7 @@ Bare run without `--` flags:
 ros2 run gressus_calibration calibrate_apriltag
 ```
 
-…uses the node’s argparse defaults (`--camera 0`, `1920×1080`, auto display, tag size from screen) — **not** the RealSense setup above. Prefer the explicit command for the treadmill rig.
+…uses the node's argparse defaults (`--camera 0`, `1920×1080`, auto display, tag size from screen, `--output-rotation 270`) — **not** the RealSense setup above. Prefer the explicit command for the treadmill rig.
 
 List all calibration flags: `ros2 run gressus_calibration calibrate_apriltag -- --help`.
 

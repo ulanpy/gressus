@@ -6,6 +6,7 @@ import numpy as np
 import rclpy
 from cv_bridge import CvBridge
 from rclpy.node import Node
+from rclpy.qos import qos_profile_sensor_data
 from sensor_msgs.msg import Image
 from std_msgs.msg import Float32
 
@@ -50,8 +51,8 @@ class RealSenseNode(Node):
             color_fps=cfps,
         )
 
-        self._color_pub = self.create_publisher(Image, color_topic, 10)
-        self._depth_pub = self.create_publisher(Image, depth_topic, 10)
+        self._color_pub = self.create_publisher(Image, color_topic, qos_profile_sensor_data)
+        self._depth_pub = self.create_publisher(Image, depth_topic, qos_profile_sensor_data)
         self._scale_pub = self.create_publisher(Float32, scale_topic, 10)
 
         scale_msg = Float32()
@@ -64,10 +65,13 @@ class RealSenseNode(Node):
         )
 
     def _publish_frames(self) -> None:
+        if not rclpy.ok():
+            return
         try:
             frames = self._pipe.wait_for_frames(timeout_ms=1000)
         except RuntimeError as exc:
-            self.get_logger().warning(f"RealSense wait_for_frames: {exc}")
+            if rclpy.ok():
+                self.get_logger().warning(f"RealSense wait_for_frames: {exc}")
             return
 
         frames = self._align.process(frames)
@@ -75,27 +79,31 @@ class RealSenseNode(Node):
         color_frame = frames.get_color_frame()
         stamp = self.get_clock().now().to_msg()
 
-        if color_frame:
-            color_bgr = np.asanyarray(color_frame.get_data())
-            color_msg = self._bridge.cv2_to_imgmsg(color_bgr, encoding="bgr8")
-            color_msg.header.stamp = stamp
-            color_msg.header.frame_id = "camera_color_optical_frame"
-            self._color_pub.publish(color_msg)
+        try:
+            if color_frame:
+                color_bgr = np.asanyarray(color_frame.get_data())
+                color_msg = self._bridge.cv2_to_imgmsg(color_bgr, encoding="bgr8")
+                color_msg.header.stamp = stamp
+                color_msg.header.frame_id = "camera_color_optical_frame"
+                self._color_pub.publish(color_msg)
 
-        if depth_frame:
-            depth_mm = (
-                np.asanyarray(depth_frame.get_data()).astype(np.float32)
-                * self._depth_scale_m
-                * 1000.0
-            )
-            depth_msg = self._bridge.cv2_to_imgmsg(depth_mm, encoding="32FC1")
-            depth_msg.header.stamp = stamp
-            depth_msg.header.frame_id = "camera_depth_optical_frame"
-            self._depth_pub.publish(depth_msg)
+            if depth_frame:
+                depth_mm = (
+                    np.asanyarray(depth_frame.get_data()).astype(np.float32)
+                    * self._depth_scale_m
+                    * 1000.0
+                )
+                depth_msg = self._bridge.cv2_to_imgmsg(depth_mm, encoding="32FC1")
+                depth_msg.header.stamp = stamp
+                depth_msg.header.frame_id = "camera_depth_optical_frame"
+                self._depth_pub.publish(depth_msg)
 
-        scale_msg = Float32()
-        scale_msg.data = float(self._depth_scale_m)
-        self._scale_pub.publish(scale_msg)
+            scale_msg = Float32()
+            scale_msg.data = float(self._depth_scale_m)
+            self._scale_pub.publish(scale_msg)
+        except Exception as exc:
+            if rclpy.ok():
+                self.get_logger().debug(f"publish skipped during shutdown: {exc}")
 
     def destroy_node(self) -> bool:
         try:
@@ -113,8 +121,12 @@ def main(args=None) -> None:
     except KeyboardInterrupt:
         pass
     finally:
-        node.destroy_node()
-        rclpy.shutdown()
+        try:
+            node.destroy_node()
+        except Exception:
+            pass
+        if rclpy.ok():
+            rclpy.shutdown()
 
 
 if __name__ == "__main__":

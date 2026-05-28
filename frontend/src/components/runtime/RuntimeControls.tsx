@@ -21,7 +21,7 @@ export function RuntimeControls({
   actionError: string | null
   pending: boolean
   runtime: RuntimePayload
-  startCalibration: () => Promise<void>
+  startCalibration: (params: Pick<GameLaunchParams, 'outputRotation'>) => Promise<void>
   startGame: (params: GameLaunchParams) => Promise<void>
   stopRuntime: () => Promise<void>
 }) {
@@ -161,7 +161,7 @@ export function RuntimeControls({
           <button
             type="button"
             className="runtime__secondary runtime__secondary--icon"
-            onClick={() => void startCalibration()}
+            onClick={() => void startCalibration({ outputRotation: gameParams.outputRotation })}
             disabled={!canStart}
           >
             <CameraIcon />

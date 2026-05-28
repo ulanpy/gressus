@@ -112,10 +112,25 @@ class LaunchProcessManager:
 
     def _terminate_tree_locked(self, proc: subprocess.Popen[str], timeout_s: float) -> None:
         try:
+            os.killpg(proc.pid, signal.SIGINT)
+        except OSError:
+            try:
+                proc.send_signal(signal.SIGINT)
+            except OSError:
+                return
+        deadline = time.monotonic() + timeout_s * 0.6
+        while time.monotonic() < deadline:
+            if proc.poll() is not None:
+                return
+            time.sleep(0.05)
+        try:
             os.killpg(proc.pid, signal.SIGTERM)
         except OSError:
-            return
-        deadline = time.monotonic() + timeout_s
+            try:
+                proc.send_signal(signal.SIGTERM)
+            except OSError:
+                return
+        deadline = time.monotonic() + timeout_s * 0.4
         while time.monotonic() < deadline:
             if proc.poll() is not None:
                 return

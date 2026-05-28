@@ -14,11 +14,17 @@ import cv2
 import numpy as np
 import pygame
 
+from gressus_game.calibration import CALIBRATION_VERSION
 from gressus_game.display import open_fullscreen
 from gressus_game.paths import CALIBRATION_JSON
 
 TAG_FAMILY = "DICT_APRILTAG_36h11"
 TAG_IDS = (0, 1, 2, 3)
+
+
+def _output_canvas_size(scr_w: int, scr_h: int, rot: int) -> tuple[int, int]:
+    """Mirror of gressus_game.tile_game.output_canvas_size."""
+    return (scr_h, scr_w) if rot in (90, 270) else (scr_w, scr_h)
 
 
 class CameraReader(Protocol):
@@ -136,6 +142,16 @@ def parse_args() -> argparse.Namespace:
         "--no-onscreen-hud",
         action="store_true",
         help="Не рисовать HUD с FPS (по умолчанию по центру экрана).",
+    )
+    p.add_argument(
+        "--output-rotation",
+        type=int,
+        choices=(0, 90, 180, 270),
+        default=270,
+        help=(
+            "Поворот canvas → проектор. ДОЛЖЕН совпадать с --output-rotation игры, "
+            "иначе детекция не совпадёт с реальным положением плиток."
+        ),
     )
     return p.parse_args()
 
@@ -510,21 +526,29 @@ def main() -> None:
     opencv_detector = _make_aruco_detector() if args.backend == "opencv" else None
     pupil_detector = _make_pupil_detector() if args.backend == "pupil" else None
 
-    screen, proj_w, proj_h, _didx = open_fullscreen(
+    screen, scr_w, scr_h, _didx = open_fullscreen(
         args.display, "AprilTag calibration"
     )
 
-    margin = args.margin if args.margin is not None else max(16, min(proj_w, proj_h) // 24)
-    tag_sz = args.tag_size if args.tag_size is not None else max(120, min(proj_w, proj_h) // 8)
-    if margin * 2 + tag_sz > min(proj_w, proj_h):
-        tag_sz = max(64, min(proj_w, proj_h) // 2 - 2 * margin)
+    rot = int(args.output_rotation)
+    cw, ch = _output_canvas_size(scr_w, scr_h, rot)
 
-    corners_px = _tag_corner_positions(proj_w, proj_h, margin, tag_sz)
+    margin = args.margin if args.margin is not None else max(16, min(cw, ch) // 24)
+    tag_sz = args.tag_size if args.tag_size is not None else max(120, min(cw, ch) // 8)
+    if margin * 2 + tag_sz > min(cw, ch):
+        tag_sz = max(64, min(cw, ch) // 2 - 2 * margin)
+
+    corners_canvas = _tag_corner_positions(cw, ch, margin, tag_sz)
     _, cx, cy = _make_tag_cell(dictionary, TAG_IDS[0], tag_sz)
     tag_surfaces = {
         tid: _gray_to_pygame_surface(_make_tag_cell(dictionary, tid, tag_sz)[0])
         for tid in TAG_IDS
     }
+    print(
+        f"[calib] screen={scr_w}x{scr_h} canvas={cw}x{ch} rot={rot} "
+        f"tag_sz={tag_sz}px margin={margin}px",
+        file=sys.stderr,
+    )
 
     cap, aw, ah, camera_label, startup_rep, startup_meas = _open_camera(args, use_mjpeg)
 
@@ -539,11 +563,22 @@ def main() -> None:
     last_instant_fps = 0.0
     prev_flip_t: float | None = None
 
+    canvas = pygame.Surface((cw, ch))
     try:
         while running:
-            screen.fill((255, 255, 255))
+            canvas.fill((255, 255, 255))
             for tid in TAG_IDS:
-                screen.blit(tag_surfaces[tid], corners_px[tid])
+                canvas.blit(tag_surfaces[tid], corners_canvas[tid])
+            if rot:
+                rendered = pygame.transform.rotate(canvas, rot)
+            else:
+                rendered = canvas
+            screen.fill((0, 0, 0))
+            screen.blit(
+                rendered,
+                ((scr_w - rendered.get_width()) // 2,
+                 (scr_h - rendered.get_height()) // 2),
+            )
 
             ok, frame = cap.read()
             if ok:
@@ -577,7 +612,7 @@ def main() -> None:
                     )
                 frame_i += 1
 
-            _draw_status_bar(screen, proj_w, proj_h, all_four)
+            _draw_status_bar(screen, scr_w, scr_h, all_four)
 
             if not args.no_onscreen_hud:
                 if args.no_fps_probe:
@@ -599,8 +634,8 @@ def main() -> None:
                 screen.blit(
                     hud,
                     (
-                        proj_w // 2 - hud.get_width() // 2,
-                        proj_h // 2 - hud.get_height() // 2,
+                        scr_w // 2 - hud.get_width() // 2,
+                        scr_h // 2 - hud.get_height() // 2,
                     ),
                 )
 
@@ -635,25 +670,42 @@ def main() -> None:
                                 file=sys.stderr,
                             )
                             continue
-                        pts_proj = _expected_centers_proj(corners_px, cx, cy)
+                        pts_canvas = _expected_centers_proj(corners_canvas, cx, cy)
                         pts_cam = np.zeros((4, 2), dtype=np.float32)
                         for i in TAG_IDS:
                             pts_cam[i] = last_centers[i]
 
-                        H, mask = cv2.findHomography(pts_cam, pts_proj, cv2.RANSAC, 5.0)
-                        if H is None:
+                        H_canvas_to_cam, mask = cv2.findHomography(
+                            pts_canvas, pts_cam, cv2.RANSAC, 5.0
+                        )
+                        if H_canvas_to_cam is None:
                             print("findHomography вернул None.", file=sys.stderr)
                             continue
-                        H_inv = np.linalg.inv(H)
+                        H_cam_to_canvas = np.linalg.inv(H_canvas_to_cam)
+
+                        proj_back = cv2.perspectiveTransform(
+                            pts_canvas.reshape(-1, 1, 2),
+                            H_canvas_to_cam,
+                        ).reshape(-1, 2)
+                        residuals = np.linalg.norm(proj_back - pts_cam, axis=1)
+                        repro_err = float(residuals.mean())
+
+                        print(
+                            "[calib] solved canvas->cam H. "
+                            f"reproj_err={repro_err:.2f}px max={float(residuals.max()):.2f}px",
+                            file=sys.stderr,
+                        )
 
                         payload = {
-                            "version": 1,
-                            "method": "apriltag_centers",
+                            "version": CALIBRATION_VERSION,
+                            "method": "apriltag_centers_canvas",
                             "detector_backend": args.backend,
                             "camera_backend": camera_label,
                             "tag_family": TAG_FAMILY,
                             "tag_ids": list(TAG_IDS),
-                            "proj_resolution": [proj_w, proj_h],
+                            "output_rotation": rot,
+                            "screen_resolution": [scr_w, scr_h],
+                            "canvas_resolution": [cw, ch],
                             "camera_index": args.camera
                             if isinstance(args.camera, int)
                             else str(args.camera),
@@ -662,11 +714,11 @@ def main() -> None:
                             "margin_px": margin,
                             "tag_size_px": tag_sz,
                             "tag_center_offset_in_cell_xy": [cx, cy],
-                            "H_cam_to_proj": H.tolist(),
-                            "H_proj_to_cam": H_inv.tolist(),
-                            "inliers_homography": int(mask.sum())
-                            if mask is not None
-                            else None,
+                            "H_canvas_to_cam": H_canvas_to_cam.tolist(),
+                            "H_cam_to_canvas": H_cam_to_canvas.tolist(),
+                            "hit_shift_canvas": [0, 0],
+                            "inliers": int(mask.sum()) if mask is not None else None,
+                            "reprojection_error_px": repro_err,
                         }
                         with open(output, "w", encoding="utf-8") as f:
                             json.dump(payload, f, indent=2, ensure_ascii=False)

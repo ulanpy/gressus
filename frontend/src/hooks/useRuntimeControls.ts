@@ -80,7 +80,11 @@ export function useRuntimeControls() {
     [runAction],
   )
   const startCalibration = useCallback(
-    () => runAction('/api/runtime/start', { job: 'calibrate_apriltag' }),
+    (params: Pick<GameLaunchParams, 'outputRotation'>) =>
+      runAction('/api/runtime/start', {
+        job: 'calibrate_apriltag',
+        outputRotation: params.outputRotation,
+      }),
     [runAction],
   )
   const stopRuntime = useCallback(() => runAction('/api/runtime/stop', {}), [runAction])

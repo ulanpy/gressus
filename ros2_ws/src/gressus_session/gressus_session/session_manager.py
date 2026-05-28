@@ -75,7 +75,13 @@ def _game_launch_args(payload: dict[str, Any]) -> list[str]:
 def _launch_command(payload: dict[str, Any]) -> tuple[str, list[str]]:
     job = str(payload.get('job', 'game'))
     if job == 'calibrate_apriltag':
-        return job, ['ros2', 'launch', 'gressus_bringup', 'calibrate.launch.py']
+        return job, [
+            'ros2',
+            'launch',
+            'gressus_bringup',
+            'calibrate.launch.py',
+            f"output_rotation:={payload.get('outputRotation', 270)}",
+        ]
 
     launch_file = _pick_launch_file(payload)
     return job, [
@@ -119,6 +125,10 @@ class SessionHandler(BaseHTTPRequestHandler):
     def _handle_start(self, payload: dict[str, Any]) -> None:
         try:
             job, command = _launch_command(payload)
+            sys.stderr.write(
+                f"[session_manager] start payload={payload}\n"
+                f"[session_manager] start command={' '.join(command)}\n"
+            )
             started = _MANAGER.start(
                 name=job,
                 command=command,

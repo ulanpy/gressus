@@ -1,5 +1,6 @@
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, OpaqueFunction
+from launch.actions import DeclareLaunchArgument, OpaqueFunction, RegisterEventHandler, Shutdown
+from launch.event_handlers import OnProcessExit
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 
@@ -19,13 +20,20 @@ def _game_node(context, *args, **kwargs):
     if LaunchConfiguration('no_insole').perform(context).lower() in {'true', '1', 'yes'}:
         argv.append('--no-insole')
 
+    game = Node(
+        package='gressus_game',
+        executable='tile_game_node',
+        name='tile_game_node',
+        output='screen',
+        arguments=argv,
+    )
     return [
-        Node(
-            package='gressus_game',
-            executable='tile_game_node',
-            name='tile_game_node',
-            output='screen',
-            arguments=argv,
+        game,
+        RegisterEventHandler(
+            OnProcessExit(
+                target_action=game,
+                on_exit=[Shutdown(reason='tile game exited')],
+            )
         ),
     ]
 

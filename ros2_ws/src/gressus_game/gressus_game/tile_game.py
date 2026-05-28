@@ -7,6 +7,7 @@ import json
 import os
 import sys
 import time
+from collections.abc import Callable
 from pathlib import Path
 
 import cv2
@@ -34,6 +35,8 @@ LIFT_MM_MAX = 250.0
 DEPTH_FILL_THRESH = 0.15
 RGB_FILL_THRESH = 0.20
 RGB_LIT_DELTA = 22
+# Temporary hit-gate debug: "both" | "depth" | "rgb"
+HIT_GATE_DEBUG = "depth"
 HIT_COOLDOWN_S = 0.18
 INSOLE_MAX_AGE_S = 0.40
 
@@ -45,46 +48,67 @@ def output_canvas_size(scr_w: int, scr_h: int, rot: int) -> tuple[int, int]:
     return (scr_h, scr_w) if rot in (90, 270) else (scr_w, scr_h)
 
 
-def forward_output_point(cx: float, cy: float, *, cw: int, ch: int, rot: int) -> tuple[float, float]:
-    if rot == 0:
-        return cx, cy
-    if rot == 90:
-        return cy, cw - 1 - cx
-    if rot == 180:
-        return cw - 1 - cx, ch - 1 - cy
-    if rot == 270:
-        return ch - 1 - cy, cx
-    raise ValueError(f"Unsupported rotation: {rot}")
-
-
 def tile_cam_poly(
     tile: FallingTile,
     lane_rect: pygame.Rect,
     *,
-    cw: int,
-    ch: int,
-    sx: float,
-    sy: float,
-    rot: int,
-    H_proj_to_cam: np.ndarray,
+    H_canvas_to_cam: np.ndarray,
     shift_x: int,
     shift_y: int,
-) -> np.ndarray:
+    play_top: int,
+    play_bottom: int,
+) -> np.ndarray | None:
+    """Map the VISIBLE part of a tile (canvas pixels) into camera pixels.
+
+    Calibration solves canvas <-> camera directly. We MUST clip the tile's
+    canvas Y range to the play area (= the calibrated projection rectangle)
+    before applying the homography — extrapolating outside the calibrated
+    quad gives arbitrary camera coords (including off-frame regions that may
+    overlap the patient's body), which would auto-trigger hits while the
+    tile is still spawning above the canvas.
+
+    Returns None when the tile has no visible portion inside the play band.
+    """
     pad_x = max(8, lane_rect.width // 12)
     l = lane_rect.left + pad_x + shift_x
     r = lane_rect.right - pad_x + shift_x
-    t = int(tile.y) + shift_y
-    b = int(tile.y + tile.h) + shift_y
-    canvas_corners = [(l, t), (r, t), (r, b), (l, b)]
-    screen_pts = np.array(
-        [forward_output_point(cx, cy, cw=cw, ch=ch, rot=rot) for cx, cy in canvas_corners],
-        dtype=np.float32,
+    raw_t = int(tile.y) + shift_y
+    raw_b = int(tile.y + tile.h) + shift_y
+    t = max(raw_t, play_top)
+    b = min(raw_b, play_bottom)
+    if b - t < 2:
+        return None
+    canvas_pts = np.array(
+        [(l, t), (r, t), (r, b), (l, b)], dtype=np.float32,
     )
-    proj_pts = screen_pts.copy()
-    proj_pts[:, 0] /= sx
-    proj_pts[:, 1] /= sy
-    cam_pts = cv2.perspectiveTransform(proj_pts.reshape(-1, 1, 2), H_proj_to_cam).reshape(-1, 2)
+    cam_pts = cv2.perspectiveTransform(
+        canvas_pts.reshape(-1, 1, 2), H_canvas_to_cam,
+    ).reshape(-1, 2)
     return cam_pts
+
+
+def tile_overlaps_play(t: FallingTile, play_top: int, play_bottom: int) -> bool:
+    """True when any part of the tile is inside the play band."""
+    return (t.y + t.h) >= play_top and t.y <= play_bottom
+
+
+def foot_hit_ok(d: float, r: float) -> bool:
+    if HIT_GATE_DEBUG == "depth":
+        return d >= DEPTH_FILL_THRESH
+    if HIT_GATE_DEBUG == "rgb":
+        return r >= RGB_FILL_THRESH
+    return d >= DEPTH_FILL_THRESH and r >= RGB_FILL_THRESH
+
+
+def hit_need_label() -> str:
+    if HIT_GATE_DEBUG == "depth":
+        return f"need D≥{DEPTH_FILL_THRESH:.0%} (R gate off) AND P"
+    if HIT_GATE_DEBUG == "rgb":
+        return f"need R≥{RGB_FILL_THRESH:.0%} (D gate off) AND P"
+    return (
+        f"need D≥{DEPTH_FILL_THRESH:.0%} R≥{RGB_FILL_THRESH:.0%} "
+        f"(hit=D AND R AND P)"
+    )
 
 
 def pressure_ok(
@@ -151,24 +175,36 @@ def run_tile_game(
     *,
     insole_feed: InsoleFeed | None = None,
     camera_feed: CameraFeed | None = None,
+    log_info: Callable[[str], None] | None = None,
+    log_warn: Callable[[str], None] | None = None,
 ) -> None:
     if os.environ.get("WAYLAND_DISPLAY") and not os.environ.get("QT_QPA_PLATFORM"):
         os.environ["QT_QPA_PLATFORM"] = "xcb"
 
-    rot = args.output_rotation
     insole_enabled = not args.no_insole
 
     if not args.demo and camera_feed is None:
         raise RuntimeError("camera_feed is required unless --demo is set")
 
     cal: CameraCalibration = load_calibration(CALIBRATION_JSON)
+    if args.output_rotation != cal.output_rotation:
+        raise RuntimeError(
+            f"output_rotation mismatch: requested {args.output_rotation}°, "
+            f"calibration was recorded at {cal.output_rotation}°. "
+            f"Either start the game with --output-rotation {cal.output_rotation}, "
+            f"or re-run calibration with --output-rotation {args.output_rotation}."
+        )
+    rot = args.output_rotation
+
     screen, scr_w, scr_h, _ = open_fullscreen(args.display, "Treadmill tile rhythm")
     cw, ch = output_canvas_size(scr_w, scr_h, rot)
+    cal_cw, cal_ch = cal.canvas_resolution
+    if (cw, ch) != (cal_cw, cal_ch):
+        raise RuntimeError(
+            f"canvas size {cw}x{ch} (screen {scr_w}x{scr_h} rot={rot}) does not match "
+            f"calibration canvas {cal_cw}x{cal_ch}. Re-run calibration on the same display."
+        )
     audio = GameAudio(assets_dir=default_assets_dir())
-
-    proj_w, proj_h = cal.proj_resolution
-    sx = scr_w / float(proj_w)
-    sy = scr_h / float(proj_h)
 
     state = "play" if args.demo else "wait_floor"
     floor_mm: np.ndarray | None = None
@@ -183,6 +219,7 @@ def run_tile_game(
     play_h = play_bottom - play_top
     hit_y = int(play_top + play_h * 0.82)
     hit_window = max(60, int(play_h * 0.15))
+    # hit_y sits below play_bottom when tile center aligns — keep overlap checks loose.
 
     tile_speed_mps = float(np.clip(args.tile_speed_mps, 0.05, 1.5))
     tile_speed_px_s = float(np.clip(tile_speed_mps * 420.0, 45.0, 620.0))
@@ -192,6 +229,7 @@ def run_tile_game(
     tile_d: dict[int, float] = {}
     tile_r: dict[int, float] = {}
     tile_p: dict[int, bool] = {}
+    tile_area: dict[int, int] = {}
     next_lane = 0
     next_spawn_t = time.perf_counter() + 1.0
     last_hit_t = -1e9
@@ -200,12 +238,25 @@ def run_tile_game(
     shift_dirty = False
     shift_saved_msg_t = -1e9
     session_intro_played = False
+    floor_capture_msg_t = -1e9
 
     fps_ema = 0.0
     t_prev = time.perf_counter()
     clock = pygame.time.Clock()
     running = True
     show_debug_hud = False
+    last_gate_log_t = -1e9
+    last_gate_key = ""
+    last_no_depth_log_t = -1e9
+    last_cam_stats_log_t = -1e9
+
+    def _info(msg: str) -> None:
+        if log_info is not None:
+            log_info(msg)
+
+    def _warn(msg: str) -> None:
+        if log_warn is not None:
+            log_warn(msg)
 
     try:
         while running:
@@ -224,11 +275,20 @@ def run_tile_game(
             color_gray: np.ndarray | None = None
             if camera_feed is not None:
                 depth_mm, color_gray = camera_feed.latest()
+                if log_info is not None and (now - last_cam_stats_log_t) >= 5.0:
+                    stats = (
+                        camera_feed.stats_line()
+                        if hasattr(camera_feed, "stats_line")
+                        else "camera feed active"
+                    )
+                    _info(f"camera {stats} state={state}")
+                    last_cam_stats_log_t = now
 
             rects = lane_rects(cw, play_top, play_bottom)
             tile_d.clear()
             tile_r.clear()
             tile_p.clear()
+            tile_area.clear()
 
             if state == "play":
                 if not session_intro_played:
@@ -256,7 +316,7 @@ def run_tile_game(
                     for i, t in enumerate(tiles):
                         if t.hit:
                             continue
-                        if t.y < play_top or t.y + t.h > play_bottom:
+                        if not tile_overlaps_play(t, play_top, play_bottom):
                             continue
                         tile_center_y = t.y + t.h * 0.5
                         ready = abs(tile_center_y - hit_y) <= hit_window * 0.5
@@ -267,29 +327,70 @@ def run_tile_game(
                     for i, t in enumerate(tiles):
                         if t.hit:
                             continue
-                        if t.y < play_top or t.y + t.h > play_bottom:
+                        if not tile_overlaps_play(t, play_top, play_bottom):
                             continue
                         poly = tile_cam_poly(
                             t, rects[t.lane],
-                            cw=cw, ch=ch, sx=sx, sy=sy, rot=rot,
-                            H_proj_to_cam=cal.H_proj_to_cam,
+                            H_canvas_to_cam=cal.H_canvas_to_cam,
                             shift_x=shift_x, shift_y=shift_y,
+                            play_top=play_top, play_bottom=play_bottom,
                         )
-                        d_score, r_score, _area = tile_signals(
+                        if poly is None:
+                            continue
+                        d_score, r_score, area = tile_signals(
                             poly, depth_mm, floor_mm, color_gray, baseline_gray,
                             LIFT_MM_MIN, LIFT_MM_MAX, RGB_LIT_DELTA,
                         )
                         tile_d[i] = d_score
                         tile_r[i] = r_score
+                        tile_area[i] = area
                         tile_p[i] = pressure_ok(t.lane, insole_snap, insole_enabled)
+
+                if depth_mm is None and floor_mm is not None and (now - last_no_depth_log_t) >= 2.0:
+                    _warn("play: no aligned depth/color frame — gate scores stay at zero")
+                    last_no_depth_log_t = now
+
+                if floor_mm is not None and depth_mm is not None:
+                    for i, t in enumerate(tiles):
+                        if t.hit:
+                            continue
+                        dy = abs((t.y + t.h * 0.5) - hit_y)
+                        if dy > hit_window:
+                            continue
+                        d_val = tile_d.get(i, 0.0)
+                        r_val = tile_r.get(i, 0.0)
+                        p_val = tile_p.get(
+                            i, pressure_ok(t.lane, insole_snap, insole_enabled),
+                        )
+                        gate_key = f"{i}:{d_val:.2f}:{r_val:.2f}:{p_val}:{int(dy)}"
+                        if (now - last_gate_log_t) >= 0.4 or gate_key != last_gate_key:
+                            _info(
+                                f"gate lane={LANE_NAMES[t.lane]} dy={dy:.0f}px "
+                                f"D={d_val:.0%} R={r_val:.0%} "
+                                f"P={'Y' if p_val else 'N'} ({hit_need_label()})"
+                            )
+                            if tile_area.get(i, 0) == 0 and (now - last_no_depth_log_t) >= 2.0:
+                                _warn(
+                                    "gate poly area=0 — camera ROI misses tile; "
+                                    "use H + arrows to tune hit_shift, then S"
+                                )
+                                last_no_depth_log_t = now
+                            last_gate_log_t = now
+                            last_gate_key = gate_key
+                        break
 
                 if (now - last_hit_t) >= HIT_COOLDOWN_S:
                     for i, t in enumerate(tiles):
                         if t.hit or i not in tile_p:
                             continue
+                        # Only register a hit when the tile is visually at the
+                        # hit line. Without this, a tile half-way through the
+                        # play band could fire on any stray foot in its polygon.
+                        dy = abs((t.y + t.h * 0.5) - hit_y)
+                        if dy > hit_window:
+                            continue
                         if (
-                            tile_d.get(i, 0.0) >= DEPTH_FILL_THRESH
-                            and tile_r.get(i, 0.0) >= RGB_FILL_THRESH
+                            foot_hit_ok(tile_d.get(i, 0.0), tile_r.get(i, 0.0))
                             and tile_p[i]
                         ):
                             t.hit = True
@@ -302,6 +403,10 @@ def run_tile_game(
                                 audio.play_motivation()
                             last_hit_t = now
                             audio.play_positive()
+                            _info(
+                                f"hit lane={LANE_NAMES[t.lane]} score={score} "
+                                f"D={tile_d.get(i, 0.0):.0%} R={tile_r.get(i, 0.0):.0%}"
+                            )
                             break
 
                 kept: list[FallingTile] = []
@@ -314,6 +419,7 @@ def run_tile_game(
                         misses += 1
                         combo_count = 0
                         audio.play_correction()
+                        _info(f"miss lane={LANE_NAMES[t.lane]} misses={misses}")
                         continue
                     kept.append(t)
                 tiles = kept
@@ -335,20 +441,19 @@ def run_tile_game(
                 for t in tiles:
                     if t.hit:
                         continue
-                    if t.y < play_top or t.y + t.h > play_bottom:
+                    if not tile_overlaps_play(t, play_top, play_bottom):
                         continue
                     r_lane = rects[t.lane]
                     pad_x = max(8, r_lane.width // 12)
-                    if shift_x or shift_y:
-                        sx_left = r_lane.left + pad_x + shift_x
-                        sx_right = r_lane.right - pad_x + shift_x
-                        sy_top = int(t.y) + shift_y
-                        sy_bot = int(t.y + t.h) + shift_y
-                        pygame.draw.rect(
-                            frame, (255, 0, 255),
-                            pygame.Rect(sx_left, sy_top, sx_right - sx_left, sy_bot - sy_top),
-                            width=2,
-                        )
+                    sx_left = r_lane.left + pad_x + shift_x
+                    sx_right = r_lane.right - pad_x + shift_x
+                    sy_top = int(t.y) + shift_y
+                    sy_bot = int(t.y + t.h) + shift_y
+                    pygame.draw.rect(
+                        frame, (255, 0, 255),
+                        pygame.Rect(sx_left, sy_top, sx_right - sx_left, sy_bot - sy_top),
+                        width=2,
+                    )
                 shift_str = f"shift=({shift_x},{shift_y})"
                 if shift_dirty:
                     shift_str += " *unsaved (S to save)"
@@ -357,7 +462,7 @@ def run_tile_game(
                 hud_lines = [
                     f"score: {score}  miss: {misses}  fps: {fps_ema:.1f}  state: {state}",
                     f"speed: {tile_speed_px_s:.0f}px/s (~{tile_speed_mps:.2f} m/s)  step: {step_time_s:.2f}s",
-                    f"lift: [{LIFT_MM_MIN:.0f}..{LIFT_MM_MAX:.0f}]mm  D≥{DEPTH_FILL_THRESH:.0%}  R≥{RGB_FILL_THRESH:.0%}  Δlit:{RGB_LIT_DELTA}  hit=D AND R AND P",
+                    f"lift: [{LIFT_MM_MIN:.0f}..{LIFT_MM_MAX:.0f}]mm  {hit_need_label()}  Δlit:{RGB_LIT_DELTA}",
                     shift_str + "   arrows tune (Shift=x5)",
                     insole_hud_line(insole_snap, args.insole_thresh_kpa, INSOLE_MAX_AGE_S)
                     if insole_enabled else "insole: --no-insole (P=True)",
@@ -370,6 +475,19 @@ def run_tile_game(
                 frame = pygame.transform.rotate(frame, rot)
             screen.fill(BG_COLOR)
             screen.blit(frame, ((scr_w - frame.get_width()) // 2, (scr_h - frame.get_height()) // 2))
+
+            if not args.demo and state == "wait_floor" and camera_feed is not None:
+                if camera_feed.has_aligned_frames():
+                    prompt = "SPACE: capture floor baseline (stand off the mat)"
+                else:
+                    prompt = "waiting for camera frames..."
+                if (now - floor_capture_msg_t) < 2.0:
+                    prompt = "no floor capture — wait for camera, then SPACE again"
+                prompt_surf = hud_surface([prompt], fg_color=FG_COLOR)
+                screen.blit(
+                    prompt_surf,
+                    ((scr_w - prompt_surf.get_width()) // 2, scr_h - prompt_surf.get_height() - 24),
+                )
             pygame.display.flip()
 
             for e in pygame.event.get():
@@ -391,6 +509,10 @@ def run_tile_game(
                                 tiles.clear()
                                 next_lane = 0
                                 next_spawn_t = time.perf_counter() + 0.8
+                                _info("floor baseline captured — play started")
+                            else:
+                                floor_capture_msg_t = time.perf_counter()
+                                _warn("floor capture failed — no aligned camera pairs")
                     elif e.key == pygame.K_r:
                         score = 0
                         misses = 0

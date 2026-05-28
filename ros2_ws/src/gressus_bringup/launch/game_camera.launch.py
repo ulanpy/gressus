@@ -2,7 +2,7 @@ import os
 
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
+from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, TimerAction
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
 
@@ -28,11 +28,17 @@ def generate_launch_description() -> LaunchDescription:
         DeclareLaunchArgument('display', default_value='none'),
         DeclareLaunchArgument('demo', default_value='false'),
         DeclareLaunchArgument('no_insole', default_value='true'),
+        DeclareLaunchArgument('game_start_delay_s', default_value='3.0'),
         IncludeLaunchDescription(
             PythonLaunchDescriptionSource(os.path.join(bringup_dir, 'camera.launch.py')),
         ),
-        IncludeLaunchDescription(
-            PythonLaunchDescriptionSource(os.path.join(bringup_dir, 'game.launch.py')),
-            launch_arguments=game_args.items(),
+        TimerAction(
+            period=LaunchConfiguration('game_start_delay_s'),
+            actions=[
+                IncludeLaunchDescription(
+                    PythonLaunchDescriptionSource(os.path.join(bringup_dir, 'game.launch.py')),
+                    launch_arguments=game_args.items(),
+                ),
+            ],
         ),
     ])
