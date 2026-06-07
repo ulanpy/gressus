@@ -67,6 +67,19 @@ services:
     volumes:
       - ./frontend:/gressus/frontend
       - frontend_node_modules:/gressus/frontend/node_modules
-
+  postgres:
+    image: postgres:16-alpine
+    container_name: gressus-postgres
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-gressus}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-gressus}
+      POSTGRES_DB: ${POSTGRES_DB:-gressus}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+    
 volumes:
+  postgres_data:
   frontend_node_modules:
