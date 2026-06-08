@@ -71,14 +71,14 @@ services:
     image: postgres:16-alpine
     container_name: gressus-postgres
     ports:
-      - "5432:5432"
+      - "5435:5432"
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-gressus}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-gressus}
-      POSTGRES_DB: ${POSTGRES_DB:-gressus}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
     volumes:
       - postgres_data:/var/lib/postgresql/data
-    restart: unless-stopped
+    restart: always
     
 volumes:
   postgres_data:
