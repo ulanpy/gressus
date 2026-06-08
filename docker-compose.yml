@@ -67,6 +67,7 @@ services:
     volumes:
       - ./frontend:/gressus/frontend
       - frontend_node_modules:/gressus/frontend/node_modules
+  
   postgres:
     image: postgres:16-alpine
     container_name: gressus-postgres
