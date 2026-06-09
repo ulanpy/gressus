@@ -67,14 +67,11 @@ services:
     volumes:
       - ./frontend:/gressus/frontend
       - frontend_node_modules:/gressus/frontend/node_modules
-<<<<<<< HEAD
-=======
->>>>>>> 63fb317 (feat: add postgres container to docker-compose)
+
   postgres:
     image: postgres:16-alpine
     container_name: gressus-postgres
     ports:
-<<<<<<< HEAD
       - "5435:5432"
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
@@ -83,17 +80,29 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
     restart: always
-=======
-      - "5435:5432"
+    networks:
+      - gressus-network
+
+  pgadmin:
+    image: dpage/pgadmin4
+    container_name: gressus-pgadmin
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-gressus}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-gressus}
-      POSTGRES_DB: ${POSTGRES_DB:-gressus}
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_DEFAULT_EMAIL}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_DEFAULT_PASSWORD}
+    depends_on:
+      - postgres
+    restart: always
+    ports:
+      - "8080:80"
     volumes:
-      - postgres_data:/var/lib/postgresql/data
-    restart: unless-stopped
->>>>>>> 63fb317 (feat: add postgres container to docker-compose)
+      - pgadmin_data:/var/lib/pgadmin
+      - ./docker/pgadmin/servers.json:/pgadmin4/servers.json
 
 volumes:
   postgres_data:
   frontend_node_modules:
+  pgadmin_data:
+
+networks:
+  gressus-network:
+    driver: bridge
