@@ -15,7 +15,7 @@ class Sex(str, Enum):
 class PatientCreate(BaseModel):
     display_name: str
     date_of_birth: date | None = None
-    sex: Sex | None = None
+    sex: Sex 
     diagnosis_note: str | None = None
     profile: Dict[str, Any] = Field(default_factory=dict)
 
@@ -32,7 +32,7 @@ class PatientRead(BaseModel):
     id: UUID
     display_name: str
     date_of_birth: date | None
-    sex: Sex | None
+    sex: Sex 
     diagnosis_note: str | None
     profile: Dict[str, Any]
     created_at: datetime
