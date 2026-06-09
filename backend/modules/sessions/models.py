@@ -29,7 +29,7 @@ class Session(Base):
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
     patient_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("patients.id"), nullable=False
+        UUID(as_uuid=True), ForeignKey("patients.id", ondelete="CASCADE"), nullable=False
     )
     session_number: Mapped[int] = mapped_column(Integer, nullable=False)
     started_at: Mapped[datetime] = mapped_column(
@@ -56,7 +56,7 @@ class Session(Base):
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
 
-    patient: Mapped[Patient] = relationship("Patient", back_populates="sessions")
+    patient: Mapped[Patient] = relationship("Patient")
 
     __table_args__ = (
         UniqueConstraint(

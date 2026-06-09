@@ -42,15 +42,19 @@ services:
       context: .
       dockerfile: docker/backend/Dockerfile
     container_name: gressus-backend
+    # host network cannot resolve the postgres service name; use published port
     network_mode: host
     restart: unless-stopped
     depends_on:
-      - ros2
+      - postgres
+    env_file:
+      - .env
     environment:
       SESSION_MANAGER_URL: ${SESSION_MANAGER_URL:-http://127.0.0.1:9090}
       QT_QPA_PLATFORM: ${QT_QPA_PLATFORM:-xcb}
     volumes:
       - .:/gressus:rw
+    command: ["/gressus/docker/backend/start.sh"]
 
   frontend:
     image: gressus-frontend
@@ -91,6 +95,8 @@ services:
       PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_DEFAULT_PASSWORD}
     depends_on:
       - postgres
+    networks:
+      - gressus-network
     restart: always
     ports:
       - "8080:80"

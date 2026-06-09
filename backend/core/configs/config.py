@@ -11,8 +11,14 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 
 
 class Config(BaseSettings):
+    POSTGRES_DB: str
+    POSTGRES_USER: str
+    POSTGRES_PASSWORD: str
+    POSTGRES_HOST: str
+    POSTGRES_PORT: int
+    RUN_MIGRATIONS: bool = True
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file= REPO_ROOT / ".env",
         env_file_encoding="utf-8",
         extra="ignore",
     )
@@ -30,6 +36,18 @@ class Config(BaseSettings):
     @cached_property
     def repo_root(self) -> Path:
         return REPO_ROOT
+    
+    @cached_property
+    def DATABASE_URL(self) -> str:
+        return (
+            f"postgresql+asyncpg://{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}"
+            f"@{self.POSTGRES_HOST}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
+        )
+
+    @cached_property
+    def SYNC_DATABASE_URL(self) -> str:
+        """Sync driver URL for Alembic migrations."""
+        return self.DATABASE_URL.replace("postgresql+asyncpg", "postgresql+psycopg2")
 
 
 config = Config()

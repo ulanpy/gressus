@@ -43,10 +43,6 @@ class Patient(Base):
         DateTime(timezone=True), nullable=True
     )
 
-    sessions: Mapped[list[Session]] = relationship(
-        "Session", back_populates="patient"
-    )
-
     __table_args__ = (
         Index(
             "idx_patients_active",
