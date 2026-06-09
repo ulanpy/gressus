@@ -67,7 +67,7 @@ services:
     volumes:
       - ./frontend:/gressus/frontend
       - frontend_node_modules:/gressus/frontend/node_modules
-  
+
   postgres:
     image: postgres:16-alpine
     container_name: gressus-postgres
@@ -80,7 +80,29 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
     restart: always
-    
+    networks:
+      - gressus-network
+
+  pgadmin:
+    image: dpage/pgadmin4
+    container_name: gressus-pgadmin
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_DEFAULT_EMAIL}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_DEFAULT_PASSWORD}
+    depends_on:
+      - postgres
+    restart: always
+    ports:
+      - "8080:80"
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+      - ./docker/pgadmin/servers.json:/pgadmin4/servers.json
+
 volumes:
   postgres_data:
   frontend_node_modules:
+  pgadmin_data:
+
+networks:
+  gressus-network:
+    driver: bridge

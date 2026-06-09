@@ -1,0 +1,13 @@
+{
+  "Servers": {
+    "1": {
+      "Name": "gressus",
+      "Group": "Servers",
+      "Host": "gressus-postgres",
+      "Port": 5432,
+      "MaintenanceDB": "gressus_db",
+      "Username": "gressus",
+      "SSLMode": "prefer"
+    }
+  }
+}
