@@ -63,19 +63,6 @@ Interactive ROS shell:
 docker compose exec ros2 bash
 ```
 
-**Without Docker** — backend only (`backend/pyproject.toml`):
-
-```bash
-poetry -C backend install
-PYTHONPATH=. poetry -C backend run uvicorn backend.main:app --host 0.0.0.0 --port 8000
-```
-
-**Without Docker** — frontend (npm):
-
-```bash
-cd frontend && npm install && npm run dev
-```
-
 ## 3. ROS 2 runtime
 
 The ROS container entrypoint builds the workspace and starts `session_manager` on `http://127.0.0.1:9090`. Interactive shells (`docker compose exec ros2 bash`) auto-source ROS via `/root/.bashrc`.
