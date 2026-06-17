@@ -1,5 +1,22 @@
 import { useI18n } from '../../../i18n/context'
+import { cn } from '../../../lib/cn'
 import type { CemrrResult } from '../../../types/cemrr'
+import {
+  cemrrAspect,
+  cemrrAspectDetail,
+  cemrrAspectFill,
+  cemrrAspectHead,
+  cemrrAspectPill,
+  cemrrAspectPillBad,
+  cemrrAspectPillGood,
+  cemrrAspectPillMid,
+  cemrrAspects,
+  cemrrAspectTrack,
+  cemrrAspectValue,
+  cemrrCard,
+  cemrrCardHead,
+  eyebrow,
+} from '../../../styles/ui'
 import { ASPECT_COLORS, ASPECT_KEYS, scoreColor } from './GriHero'
 
 type AspectScoresCardProps = {
@@ -18,31 +35,42 @@ export function AspectScoresCard({ result }: AspectScoresCardProps) {
   } as const
 
   return (
-    <article className="cemrr-card">
-      <header className="cemrr-card__head">
-        <p className="eyebrow">{t.progress.cemrr.aspectsTitle}</p>
+    <article className={cemrrCard}>
+      <header className={cemrrCardHead}>
+        <p className={eyebrow}>{t.progress.cemrr.aspectsTitle}</p>
       </header>
-      <div className="cemrr-aspects">
+      <div className={cemrrAspects}>
         {ASPECT_KEYS.map((key) => {
           const value = result.aspects[key]
           const pct = Math.round(value * 100)
           const color = ASPECT_COLORS[key]
           return (
-            <div className="cemrr-aspect" style={{ borderLeftColor: color }} key={key}>
-              <div className="cemrr-aspect__head">
+            <div className={cemrrAspect} style={{ borderLeftColor: color }} key={key}>
+              <div className={cemrrAspectHead}>
                 <span>{t.progress.cemrr.aspects[key]}</span>
-                <span className={`cemrr-pill cemrr-pill--${pillTone(value)}`}>
+                <span
+                  className={cn(
+                    cemrrAspectPill,
+                    pillTone(value) === 'good'
+                      ? cemrrAspectPillGood
+                      : pillTone(value) === 'mid'
+                        ? cemrrAspectPillMid
+                        : cemrrAspectPillBad,
+                  )}
+                >
                   {pillLabel(value, t.progress.cemrr.good, t.progress.cemrr.improving, t.progress.cemrr.needsWork)}
                 </span>
               </div>
-              <strong style={{ color }}>{pct}%</strong>
-              <div className="cemrr-aspect__track">
+              <strong className={cemrrAspectValue} style={{ color }}>
+                {pct}%
+              </strong>
+              <div className={cemrrAspectTrack}>
                 <div
-                  className="cemrr-aspect__fill"
+                  className={cemrrAspectFill}
                   style={{ width: `${pct}%`, background: color }}
                 />
               </div>
-              <span className="cemrr-aspect__detail">{detail[key]}</span>
+              <span className={cemrrAspectDetail}>{detail[key]}</span>
             </div>
           )
         })}

@@ -28,6 +28,7 @@ export type FootHeatmapProps = {
   showSensors: boolean
   silhouette: FootSilhouette
   title: string
+  outlineClass?: 'foot-outline' | 'garden-foot-outline'
 }
 
 export type DashboardControlsProps = {

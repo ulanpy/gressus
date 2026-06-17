@@ -1,7 +1,11 @@
 import { useI18n } from '../../i18n/context'
 import { percentImprovement, percentReduction, formatSignedPercent } from '../../lib/format'
+import { progressCard } from '../../styles/ui'
 import type { ClinicalDomainsCardProps } from '../../types/components'
 import { CardHeading } from '../layout/CardHeading'
+
+const domainRow =
+  'flex justify-between items-center gap-[18px] p-4 border border-slate-200/72 rounded-[20px] bg-white/58'
 
 
 export function ClinicalDomainsCard({ metrics }: ClinicalDomainsCardProps) {
@@ -43,18 +47,18 @@ export function ClinicalDomainsCard({ metrics }: ClinicalDomainsCardProps) {
   ]
 
   return (
-    <article className="progress-card">
+    <article className={progressCard}>
       <CardHeading eyebrow={t.progress.domains.eyebrow} title={t.progress.domains.title} />
-      <div className="domain-list">
+      <div className="grid gap-3">
         {domains.map((domain) => (
-          <div className="domain-row" key={domain.label}>
+          <div className={domainRow} key={domain.label}>
             <div>
-              <strong>{domain.label}</strong>
-              <span>
+              <strong className="block text-text-strong text-base">{domain.label}</strong>
+              <span className="text-muted text-[13px]">
                 {Math.round(domain.baseline)} → {Math.round(domain.latest)} {domain.unit}
               </span>
             </div>
-            <b>{formatSignedPercent(domain.improvement)}</b>
+            <b className="shrink-0 text-cyan-700 text-lg">{formatSignedPercent(domain.improvement)}</b>
           </div>
         ))}
       </div>

@@ -1,16 +1,30 @@
 import { useState } from 'react'
 import { useI18n } from '../../i18n/context'
 import type { PatientSessionWorkflow } from '../../hooks/usePatientSessionWorkflow'
+import { cn } from '../../lib/cn'
+import {
+  workflowBtnDanger,
+  workflowBtnPrimary,
+  workflowBtnSecondary,
+  workflowField,
+  workflowFieldInput,
+  workflowFieldLabel,
+  workflowMuted,
+  workflowStep,
+  workflowStepActions,
+} from '../../styles/ui'
 import { PatientForm } from './PatientForm'
 
 type PatientSelectorProps = {
   workflow: PatientSessionWorkflow
+  variant?: 'standalone' | 'inline'
 }
 
-export function PatientSelector({ workflow }: PatientSelectorProps) {
+export function PatientSelector({ workflow, variant = 'standalone' }: PatientSelectorProps) {
   const { t } = useI18n()
   const [formOpen, setFormOpen] = useState(false)
   const [formMode, setFormMode] = useState<'create' | 'edit'>('create')
+  const inline = variant === 'inline'
 
   const openCreate = () => {
     setFormMode('create')
@@ -38,39 +52,64 @@ export function PatientSelector({ workflow }: PatientSelectorProps) {
     setFormOpen(false)
   }
 
-  return (
-    <section className="workflow-step" aria-label={t.workflow.stepPatient}>
-      <header className="workflow-step__head">
-        <p className="eyebrow">{t.workflow.stepPatient}</p>
-        <h2>{t.workflow.selectPatient}</h2>
-      </header>
+  const selectField = (
+    <label className={cn(workflowField, inline && 'mt-0 min-w-[180px]')}>
+      {!inline && <span className={workflowFieldLabel}>{t.workflow.selectPatient}</span>}
+      <select
+        className={workflowFieldInput}
+        value={workflow.selectedPatientId ?? ''}
+        onChange={(e) => workflow.selectPatient(e.target.value || null)}
+        disabled={workflow.pendingAction}
+        aria-label={t.workflow.selectPatient}
+      >
+        <option value="">{t.workflow.selectPatientPlaceholder}</option>
+        {workflow.patients.map((patient) => (
+          <option key={patient.id} value={patient.id}>
+            {patient.display_name}
+          </option>
+        ))}
+      </select>
+    </label>
+  )
 
-      {workflow.loading ? (
-        <p className="workflow-muted">{t.workflow.loading}</p>
-      ) : workflow.patients.length === 0 ? (
-        <p className="workflow-muted">{t.workflow.noPatients}</p>
-      ) : (
-        <label className="workflow-field">
-          <span>{t.workflow.selectPatient}</span>
-          <select
-            value={workflow.selectedPatientId ?? ''}
-            onChange={(e) => workflow.selectPatient(e.target.value || null)}
-            disabled={workflow.pendingAction}
-          >
-            <option value="">{t.workflow.selectPatientPlaceholder}</option>
-            {workflow.patients.map((patient) => (
-              <option key={patient.id} value={patient.id}>
-                {patient.display_name}
-              </option>
-            ))}
-          </select>
-        </label>
-      )}
-
-      <div className="workflow-step__actions">
+  if (inline) {
+    return (
+      <>
+        {selectField}
         <button
           type="button"
-          className="workflow-btn workflow-btn--primary"
+          className={workflowBtnSecondary}
+          onClick={openEdit}
+          disabled={!workflow.selectedPatient || workflow.pendingAction}
+        >
+          {t.workflow.editPatient}
+        </button>
+        <PatientForm
+          open={formOpen}
+          mode={formMode}
+          initial={formMode === 'edit' ? workflow.selectedPatient : null}
+          pending={workflow.pendingAction}
+          onClose={() => setFormOpen(false)}
+          onSubmit={handleSubmit}
+        />
+      </>
+    )
+  }
+
+  return (
+    <section className={workflowStep} aria-label={t.workflow.selectPatient}>
+      {workflow.loading ? (
+        <p className={workflowMuted}>{t.workflow.loading}</p>
+      ) : workflow.patients.length === 0 ? (
+        <p className={workflowMuted}>{t.workflow.noPatients}</p>
+      ) : (
+        selectField
+      )}
+
+      <div className={workflowStepActions}>
+        <button
+          type="button"
+          className={workflowBtnPrimary}
           onClick={openCreate}
           disabled={workflow.pendingAction}
         >
@@ -78,7 +117,7 @@ export function PatientSelector({ workflow }: PatientSelectorProps) {
         </button>
         <button
           type="button"
-          className="workflow-btn workflow-btn--secondary"
+          className={workflowBtnSecondary}
           onClick={openEdit}
           disabled={!workflow.selectedPatient || workflow.pendingAction}
         >
@@ -86,7 +125,7 @@ export function PatientSelector({ workflow }: PatientSelectorProps) {
         </button>
         <button
           type="button"
-          className="workflow-btn workflow-btn--danger"
+          className={workflowBtnDanger}
           onClick={() => void handleArchive()}
           disabled={!workflow.selectedPatient || workflow.pendingAction}
         >

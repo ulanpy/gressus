@@ -1,6 +1,18 @@
 import { useEffect, useState, type FormEvent } from 'react'
+import { createPortal } from 'react-dom'
 import { useI18n } from '../../i18n/context'
 import type { Patient, PatientCreate, Sex } from '../../types/patients'
+import {
+  workflowBtnPrimary,
+  workflowBtnSecondary,
+  workflowField,
+  workflowFieldInput,
+  workflowFieldLabel,
+  workflowModal,
+  workflowModalActions,
+  workflowModalBackdrop,
+  workflowModalPanel,
+} from '../../styles/ui'
 
 type PatientFormProps = {
   open: boolean
@@ -54,18 +66,21 @@ export function PatientForm({ open, mode, initial, pending, onClose, onSubmit }:
     })
   }
 
-  return (
-    <div className="workflow-modal" role="dialog" aria-modal="true">
-      <div className="workflow-modal__backdrop" onClick={onClose} />
-      <form className="workflow-modal__panel" onSubmit={(e) => void handleSubmit(e)}>
-        <header className="workflow-modal__head">
-          <h2>{mode === 'create' ? t.workflow.createPatient : t.workflow.editPatient}</h2>
+  return createPortal(
+    <div className={workflowModal} role="dialog" aria-modal="true">
+      <div className={workflowModalBackdrop} onClick={onClose} />
+      <form className={workflowModalPanel} onSubmit={(e) => void handleSubmit(e)}>
+        <header>
+          <h2 className="m-0">
+            {mode === 'create' ? t.workflow.createPatient : t.workflow.editPatient}
+          </h2>
         </header>
 
-        <label className="workflow-field">
-          <span>{t.workflow.displayName}</span>
+        <label className={workflowField}>
+          <span className={workflowFieldLabel}>{t.workflow.displayName}</span>
           <input
             type="text"
+            className={workflowFieldInput}
             value={displayName}
             onChange={(e) => setDisplayName(e.target.value)}
             required
@@ -73,18 +88,23 @@ export function PatientForm({ open, mode, initial, pending, onClose, onSubmit }:
           />
         </label>
 
-        <label className="workflow-field">
-          <span>{t.workflow.dateOfBirth}</span>
+        <label className={workflowField}>
+          <span className={workflowFieldLabel}>{t.workflow.dateOfBirth}</span>
           <input
             type="date"
+            className={workflowFieldInput}
             value={dateOfBirth}
             onChange={(e) => setDateOfBirth(e.target.value)}
           />
         </label>
 
-        <label className="workflow-field">
-          <span>{t.workflow.sex}</span>
-          <select value={sex} onChange={(e) => setSex(e.target.value as Sex)}>
+        <label className={workflowField}>
+          <span className={workflowFieldLabel}>{t.workflow.sex}</span>
+          <select
+            className={workflowFieldInput}
+            value={sex}
+            onChange={(e) => setSex(e.target.value as Sex)}
+          >
             {SEX_OPTIONS.map((option) => (
               <option key={option} value={option}>
                 {sexLabel(option)}
@@ -93,24 +113,26 @@ export function PatientForm({ open, mode, initial, pending, onClose, onSubmit }:
           </select>
         </label>
 
-        <label className="workflow-field">
-          <span>{t.workflow.diagnosisNote}</span>
+        <label className={workflowField}>
+          <span className={workflowFieldLabel}>{t.workflow.diagnosisNote}</span>
           <textarea
+            className={workflowFieldInput}
             value={diagnosisNote}
             onChange={(e) => setDiagnosisNote(e.target.value)}
             rows={3}
           />
         </label>
 
-        <footer className="workflow-modal__actions">
-          <button type="button" className="workflow-btn workflow-btn--secondary" onClick={onClose}>
+        <footer className={workflowModalActions}>
+          <button type="button" className={workflowBtnSecondary} onClick={onClose}>
             {t.workflow.cancel}
           </button>
-          <button type="submit" className="workflow-btn workflow-btn--primary" disabled={pending}>
+          <button type="submit" className={workflowBtnPrimary} disabled={pending}>
             {t.workflow.save}
           </button>
         </footer>
       </form>
-    </div>
+    </div>,
+    document.body,
   )
 }

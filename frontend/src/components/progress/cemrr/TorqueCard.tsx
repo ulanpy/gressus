@@ -1,5 +1,20 @@
 import { useI18n } from '../../../i18n/context'
+import { cn } from '../../../lib/cn'
 import type { CemrrResult } from '../../../types/cemrr'
+import {
+  cemrrCard,
+  cemrrCardHead,
+  cemrrTorque,
+  cemrrTorqueCaption,
+  cemrrTorqueFill,
+  cemrrTorqueGrid,
+  cemrrTorqueJoint,
+  cemrrTorqueNeg,
+  cemrrTorquePos,
+  cemrrTorqueRow,
+  cemrrTorqueTrack,
+  eyebrow,
+} from '../../../styles/ui'
 import { fmtCemrr } from './AspectScoresCard'
 
 type Props = {
@@ -11,12 +26,12 @@ export function TorqueCard({ result }: Props) {
   const joints = t.progress.cemrr.joints
 
   return (
-    <article className="cemrr-card">
-      <header className="cemrr-card__head">
-        <p className="eyebrow">{t.progress.cemrr.torqueTitle}</p>
+    <article className={cemrrCard}>
+      <header className={cemrrCardHead}>
+        <p className={eyebrow}>{t.progress.cemrr.torqueTitle}</p>
       </header>
 
-      <div className="cemrr-torque-grid">
+      <div className={cemrrTorqueGrid}>
         {result.tau.map((tau, index) => {
           const ptf = result.ptf[index]
           const positive = tau > 0.02
@@ -29,22 +44,22 @@ export function TorqueCard({ result }: Props) {
               : 'rgb(148 163 184)'
 
           return (
-            <div className="cemrr-torque" key={index}>
-              <span className="cemrr-torque__joint">{joints[index]}</span>
-              <div className="cemrr-torque__row">
-                <strong className={positive ? 'pos' : negative ? 'neg' : ''}>
+            <div className={cemrrTorque} key={index}>
+              <span className={cemrrTorqueJoint}>{joints[index]}</span>
+              <div className={cemrrTorqueRow}>
+                <strong className={cn(positive && cemrrTorquePos, negative && cemrrTorqueNeg)}>
                   {tau >= 0 ? '+' : ''}
                   {fmtCemrr(tau, 3)} Nm
                 </strong>
                 <span style={{ color: statusColor }}>{t.progress.cemrr[statusKey]}</span>
               </div>
-              <div className="cemrr-torque__track">
+              <div className={cemrrTorqueTrack}>
                 <div
-                  className="cemrr-torque__fill"
+                  className={cemrrTorqueFill}
                   style={{ width: `${Math.min(100, ptf * 100).toFixed(1)}%` }}
                 />
               </div>
-              <span className="cemrr-torque__caption">PTF = {fmtCemrr(ptf * 100, 1)}%</span>
+              <span className={cemrrTorqueCaption}>PTF = {fmtCemrr(ptf * 100, 1)}%</span>
             </div>
           )
         })}

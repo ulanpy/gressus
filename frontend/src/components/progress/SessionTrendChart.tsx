@@ -1,6 +1,8 @@
 import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { useI18n } from '../../i18n/context'
 import { tooltipStyle } from '../../constants/charts'
+import { cn } from '../../lib/cn'
+import { progressCard } from '../../styles/ui'
 import type { ChartProps } from '../../types/components'
 import { CardHeading } from '../layout/CardHeading'
 
@@ -9,9 +11,9 @@ export function SessionTrendChart({ metrics }: ChartProps) {
   const { t } = useI18n()
 
   return (
-    <article className="progress-card chart-card">
+    <article className={cn(progressCard, 'min-h-[390px] max-[640px]:min-h-[340px]')}>
       <CardHeading eyebrow={t.progress.charts.sessionTrend} title={t.progress.charts.scoreTrajectory} />
-      <div className="chart-shell">
+      <div className="h-[300px] max-[640px]:h-[250px]">
         <ResponsiveContainer width="100%" height="100%">
           <LineChart data={metrics} margin={{ top: 8, right: 12, bottom: 0, left: -18 }}>
             <CartesianGrid stroke="rgb(226 232 240)" vertical={false} />

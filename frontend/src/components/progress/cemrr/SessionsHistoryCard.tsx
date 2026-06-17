@@ -11,8 +11,22 @@ import {
   XAxis,
   YAxis,
 } from 'recharts'
+import { cn } from '../../../lib/cn'
 import type { CemrrResult } from '../../../types/cemrr'
 import { tooltipStyle } from '../../../constants/charts'
+import {
+  cemrrCard,
+  cemrrCardHead,
+  cemrrHistory,
+  cemrrHistoryChart,
+  cemrrHistoryCharts,
+  cemrrHistoryChartShell,
+  cemrrHistoryChartTitle,
+  cemrrHistoryPill,
+  cemrrHistoryPillActive,
+  cemrrHistoryPills,
+  eyebrow,
+} from '../../../styles/ui'
 
 type Props = {
   results: CemrrResult[]
@@ -40,17 +54,17 @@ export function SessionsHistoryCard({ results, activeSession, onSelect }: Props)
   }))
 
   return (
-    <article className="cemrr-card cemrr-history">
-      <header className="cemrr-card__head">
-        <p className="eyebrow">{t.progress.cemrr.sessionsHeader}</p>
+    <article className={cn(cemrrCard, cemrrHistory)}>
+      <header className={cemrrCardHead}>
+        <p className={eyebrow}>{t.progress.cemrr.sessionsHeader}</p>
       </header>
 
-      <div className="cemrr-history__charts">
-        <div className="cemrr-history__chart">
-          <div className="cemrr-history__chart-title">
+      <div className={cemrrHistoryCharts}>
+        <div className={cemrrHistoryChart}>
+          <div className={cemrrHistoryChartTitle}>
             GRI · {t.progress.charts.symmetry} · {t.progress.charts.stability}
           </div>
-          <div className="cemrr-history__chart-shell">
+          <div className={cemrrHistoryChartShell}>
             <ResponsiveContainer width="100%" height="100%" key={`trend-${results.length}`}>
               <LineChart data={trend} margin={{ top: 8, right: 16, bottom: 0, left: -10 }}>
                 <CartesianGrid stroke="rgb(226 232 240)" vertical={false} />
@@ -100,11 +114,11 @@ export function SessionsHistoryCard({ results, activeSession, onSelect }: Props)
           </div>
         </div>
 
-        <div className="cemrr-history__chart">
-          <div className="cemrr-history__chart-title">
+        <div className={cemrrHistoryChart}>
+          <div className={cemrrHistoryChartTitle}>
             {t.progress.charts.left} · {t.progress.charts.right}
           </div>
-          <div className="cemrr-history__chart-shell">
+          <div className={cemrrHistoryChartShell}>
             <ResponsiveContainer width="100%" height="100%" key={`load-${results.length}`}>
               <BarChart data={load} margin={{ top: 8, right: 16, bottom: 0, left: -10 }}>
                 <CartesianGrid stroke="rgb(226 232 240)" vertical={false} />
@@ -137,14 +151,14 @@ export function SessionsHistoryCard({ results, activeSession, onSelect }: Props)
         </div>
       </div>
 
-      <div className="cemrr-history__pills" role="tablist">
+      <div className={cemrrHistoryPills} role="tablist">
         {results.map((r) => {
           const active = r.session === activeSession
           return (
             <button
               type="button"
               key={r.session}
-              className={`cemrr-history__pill ${active ? 'cemrr-history__pill--active' : ''}`}
+              className={cn(cemrrHistoryPill, active && cemrrHistoryPillActive)}
               onClick={() => onSelect(r.session)}
             >
               {t.progress.cemrr.sessionLabel} {r.session}

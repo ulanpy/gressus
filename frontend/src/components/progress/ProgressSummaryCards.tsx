@@ -8,7 +8,7 @@ export function ProgressSummaryCards({ summary }: ProgressSummaryCardsProps) {
   const { language, t } = useI18n()
 
   return (
-    <div className="summary-grid">
+    <div className="grid grid-cols-4 gap-4 max-[980px]:grid-cols-1">
       <SummaryCard
         label={t.progress.summary.gait}
         value={`${summary.latest.gaitScore}`}

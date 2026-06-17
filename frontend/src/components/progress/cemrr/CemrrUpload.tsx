@@ -1,5 +1,18 @@
 import { useRef, useState, type DragEvent, type ChangeEvent } from 'react'
 import { useI18n } from '../../../i18n/context'
+import { cn } from '../../../lib/cn'
+import {
+  cemrrUpload,
+  cemrrUploadActions,
+  cemrrUploadClear,
+  cemrrUploadCount,
+  cemrrUploadDrop,
+  cemrrUploadDropActive,
+  cemrrUploadDropIcon,
+  cemrrUploadDropSub,
+  cemrrUploadError,
+  cemrrUploadExample,
+} from '../../../styles/ui'
 
 type CemrrUploadProps = {
   onText: (text: string) => void
@@ -45,9 +58,9 @@ export function CemrrUpload({
   }
 
   return (
-    <article className="cemrr-upload">
+    <article className={cemrrUpload}>
       <div
-        className={`cemrr-upload__drop ${isDragging ? 'cemrr-upload__drop--active' : ''}`}
+        className={cn(cemrrUploadDrop, isDragging && cemrrUploadDropActive)}
         onClick={() => inputRef.current?.click()}
         onDragOver={(event) => {
           event.preventDefault()
@@ -71,32 +84,32 @@ export function CemrrUpload({
           onChange={handleChange}
           style={{ display: 'none' }}
         />
-        <span className="cemrr-upload__drop-icon" aria-hidden>
+        <span className={cemrrUploadDropIcon} aria-hidden>
           ⤓
         </span>
         <strong>{t.progress.cemrr.dropTitle}</strong>
         {t.progress.cemrr.dropSub ? (
-          <span className="cemrr-upload__drop-sub">{t.progress.cemrr.dropSub}</span>
+          <span className={cemrrUploadDropSub}>{t.progress.cemrr.dropSub}</span>
         ) : null}
       </div>
 
-      <div className="cemrr-upload__actions">
-        <button type="button" className="cemrr-upload__example" onClick={onLoadExample}>
+      <div className={cemrrUploadActions}>
+        <button type="button" className={cemrrUploadExample} onClick={onLoadExample}>
           {t.progress.cemrr.loadExample}
         </button>
         {sessionCount > 0 && (
           <>
-            <span className="cemrr-upload__count">
+            <span className={cemrrUploadCount}>
               {t.progress.cemrr.loaded}: <strong>{sessionCount}</strong>
             </span>
-            <button type="button" className="cemrr-upload__clear" onClick={onClear}>
+            <button type="button" className={cemrrUploadClear} onClick={onClear}>
               {t.progress.cemrr.clear}
             </button>
           </>
         )}
       </div>
 
-      {error && <p className="cemrr-upload__error">{error}</p>}
+      {error && <p className={cemrrUploadError}>{error}</p>}
     </article>
   )
 }

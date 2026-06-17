@@ -1,5 +1,23 @@
 import { useI18n } from '../../../i18n/context'
+import { cn } from '../../../lib/cn'
 import type { CemrrResult } from '../../../types/cemrr'
+import {
+  cemrrAli,
+  cemrrAliBar,
+  cemrrAliBarLabel,
+  cemrrAliBarLeft,
+  cemrrAliBarRight,
+  cemrrAliCaption,
+  cemrrAliLegend,
+  cemrrAliValue,
+  cemrrCard,
+  cemrrCardFormula,
+  cemrrCardHead,
+  cemrrDot,
+  cemrrDotAmber,
+  cemrrDotBlue,
+  eyebrow,
+} from '../../../styles/ui'
 import { fmtCemrr } from './AspectScoresCard'
 import { scoreColor } from './GriHero'
 
@@ -14,33 +32,33 @@ export function AliCard({ result }: Props) {
   const rightPct = Math.round(result.pRPct)
 
   return (
-    <article className="cemrr-card">
-      <header className="cemrr-card__head">
-        <p className="eyebrow">{t.progress.cemrr.aliTitle}</p>
-        <code className="cemrr-card__formula">{t.progress.cemrr.aliFormula}</code>
+    <article className={cemrrCard}>
+      <header className={cemrrCardHead}>
+        <p className={eyebrow}>{t.progress.cemrr.aliTitle}</p>
+        <code className={cemrrCardFormula}>{t.progress.cemrr.aliFormula}</code>
       </header>
 
-      <div className="cemrr-ali">
-        <strong className="cemrr-ali__value" style={{ color }}>
+      <div className={cemrrAli}>
+        <strong className={cemrrAliValue} style={{ color }}>
           {fmtCemrr(result.ali, 3)}
         </strong>
-        <span className="cemrr-ali__caption">{t.progress.cemrr.aliCaption}</span>
+        <span className={cemrrAliCaption}>{t.progress.cemrr.aliCaption}</span>
 
-        <div className="cemrr-ali__bar-label">{t.progress.cemrr.loadDist}</div>
-        <div className="cemrr-ali__bar">
-          <div className="cemrr-ali__bar-left" style={{ width: `${leftPct}%` }}>
+        <div className={cemrrAliBarLabel}>{t.progress.cemrr.loadDist}</div>
+        <div className={cemrrAliBar}>
+          <div className={cemrrAliBarLeft} style={{ width: `${leftPct}%` }}>
             {leftPct}%
           </div>
-          <div className="cemrr-ali__bar-right">{rightPct}%</div>
+          <div className={cemrrAliBarRight}>{rightPct}%</div>
         </div>
 
-        <div className="cemrr-ali__legend">
+        <div className={cemrrAliLegend}>
           <span>
-            <i className="cemrr-dot cemrr-dot--blue" /> {t.progress.cemrr.leftFoot}:{' '}
+            <i className={cn(cemrrDot, cemrrDotBlue)} /> {t.progress.cemrr.leftFoot}:{' '}
             {fmtCemrr(result.pL, 1)} %BW
           </span>
           <span>
-            <i className="cemrr-dot cemrr-dot--amber" /> {t.progress.cemrr.rightFoot}:{' '}
+            <i className={cn(cemrrDot, cemrrDotAmber)} /> {t.progress.cemrr.rightFoot}:{' '}
             {fmtCemrr(result.pR, 1)} %BW
           </span>
         </div>

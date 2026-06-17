@@ -28,6 +28,23 @@ import type {
   TreeStage,
 } from '../../types/garden'
 import type { FootDashboard, FramePayload } from '../../types/insole'
+import {
+  garden,
+  gardenCanvas,
+  gardenFeet,
+  gardenFeetSide,
+  gardenHint,
+  gardenHud,
+  gardenHudCounter,
+  gardenHudCounterIcon,
+  gardenHudCounterLabel,
+  gardenHudCounterValue,
+  gardenHudStage,
+  gardenHudStageBar,
+  gardenHudStageFill,
+  gardenHudStageLabel,
+  gardenStage,
+} from '../../styles/ui'
 import { FootHeatmap } from '../feet/FootHeatmap'
 
 const CYCLES_STORAGE_KEY = 'tfg.garden.cycles'
@@ -431,25 +448,27 @@ export function AppleTreeGarden({ frame, dashboard }: AppleTreeGardenProps) {
   }, [finishHarvest])
 
   return (
-    <section className="garden" aria-label={t.garden.aria}>
-      <div ref={containerRef} className="garden__stage">
-        <canvas ref={canvasRef} className="garden__canvas" />
+    <section className={garden} aria-label={t.garden.aria}>
+      <div ref={containerRef} className={gardenStage}>
+        <canvas ref={canvasRef} className={gardenCanvas} />
 
-        <div className="garden-feet" aria-hidden>
-          <div className="garden-feet__side garden-feet__side--left">
+        <div className={gardenFeet} aria-hidden>
+          <div className={gardenFeetSide}>
             <FootHeatmap
               frame={dashboard.leftFrame}
               idPrefix="garden-left"
+              outlineClass="garden-foot-outline"
               scale={dashboard.dynamicScale}
               showSensors={false}
               silhouette={dashboard.leftSilhouette}
               title=""
             />
           </div>
-          <div className="garden-feet__side garden-feet__side--right">
+          <div className={gardenFeetSide}>
             <FootHeatmap
               frame={dashboard.rightFrame}
               idPrefix="garden-right"
+              outlineClass="garden-foot-outline"
               scale={dashboard.dynamicScale}
               showSensors={false}
               silhouette={dashboard.rightSilhouette}
@@ -460,7 +479,7 @@ export function AppleTreeGarden({ frame, dashboard }: AppleTreeGardenProps) {
 
         <GardenOverlay hud={hud} />
       </div>
-      <p className="garden__hint">{t.garden.hint}</p>
+      <p className={gardenHint}>{t.garden.hint}</p>
     </section>
   )
 }
@@ -651,20 +670,20 @@ function GardenOverlay({ hud }: OverlayProps) {
   const stageLabel = stageLabelFor(hud.activeTree, hud.stage, t)
 
   return (
-    <div className="garden-hud">
-      <div className="garden-hud__counter" aria-live="polite">
-        <span className="garden-hud__counter-icon" aria-hidden>
+    <div className={gardenHud}>
+      <div className={gardenHudCounter} aria-live="polite">
+        <span className={gardenHudCounterIcon} aria-hidden>
           🌳
         </span>
-        <strong className="garden-hud__counter-value">{hud.cyclesGrown}</strong>
-        <span className="garden-hud__counter-label">{t.garden.cyclesGrown}</span>
+        <strong className={gardenHudCounterValue}>{hud.cyclesGrown}</strong>
+        <span className={gardenHudCounterLabel}>{t.garden.cyclesGrown}</span>
       </div>
 
-      <div className="garden-hud__stage">
-        <span className="garden-hud__stage-label">{stageLabel}</span>
-        <div className="garden-hud__stage-bar">
+      <div className={gardenHudStage}>
+        <span className={gardenHudStageLabel}>{stageLabel}</span>
+        <div className={gardenHudStageBar}>
           <div
-            className="garden-hud__stage-fill"
+            className={gardenHudStageFill}
             style={{ width: `${stageProgressPercent}%` }}
           />
         </div>

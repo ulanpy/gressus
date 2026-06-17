@@ -1,5 +1,6 @@
 import type { FootDashboard } from '../../types/insole'
 import { useI18n } from '../../i18n/context'
+import { feetPanel, feetPanelPair, feetPanelSep } from '../../styles/ui'
 import { PatientFootPanel } from './PatientFootPanel'
 
 
@@ -7,8 +8,8 @@ export function FeetPatientPanel({ dashboard }: { dashboard: FootDashboard }) {
   const { t } = useI18n()
 
   return (
-    <article className="feet-panel feet-panel--patient" aria-label={t.live.patientFeetAria}>
-      <div className="feet-panel__pair">
+    <article className={feetPanel} aria-label={t.live.patientFeetAria}>
+      <div className={feetPanelPair}>
         <PatientFootPanel
           embedded
           side="left"
@@ -16,7 +17,7 @@ export function FeetPatientPanel({ dashboard }: { dashboard: FootDashboard }) {
           scale={dashboard.dynamicScale}
           silhouette={dashboard.leftSilhouette}
         />
-        <div className="feet-panel__sep" aria-hidden />
+        <div className={feetPanelSep} aria-hidden />
         <PatientFootPanel
           embedded
           side="right"

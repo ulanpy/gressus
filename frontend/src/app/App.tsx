@@ -1,5 +1,4 @@
 import { useMemo, useState } from 'react'
-import '../App.css'
 import type { SourceMode } from '../types/insole'
 import type { ViewMode, TherapistSection } from '../types/navigation'
 import type { Language } from '../types/i18n'
@@ -17,6 +16,8 @@ import { LanguageToggle } from '../components/layout/LanguageToggle'
 import { TherapistPage } from '../pages/TherapistPage'
 import { PatientPage } from '../pages/PatientPage'
 import { ControlPage } from '../pages/ControlPage'
+import { container } from '../styles/ui'
+import { cn } from '../lib/cn'
 
 type DashboardShellProps = {
   language: Language
@@ -43,12 +44,17 @@ function DashboardShell({ language, setLanguage }: DashboardShellProps) {
   const dashboard = useFootDashboard(geometry, frame)
 
   return (
-    <main className="dashboard">
-      <div className="top-bar">
+    <main className="min-h-screen px-6 py-12 max-[980px]:px-4 max-[980px]:py-8">
+      <div
+        className={cn(
+          container,
+          'mb-7 flex items-center justify-between gap-3 max-sm:grid',
+        )}
+      >
         <PageTabs activeView={activeView} setActiveView={setActiveView} />
-        <div className="top-bar__right">
+        <div className="flex items-center gap-3">
           {workflow.selectedPatient && workflow.activeSession && (
-            <span className="workflow-context-badge">
+            <span className="rounded-full bg-slate-900 px-3.5 py-2 text-[13px] font-bold whitespace-nowrap text-white">
               {t.workflow.contextBadge(
                 workflow.selectedPatient.display_name,
                 workflow.activeSession.session_number,

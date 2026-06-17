@@ -1,6 +1,8 @@
 import { memo } from 'react'
 import type { CemrrProgressState } from '../../hooks/useCemrrProgress'
 import { useI18n } from '../../i18n/context'
+import { cn } from '../../lib/cn'
+import { cemrrGrid, cemrrGridTwo, container } from '../../styles/ui'
 import { CemrrUpload } from './cemrr/CemrrUpload'
 import { GriHero } from './cemrr/GriHero'
 import { AspectScoresCard } from './cemrr/AspectScoresCard'
@@ -20,7 +22,7 @@ function ProgressDashboardInner({ cemrr }: ProgressDashboardProps) {
   const { results, activeResult, recommendations, error } = cemrr
 
   return (
-    <section className="progress-dashboard" aria-label={t.progress.aria}>
+    <section className={cn(container, 'grid gap-[18px] mt-6')} aria-label={t.progress.aria}>
       <CemrrUpload
         onText={cemrr.handleText}
         onLoadExample={cemrr.handleLoadExample}
@@ -43,7 +45,7 @@ function ProgressDashboardInner({ cemrr }: ProgressDashboardProps) {
           <AspectScoresCard result={activeResult} />
           <TimingStrideCards result={activeResult} />
 
-          <div className="cemrr-grid cemrr-grid--two">
+          <div className={cn(cemrrGrid, cemrrGridTwo)}>
             <AliCard result={activeResult} />
             <JsiCard result={activeResult} />
           </div>

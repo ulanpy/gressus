@@ -1,5 +1,13 @@
 import { useI18n } from '../../../i18n/context'
 import type { CemrrResult } from '../../../types/cemrr'
+import {
+  cemrrCard,
+  cemrrCardHead,
+  cemrrGridTwo,
+  cemrrMetric,
+  cemrrMetricsTwo,
+  eyebrow,
+} from '../../../styles/ui'
 import { fmtCemrr } from './AspectScoresCard'
 
 type Props = {
@@ -28,23 +36,23 @@ export function TimingStrideCards({ result }: Props) {
   ]
 
   return (
-    <div className="cemrr-grid cemrr-grid--two">
-      <article className="cemrr-card">
-        <header className="cemrr-card__head">
-          <p className="eyebrow">{t.progress.cemrr.timingTitle}</p>
+    <div className={cemrrGridTwo}>
+      <article className={cemrrCard}>
+        <header className={cemrrCardHead}>
+          <p className={eyebrow}>{t.progress.cemrr.timingTitle}</p>
         </header>
-        <div className="cemrr-metrics cemrr-metrics--two">
+        <div className={cemrrMetricsTwo}>
           {timing.map(([label, value]) => (
             <Metric key={label} label={label} value={value} />
           ))}
         </div>
       </article>
 
-      <article className="cemrr-card">
-        <header className="cemrr-card__head">
-          <p className="eyebrow">{t.progress.cemrr.strideTitle}</p>
+      <article className={cemrrCard}>
+        <header className={cemrrCardHead}>
+          <p className={eyebrow}>{t.progress.cemrr.strideTitle}</p>
         </header>
-        <div className="cemrr-metrics cemrr-metrics--two">
+        <div className={cemrrMetricsTwo}>
           {stride.map(([label, value]) => (
             <Metric key={label} label={label} value={value} />
           ))}
@@ -56,7 +64,7 @@ export function TimingStrideCards({ result }: Props) {
 
 function Metric({ label, value }: { label: string; value: string }) {
   return (
-    <div className="cemrr-metric">
+    <div className={cemrrMetric}>
       <span>{label}</span>
       <strong>{value}</strong>
     </div>

@@ -1,5 +1,6 @@
 import type { FootDashboard } from '../../types/insole'
 import { useI18n } from '../../i18n/context'
+import { feetPanel, feetPanelPair, feetPanelSep } from '../../styles/ui'
 import { FootPressurePanel } from './FootPressurePanel'
 
 
@@ -13,8 +14,8 @@ export function FeetPressurePanel({
   const { t } = useI18n()
 
   return (
-    <article className="feet-panel" aria-label={t.live.feetAria}>
-      <div className="feet-panel__pair">
+    <article className={feetPanel} aria-label={t.live.feetAria}>
+      <div className={feetPanelPair}>
         <FootPressurePanel
           embedded
           side="left"
@@ -23,7 +24,7 @@ export function FeetPressurePanel({
           showSensors={showSensors}
           silhouette={dashboard.leftSilhouette}
         />
-        <div className="feet-panel__sep" aria-hidden />
+        <div className={feetPanelSep} aria-hidden />
         <FootPressurePanel
           embedded
           side="right"

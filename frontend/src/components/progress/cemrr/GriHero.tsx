@@ -1,5 +1,20 @@
 import { useI18n } from '../../../i18n/context'
 import type { CemrrAspectKey, CemrrResult } from '../../../types/cemrr'
+import {
+  cemrrHero,
+  cemrrHeroBar,
+  cemrrHeroBarFill,
+  cemrrHeroBarLabel,
+  cemrrHeroBarPct,
+  cemrrHeroBars,
+  cemrrHeroBarTrack,
+  cemrrHeroBody,
+  cemrrHeroCircle,
+  cemrrHeroCircleLabel,
+  cemrrHeroCircleValue,
+  cemrrHeroTitle,
+  eyebrow,
+} from '../../../styles/ui'
 
 type GriHeroProps = {
   result: CemrrResult
@@ -20,30 +35,32 @@ export function GriHero({ result }: GriHeroProps) {
   const griPercent = Math.round(result.gri * 100)
 
   return (
-    <article className="cemrr-hero">
-      <div className="cemrr-hero__circle" style={{ borderColor: ringColor }}>
-        <strong style={{ color: ringColor }}>{griPercent}%</strong>
-        <span>{t.progress.cemrr.griLabel}</span>
+    <article className={cemrrHero}>
+      <div className={cemrrHeroCircle} style={{ borderColor: ringColor }}>
+        <strong className={cemrrHeroCircleValue} style={{ color: ringColor }}>
+          {griPercent}%
+        </strong>
+        <span className={cemrrHeroCircleLabel}>{t.progress.cemrr.griLabel}</span>
       </div>
 
-      <div className="cemrr-hero__body">
-        <p className="eyebrow">{t.progress.cemrr.eyebrow}</p>
-        <h2>{t.progress.cemrr.griTitle}</h2>
+      <div className={cemrrHeroBody}>
+        <p className={eyebrow}>{t.progress.cemrr.eyebrow}</p>
+        <h2 className={cemrrHeroTitle}>{t.progress.cemrr.griTitle}</h2>
 
-        <div className="cemrr-hero__bars">
+        <div className={cemrrHeroBars}>
           {ASPECT_ORDER.map((key) => {
             const value = result.aspects[key]
             const pct = Math.round(value * 100)
             return (
-              <div className="cemrr-hero__bar" key={key}>
-                <span className="cemrr-hero__bar-label">{t.progress.cemrr.aspects[key]}</span>
-                <div className="cemrr-hero__bar-track">
+              <div className={cemrrHeroBar} key={key}>
+                <span className={cemrrHeroBarLabel}>{t.progress.cemrr.aspects[key]}</span>
+                <div className={cemrrHeroBarTrack}>
                   <div
-                    className="cemrr-hero__bar-fill"
+                    className={cemrrHeroBarFill}
                     style={{ width: `${pct}%`, background: ASPECT_COLOR[key] }}
                   />
                 </div>
-                <span className="cemrr-hero__bar-pct" style={{ color: ASPECT_COLOR[key] }}>
+                <span className={cemrrHeroBarPct} style={{ color: ASPECT_COLOR[key] }}>
                   {pct}%
                 </span>
               </div>

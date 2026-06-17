@@ -14,6 +14,7 @@ export const translations = {
     control: {
       eyebrow: 'Сеанс',
       title: 'Управление игрой и калибровкой',
+      setupHint: 'Выберите пациента, чтобы начать сессию.',
       lede: 'Запуск и остановка сценариев на проекторе. Стельки в режиме «Живой» активируются вместе с игрой.',
       statusRunningGame: 'Игра запущена',
       statusRunningCalibration: 'Калибровка AprilTag запущена',
@@ -51,9 +52,6 @@ export const translations = {
       actionFailed: 'Не удалось выполнить действие',
     },
     workflow: {
-      stepPatient: 'Шаг 1 · Пациент',
-      stepSession: 'Шаг 2 · Сессия',
-      stepRuntime: 'Шаг 3 · Управление',
       selectPatient: 'Выберите пациента',
       selectPatientPlaceholder: '— не выбран —',
       noPatients: 'Пациентов пока нет. Создайте первого.',
@@ -86,6 +84,8 @@ export const translations = {
       loading: 'Загрузка…',
       notes: 'Заметки к сессии',
       noSessionHistory: 'История пуста.',
+      showHistory: 'Показать историю',
+      hideHistory: 'Скрыть историю',
       apiError: 'Ошибка API',
     },
     live: {
@@ -299,6 +299,7 @@ export const translations = {
     control: {
       eyebrow: 'Session',
       title: 'Game and calibration controls',
+      setupHint: 'Select a patient to start a session.',
       lede: 'Start and stop projector workflows. Live insole mode activates together with the game.',
       statusRunningGame: 'Game running',
       statusRunningCalibration: 'AprilTag calibration running',
@@ -336,9 +337,6 @@ export const translations = {
       actionFailed: 'Could not complete action',
     },
     workflow: {
-      stepPatient: 'Step 1 · Patient',
-      stepSession: 'Step 2 · Session',
-      stepRuntime: 'Step 3 · Controls',
       selectPatient: 'Select patient',
       selectPatientPlaceholder: '— none —',
       noPatients: 'No patients yet. Create the first one.',
@@ -371,6 +369,8 @@ export const translations = {
       loading: 'Loading…',
       notes: 'Session notes',
       noSessionHistory: 'No history yet.',
+      showHistory: 'Show history',
+      hideHistory: 'Hide history',
       apiError: 'API error',
     },
     live: {
@@ -584,6 +584,7 @@ export const translations = {
     control: {
       eyebrow: 'Сессия',
       title: 'Ойын және калибрлеуді басқару',
+      setupHint: 'Сессияны бастау үшін пациентті таңдаңыз.',
       lede: 'Проектор сценарийлерін іске қосу және тоқтату. Тірі ұлтарақ режимі ойынмен бірге қосылады.',
       statusRunningGame: 'Ойын іске қосылды',
       statusRunningCalibration: 'AprilTag калибрлеуі іске қосылды',
@@ -621,9 +622,6 @@ export const translations = {
       actionFailed: 'Әрекетті орындау мүмкін болмады',
     },
     workflow: {
-      stepPatient: '1-қадам · Пациент',
-      stepSession: '2-қадам · Сессия',
-      stepRuntime: '3-қадам · Басқару',
       selectPatient: 'Пациентті таңдаңыз',
       selectPatientPlaceholder: '— таңдалмаған —',
       noPatients: 'Пациенттер жоқ. Біріншісін құрыңыз.',
@@ -656,6 +654,8 @@ export const translations = {
       loading: 'Жүктелуде…',
       notes: 'Сессия ескертпелері',
       noSessionHistory: 'Тарих бос.',
+      showHistory: 'Тарихты көрсету',
+      hideHistory: 'Тарихты жасыру',
       apiError: 'API қатесі',
     },
     live: {

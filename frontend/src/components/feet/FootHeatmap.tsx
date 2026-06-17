@@ -4,7 +4,15 @@ import { contrastIntensity, pressureColor } from '../../lib/pressure/color'
 import { CONTACT_THRESHOLD_KPA } from '../../constants/insole'
 
 
-function FootHeatmapInner({ frame, idPrefix, scale, showSensors, silhouette, title }: FootHeatmapProps) {
+function FootHeatmapInner({
+  frame,
+  idPrefix,
+  outlineClass = 'foot-outline',
+  scale,
+  showSensors,
+  silhouette,
+  title,
+}: FootHeatmapProps) {
   const clipId = `${idPrefix}-foot-clip`
   const gradientId = `${idPrefix}-foot-depth`
 
@@ -20,7 +28,7 @@ function FootHeatmapInner({ frame, idPrefix, scale, showSensors, silhouette, tit
         </linearGradient>
       </defs>
 
-      <path className="foot-outline" d={silhouette.path} fill={`url(#${gradientId})`} />
+      <path className={outlineClass} d={silhouette.path} fill={`url(#${gradientId})`} />
       <g clipPath={`url(#${clipId})`}>
         <rect x="0" y="0" width="100" height="102" fill="rgb(248 250 252 / 0.36)" />
         {frame.points.map((point) => {

@@ -1,7 +1,28 @@
+import { cn } from '../../lib/cn'
 import { useI18n } from '../../i18n/context'
 import type { PatientFootPanelProps } from '../../types/components'
 import { patientPressureLevel } from '../../lib/patient/pressureLevel'
+import {
+  eyebrow,
+  panel,
+  patientFootCopyTitle,
+  patientFootEmbedded,
+  patientFootGrid,
+  patientFootLight,
+  patientFootSteady,
+  patientFootStrong,
+  patientFootVisual,
+  patientFootWaiting,
+} from '../../styles/ui'
 import { FootHeatmap } from './FootHeatmap'
+
+
+const pressureBackground = {
+  waiting: patientFootWaiting,
+  light: patientFootLight,
+  steady: patientFootSteady,
+  strong: patientFootStrong,
+} as const
 
 
 export function PatientFootPanel({
@@ -15,17 +36,17 @@ export function PatientFootPanel({
   const pressureLevel = patientPressureLevel(frame)
   const statusText = t.patient.pressure[pressureLevel]
   const rootClass = embedded
-    ? `feet-panel__side patient-foot patient-foot--embedded patient-foot--${pressureLevel}`
-    : `patient-foot patient-foot--${pressureLevel}`
+    ? patientFootEmbedded
+    : cn(panel, patientFootGrid, pressureBackground[pressureLevel])
 
   const inner = (
     <>
-      <div className="patient-foot__copy">
-        <p className="eyebrow">{side === 'left' ? t.live.leftFoot : t.live.rightFoot}</p>
-        <h2>{statusText}</h2>
+      <div>
+        <p className={eyebrow}>{side === 'left' ? t.live.leftFoot : t.live.rightFoot}</p>
+        <h2 className={patientFootCopyTitle}>{statusText}</h2>
       </div>
 
-      <div className="patient-foot__visual">
+      <div className={patientFootVisual}>
         <FootHeatmap
           frame={frame}
           idPrefix={`${side}-patient`}

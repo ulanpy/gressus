@@ -18,14 +18,17 @@ export function SliderField({
   value: number
 }) {
   return (
-    <div className="runtime__slider-field">
-      <div className="runtime__slider-head">
-        <span className="runtime__slider-label">{label}</span>
-        {hint && <span className="runtime__field-hint">{hint}</span>}
-        <span className="runtime__slider-value">{format(value)}</span>
+    <div className="grid gap-2">
+      <div className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-baseline gap-2.5">
+        <span className="text-sm font-semibold text-text-strong">{label}</span>
+        {hint && <span className="text-xs font-medium text-muted">{hint}</span>}
+        <span className="rounded-[10px] bg-slate-900 px-2.5 py-1 text-[13px] font-bold tracking-[0.02em] text-white tabular-nums">
+          {format(value)}
+        </span>
       </div>
       <input
         type="range"
+        className="runtime-range"
         value={value}
         min={min}
         max={max}

@@ -2,6 +2,17 @@ import { useState } from 'react'
 import { useI18n } from '../../i18n/context'
 import type { PatientSessionWorkflow } from '../../hooks/usePatientSessionWorkflow'
 import { formatDateTime } from '../../lib/format'
+import {
+  sessionCard,
+  sessionCardMeta,
+  sessionHistoryBlock,
+  workflowBtnPrimary,
+  workflowField,
+  workflowFieldInput,
+  workflowFieldLabel,
+  workflowMuted,
+  workflowStep,
+} from '../../styles/ui'
 import { SessionHistoryList } from './SessionHistoryList'
 
 type SessionPanelProps = {
@@ -11,51 +22,37 @@ type SessionPanelProps = {
 export function SessionPanel({ workflow }: SessionPanelProps) {
   const { t, language } = useI18n()
   const [notes, setNotes] = useState('')
+  const [historyOpen, setHistoryOpen] = useState(false)
 
   const handleStart = async () => {
     await workflow.startSession(notes.trim() || null)
     setNotes('')
   }
 
-  const handleEnd = async () => {
-    await workflow.endSession('completed')
-  }
-
   return (
-    <section className="workflow-step" aria-label={t.workflow.stepSession}>
-      <header className="workflow-step__head">
-        <p className="eyebrow">{t.workflow.stepSession}</p>
-        <h2>
-          {workflow.selectedPatient
-            ? workflow.selectedPatient.display_name
-            : t.workflow.selectPatientPlaceholder}
-        </h2>
-      </header>
-
+    <section className={workflowStep} aria-label={t.workflow.startSession}>
       {workflow.activeSession ? (
-        <article className="session-active-card">
+        <article className={sessionCard}>
           <div>
-            <p className="eyebrow">{t.workflow.activeSession}</p>
-            <h3>{t.workflow.sessionNumber(workflow.activeSession.session_number)}</h3>
-            <p className="session-active-card__meta">
-              {t.workflow.statusActive} · {formatDateTime(workflow.activeSession.started_at, language)}
+            <p className="m-0 text-xs font-bold tracking-[0.08em] text-muted uppercase">
+              {t.workflow.activeSession}
+            </p>
+            <h3 className="mt-1 mb-0 text-lg text-text-strong">
+              {t.workflow.sessionNumber(workflow.activeSession.session_number)}
+            </h3>
+            <p className={sessionCardMeta}>
+              {t.workflow.statusActive} ·{' '}
+              {formatDateTime(workflow.activeSession.started_at, language)}
             </p>
           </div>
-          <button
-            type="button"
-            className="workflow-btn workflow-btn--danger"
-            onClick={() => void handleEnd()}
-            disabled={workflow.pendingAction}
-          >
-            {t.workflow.endSession}
-          </button>
         </article>
       ) : (
-        <div className="session-start-panel">
-          <p className="workflow-muted">{t.workflow.noActiveSession}</p>
-          <label className="workflow-field">
-            <span>{t.workflow.notes}</span>
+        <div className="grid gap-3">
+          <p className={workflowMuted}>{t.workflow.noActiveSession}</p>
+          <label className={workflowField}>
+            <span className={workflowFieldLabel}>{t.workflow.notes}</span>
             <textarea
+              className={workflowFieldInput}
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
               rows={2}
@@ -64,7 +61,7 @@ export function SessionPanel({ workflow }: SessionPanelProps) {
           </label>
           <button
             type="button"
-            className="workflow-btn workflow-btn--primary"
+            className={workflowBtnPrimary}
             onClick={() => void handleStart()}
             disabled={!workflow.selectedPatient || workflow.pendingAction}
           >
@@ -73,13 +70,24 @@ export function SessionPanel({ workflow }: SessionPanelProps) {
         </div>
       )}
 
-      <div className="session-history-block">
-        <h3>{t.workflow.sessionHistory}</h3>
-        <SessionHistoryList
-          sessions={workflow.sessions}
-          activeSessionId={workflow.activeSession?.id ?? null}
-        />
-      </div>
+      {workflow.sessions.length > 0 && (
+        <div className={sessionHistoryBlock}>
+          <button
+            type="button"
+            className="border-0 bg-transparent p-0 text-sm font-semibold text-brand cursor-pointer hover:text-cyan-700"
+            onClick={() => setHistoryOpen((open) => !open)}
+            aria-expanded={historyOpen}
+          >
+            {historyOpen ? t.workflow.hideHistory : t.workflow.showHistory}
+          </button>
+          {historyOpen && (
+            <SessionHistoryList
+              sessions={workflow.sessions}
+              activeSessionId={workflow.activeSession?.id ?? null}
+            />
+          )}
+        </div>
+      )}
     </section>
   )
 }
