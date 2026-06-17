@@ -4,11 +4,12 @@ import type { SourceMode } from '../types/insole'
 import type { ViewMode, TherapistSection } from '../types/navigation'
 import type { Language } from '../types/i18n'
 import { INSOLE_SIZE } from '../constants/insole'
+import { I18nContext, useI18n } from '../i18n/context'
 import { translations } from '../i18n/translations'
-import { I18nContext } from '../i18n/context'
 import { useGeometry } from '../hooks/useGeometry'
 import { useInsoleFrame } from '../hooks/useInsoleFrame'
 import { useRuntimeControls } from '../hooks/useRuntimeControls'
+import { usePatientSessionWorkflow } from '../hooks/usePatientSessionWorkflow'
 import { useFootDashboard } from '../hooks/useFootDashboard'
 import { useCemrrProgress } from '../hooks/useCemrrProgress'
 import { PageTabs } from '../components/layout/PageTabs'
@@ -23,11 +24,13 @@ type DashboardShellProps = {
 }
 
 function DashboardShell({ language, setLanguage }: DashboardShellProps) {
+  const { t } = useI18n()
   const [activeView, setActiveView] = useState<ViewMode>('therapist')
   const [therapistSection, setTherapistSection] = useState<TherapistSection>('live')
   const [source, setSource] = useState<SourceMode>('mock')
   const [showSensors, setShowSensors] = useState(true)
   const runtime = useRuntimeControls()
+  const workflow = usePatientSessionWorkflow()
   const cemrr = useCemrrProgress()
   const isGameRunning =
     runtime.state.state === 'running' && runtime.state.activeJob?.name === 'game'
@@ -43,7 +46,17 @@ function DashboardShell({ language, setLanguage }: DashboardShellProps) {
     <main className="dashboard">
       <div className="top-bar">
         <PageTabs activeView={activeView} setActiveView={setActiveView} />
-        <LanguageToggle language={language} setLanguage={setLanguage} />
+        <div className="top-bar__right">
+          {workflow.selectedPatient && workflow.activeSession && (
+            <span className="workflow-context-badge">
+              {t.workflow.contextBadge(
+                workflow.selectedPatient.display_name,
+                workflow.activeSession.session_number,
+              )}
+            </span>
+          )}
+          <LanguageToggle language={language} setLanguage={setLanguage} />
+        </div>
       </div>
 
       {activeView === 'therapist' && (
@@ -73,6 +86,7 @@ function DashboardShell({ language, setLanguage }: DashboardShellProps) {
 
       {activeView === 'control' && (
         <ControlPage
+          workflow={workflow}
           runtime={runtime.state}
           runtimeActionError={runtime.actionError}
           runtimePending={runtime.pending}

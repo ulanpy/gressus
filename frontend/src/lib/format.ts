@@ -10,6 +10,13 @@ export function formatShortDate(date: string, language: Language) {
   return new Intl.DateTimeFormat(dateLocale(language), { month: 'short', day: 'numeric' }).format(new Date(date))
 }
 
+export function formatDateTime(value: string, language: Language = 'ru') {
+  return new Intl.DateTimeFormat(dateLocale(language), {
+    dateStyle: 'short',
+    timeStyle: 'short',
+  }).format(new Date(value))
+}
+
 export function formatMetricValue(value: number) {
   return Number.isInteger(value) ? String(value) : value.toFixed(1)
 }

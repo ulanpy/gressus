@@ -5,6 +5,7 @@ import uuid
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from backend.modules.patients.models import Patient
 from backend.modules.sessions.models import Session
 from backend.modules.sessions.schemas import SessionCreate, SessionUpdate
 
@@ -12,6 +13,21 @@ from backend.modules.sessions.schemas import SessionCreate, SessionUpdate
 class SessionRepository:
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
+
+    async def patient_exists(self, patient_id: uuid.UUID) -> bool:
+        result = await self._session.execute(
+            select(Patient.id).where(Patient.id == patient_id)
+        )
+        return result.scalar() is not None
+
+    async def patient_exists_and_active(self, patient_id: uuid.UUID) -> bool:
+        result = await self._session.execute(
+            select(Patient.id).where(
+                Patient.id == patient_id,
+                Patient.archived_at.is_(None),
+            )
+        )
+        return result.scalar() is not None
 
     async def _next_session_number(self, patient_id: uuid.UUID) -> int:
         result = await self._session.execute(

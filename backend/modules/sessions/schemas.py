@@ -12,17 +12,21 @@ class SessionStatus(str, Enum):
     ABORTED = "aborted"
 
 
-class SessionCreate(BaseModel):
-    patient_id: UUID
+class SessionCreateBody(BaseModel):
     started_at: datetime
     launch_config: Dict[str, Any] = Field(default_factory=dict)
     notes: str | None = None
+
+
+class SessionCreate(SessionCreateBody):
+    patient_id: UUID
 
 
 class SessionUpdate(BaseModel):
     ended_at: datetime | None = None
     status: SessionStatus | None = None
     notes: str | None = None
+    launch_config: Dict[str, Any] | None = None
 
 
 class SessionRead(BaseModel):

@@ -5,6 +5,7 @@ import type { Language } from './i18n'
 import type { GameLaunchParams, RuntimePayload } from './runtime'
 import type { ProgressSummary, SessionMetrics, TherapyRecommendation } from '../progressAnalytics'
 import type { CemrrProgressState } from '../hooks/useCemrrProgress'
+import type { PatientSessionWorkflow } from '../hooks/usePatientSessionWorkflow'
 
 export type MetricProps = {
   label: string
@@ -68,10 +69,11 @@ export type TherapistPageProps = {
 }
 
 export type ControlPageProps = {
+  workflow: PatientSessionWorkflow
   runtime: RuntimePayload
   runtimeActionError: string | null
   runtimePending: boolean
-  startCalibration: () => Promise<void>
+  startCalibration: (params: Pick<GameLaunchParams, 'outputRotation'>) => Promise<void>
   startGame: (params: GameLaunchParams) => Promise<void>
   stopRuntime: () => Promise<void>
 }

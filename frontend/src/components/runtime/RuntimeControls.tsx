@@ -14,6 +14,7 @@ export function RuntimeControls({
   actionError,
   pending,
   runtime,
+  disabled = false,
   startCalibration,
   startGame,
   stopRuntime,
@@ -21,6 +22,7 @@ export function RuntimeControls({
   actionError: string | null
   pending: boolean
   runtime: RuntimePayload
+  disabled?: boolean
   startCalibration: (params: Pick<GameLaunchParams, 'outputRotation'>) => Promise<void>
   startGame: (params: GameLaunchParams) => Promise<void>
   stopRuntime: () => Promise<void>
@@ -28,8 +30,8 @@ export function RuntimeControls({
   const { t } = useI18n()
   const [gameParams, setGameParams] = useState<GameLaunchParams>(GAME_DEFAULTS)
   const [showAdvanced, setShowAdvanced] = useState(false)
-  const canStart = runtime.state === 'idle' && !pending
-  const canStop = runtime.state === 'running' && !pending
+  const canStart = runtime.state === 'idle' && !pending && !disabled
+  const canStop = runtime.state === 'running' && !pending && !disabled
   const isGameRunning = runtime.activeJob?.name === 'game'
   const isCalibRunning = runtime.activeJob?.name === 'calibrate_apriltag'
 
@@ -46,7 +48,7 @@ export function RuntimeControls({
     : t.control.nothingRunning
 
   return (
-    <section className="runtime" aria-label={t.control.runtimeAria}>
+    <section className={`runtime${disabled ? ' runtime--disabled' : ''}`} aria-label={t.control.runtimeAria}>
       <header className="runtime__statusbar">
         <div className="runtime__status">
           <span
