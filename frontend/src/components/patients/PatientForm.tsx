@@ -8,6 +8,7 @@ import {
   workflowField,
   workflowFieldInput,
   workflowFieldLabel,
+  uiSelect,
   workflowModal,
   workflowModalActions,
   workflowModalBackdrop,
@@ -101,7 +102,7 @@ export function PatientForm({ open, mode, initial, pending, onClose, onSubmit }:
         <label className={workflowField}>
           <span className={workflowFieldLabel}>{t.workflow.sex}</span>
           <select
-            className={workflowFieldInput}
+            className={uiSelect}
             value={sex}
             onChange={(e) => setSex(e.target.value as Sex)}
           >

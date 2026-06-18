@@ -43,6 +43,31 @@ export const workflowFieldLabel = 'text-[13px] font-bold text-muted'
 export const workflowFieldInput =
   'w-full border border-panel-border rounded-[14px] px-3.5 py-3 [font:inherit] bg-white'
 
+export const uiSelect = 'ui-select [font:inherit]'
+
+export const uiSelectTrigger = cn(
+  workflowBtn,
+  'inline-flex items-center gap-2 border border-panel-border bg-white px-3.5 py-2.5 text-sm font-semibold text-text-strong shadow-[0_4px_14px_rgb(15_23_42/0.06)] hover:border-cyan-400 disabled:shadow-none',
+)
+
+export const iconBtn =
+  'inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border shadow-[0_4px_14px_rgb(15_23_42/0.06)] transition-[border-color,background,color] duration-150 disabled:cursor-not-allowed disabled:opacity-45'
+
+export const iconBtnDefault = cn(
+  iconBtn,
+  'border-panel-border bg-white text-text-strong hover:border-cyan-400',
+)
+
+export const iconBtnPrimary = cn(
+  iconBtn,
+  'border-slate-900 bg-slate-900 text-white hover:border-slate-700 hover:bg-slate-800',
+)
+
+export const iconBtnDanger = cn(
+  iconBtn,
+  'border-panel-border bg-white text-red-600 hover:border-red-400 hover:bg-red-50',
+)
+
 export const workflowBtnPrimary = cn(workflowBtn, 'text-white bg-slate-900')
 
 export const workflowBtnSecondary = cn(workflowBtn, 'text-slate-900 bg-slate-100')

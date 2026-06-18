@@ -41,6 +41,8 @@ export type PatientSessionWorkflow = {
   pendingAction: boolean
   error: string | null
   canUseRuntime: boolean
+  /** Lock patient CRUD / switch while a session is active. */
+  patientLocked: boolean
   refreshPatients: () => Promise<void>
   selectPatient: (patientId: string | null) => void
   createPatient: (data: PatientCreate) => Promise<Patient>
@@ -69,6 +71,7 @@ export function usePatientSessionWorkflow(): PatientSessionWorkflow {
   const activeSession = useMemo(() => findActiveSession(sessions), [sessions])
 
   const canUseRuntime = activeSession?.status === 'active'
+  const patientLocked = activeSession !== null
 
   const handleError = useCallback((err: unknown, fallback: string) => {
     if (err instanceof ApiError) {
@@ -289,6 +292,7 @@ export function usePatientSessionWorkflow(): PatientSessionWorkflow {
       pendingAction,
       error,
       canUseRuntime,
+      patientLocked,
       refreshPatients,
       selectPatient,
       createPatient,
@@ -310,6 +314,7 @@ export function usePatientSessionWorkflow(): PatientSessionWorkflow {
       pendingAction,
       error,
       canUseRuntime,
+      patientLocked,
       refreshPatients,
       selectPatient,
       createPatient,
