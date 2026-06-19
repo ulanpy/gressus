@@ -1,9 +1,8 @@
-from typing import Any, Dict
 from uuid import UUID
 from datetime import datetime
 from enum import Enum
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 class SessionStatus(str, Enum):
     ACTIVE = "active"
@@ -14,7 +13,6 @@ class SessionStatus(str, Enum):
 
 class SessionCreateBody(BaseModel):
     started_at: datetime
-    launch_config: Dict[str, Any] = Field(default_factory=dict)
     notes: str | None = None
 
 
@@ -26,7 +24,6 @@ class SessionUpdate(BaseModel):
     ended_at: datetime | None = None
     status: SessionStatus | None = None
     notes: str | None = None
-    launch_config: Dict[str, Any] | None = None
 
 
 class SessionRead(BaseModel):
@@ -36,7 +33,6 @@ class SessionRead(BaseModel):
     started_at: datetime
     ended_at: datetime | None
     status: SessionStatus
-    launch_config: Dict[str, Any]
     notes: str | None
     created_at: datetime
 

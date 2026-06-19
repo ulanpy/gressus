@@ -49,9 +49,8 @@ export type PatientSessionWorkflow = {
   updatePatient: (patientId: string, data: PatientUpdate) => Promise<Patient>
   archivePatient: (patientId: string) => Promise<void>
   refreshSessions: () => Promise<void>
-  startSession: (notes?: string | null, launchConfig?: Record<string, unknown>) => Promise<TherapySession>
+  startSession: (notes?: string | null) => Promise<TherapySession>
   endSession: (status?: Exclude<SessionStatus, 'active'>) => Promise<TherapySession>
-  updateActiveSessionLaunchConfig: (launchConfig: Record<string, unknown>) => Promise<void>
   clearError: () => void
 }
 
@@ -215,7 +214,7 @@ export function usePatientSessionWorkflow(): PatientSessionWorkflow {
   )
 
   const startSession = useCallback(
-    async (notes?: string | null, launchConfig?: Record<string, unknown>) => {
+    async (notes?: string | null) => {
       if (!selectedPatientId) {
         throw new Error('Пациент не выбран')
       }
@@ -227,7 +226,6 @@ export function usePatientSessionWorkflow(): PatientSessionWorkflow {
       try {
         const created = await sessionsApi.createSession(selectedPatientId, {
           started_at: new Date().toISOString(),
-          launch_config: launchConfig ?? {},
           notes: notes ?? null,
         })
         await refreshSessions()
@@ -266,19 +264,6 @@ export function usePatientSessionWorkflow(): PatientSessionWorkflow {
     [activeSession, refreshSessions, handleError],
   )
 
-  const updateActiveSessionLaunchConfig = useCallback(
-    async (launchConfig: Record<string, unknown>) => {
-      if (!activeSession) return
-      try {
-        await sessionsApi.updateSession(activeSession.id, { launch_config: launchConfig })
-        await refreshSessions()
-      } catch (err) {
-        handleError(err, 'Не удалось обновить конфигурацию сессии')
-      }
-    },
-    [activeSession, refreshSessions, handleError],
-  )
-
   const clearError = useCallback(() => setError(null), [])
 
   return useMemo(
@@ -301,7 +286,6 @@ export function usePatientSessionWorkflow(): PatientSessionWorkflow {
       refreshSessions,
       startSession,
       endSession,
-      updateActiveSessionLaunchConfig,
       clearError,
     }),
     [
@@ -323,7 +307,6 @@ export function usePatientSessionWorkflow(): PatientSessionWorkflow {
       refreshSessions,
       startSession,
       endSession,
-      updateActiveSessionLaunchConfig,
       clearError,
     ],
   )

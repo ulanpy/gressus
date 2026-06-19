@@ -114,25 +114,16 @@ export function ControlPage({
 
   const handleStartGame = useCallback(
     async (params: GameLaunchParams) => {
-      if (workflow.activeSession) {
-        await workflow.updateActiveSessionLaunchConfig({ ...params, job: 'game' })
-      }
       await startGame(params)
     },
-    [workflow, startGame],
+    [startGame],
   )
 
   const handleStartCalibration = useCallback(
     async (params: Pick<GameLaunchParams, 'outputRotation'>) => {
-      if (workflow.activeSession) {
-        await workflow.updateActiveSessionLaunchConfig({
-          job: 'calibrate_apriltag',
-          outputRotation: params.outputRotation,
-        })
-      }
       await startCalibration(params)
     },
-    [workflow, startCalibration],
+    [startCalibration],
   )
 
   return (

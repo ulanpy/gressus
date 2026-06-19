@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from typing import Any, Dict
 
 from sqlalchemy import (
     CheckConstraint,
@@ -14,7 +13,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
 )
-from sqlalchemy.dialects.postgresql import JSONB, UUID
+from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
 
@@ -47,9 +46,6 @@ class Session(Base):
         nullable=False,
         default="active",
         server_default="active",
-    )
-    launch_config: Mapped[Dict[str, Any]] = mapped_column(
-        JSONB, nullable=False, default=dict, server_default="{}"
     )
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
