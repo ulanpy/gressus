@@ -6,14 +6,14 @@ from typing import Annotated, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from backend.modules.pgear.constants import (
+from gressus_pgear.constants import (
     CURRENT_PACKET_VERSION,
     HEARTBEAT_NEVER_RECEIVED,
     LOG_PACKET_MAGIC,
     LOG_PACKET_SIZE,
     PROFILE_SLOT_NONE,
 )
-from backend.modules.pgear.enums import GaitPhase, JointIndex
+from gressus_pgear.enums import GaitPhase, JointIndex
 
 _JOINT_R_HIP = "Правый тазобедренный сустав (R-hip)."
 _JOINT_R_KNEE = "Правый коленный сустав (R-knee)."

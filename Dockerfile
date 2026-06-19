@@ -81,6 +81,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends gnupg && \
 RUN pip3 install --no-cache-dir --break-system-packages --no-deps \
     "opencv-contrib-python>=4.10.0,<4.13" && \
     pip3 install --no-cache-dir --break-system-packages \
+    "pydantic>=2.9,<3" \
     "pygame>=2.6.1,<3" \
     "pyrealsense2>=2.57.7,<3" \
     "pupil-apriltags>=1.0.4.post11,<2" \

@@ -28,7 +28,7 @@ docs/media/     # README / marketing screenshots
 | `backend/modules/health/` | `/api/health` |
 | `backend/modules/insole/` | Static sensor geometry API (`/api/geometry`; data in `sensors_m.py` / `sensors_s.py`) |
 | `backend/modules/runtime/` | HTTP client for session manager |
-| `backend/modules/pgear/` | Exoskeleton UDP schemas + codec (receiver/service later) |
+| `ros2_ws/src/gressus_pgear/` | P.GEAR UDP LogPacket_v2 codec + `pgear_bridge_node` → `/exoskeleton/telemetry` |
 | `ros2_ws/src/gressus_bringup/` | Launch files (`game`, `calibrate`, `session`, …) |
 | `ros2_ws/src/gressus_session/` | HTTP session manager (`session_manager` on `:9090`) |
 | `ros2_ws/src/gressus_insole/` | TCP ingest, `/insole/pressure`, WebSocket fanout |

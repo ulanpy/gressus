@@ -5,8 +5,8 @@ from __future__ import annotations
 import struct
 from typing import Final
 
-from backend.modules.pgear.constants import LOG_PACKET_SIZE
-from backend.modules.pgear.schemas import (
+from gressus_pgear.constants import LOG_PACKET_SIZE
+from gressus_pgear.schemas import (
     DiagnosticsBlock,
     GaitState,
     JointArrays,
