@@ -1,53 +1,72 @@
-"""Session HTTP routes."""
+"""Session HTTP routes (nested under a patient)."""
 
 from __future__ import annotations
 
-import uuid
 from typing import Annotated
+from uuid import UUID
 
-from backend.modules.sessions import dependencies as deps, schemas
+from fastapi import APIRouter, Depends, Query, status
+
+from backend.modules.sessions.dependencies import get_session_service
+from backend.modules.sessions.schemas import (
+    SessionCreate,
+    SessionRead,
+    SessionStatusUpdate,
+    SessionUpdate,
+)
 from backend.modules.sessions.service import SessionService
-from fastapi import APIRouter, Depends
 
-router = APIRouter(tags=["sessions"])
-
-
-@router.get(
-    "/api/patients/{patient_id}/sessions",
-    response_model=list[schemas.SessionRead],
-)
-async def list_patient_sessions(
-    patient_id: uuid.UUID,
-    service: Annotated[SessionService, Depends(deps.get_session_service)],
-) -> list[schemas.SessionRead]:
-    return await service.list_sessions_for_patient(patient_id)
+router = APIRouter(prefix="/api/patients/{patient_id}/sessions", tags=["sessions"])
 
 
-@router.post(
-    "/api/patients/{patient_id}/sessions",
-    response_model=schemas.SessionRead,
-    status_code=201,
-)
-async def create_patient_session(
-    patient_id: uuid.UUID,
-    payload: schemas.SessionCreateBody,
-    service: Annotated[SessionService, Depends(deps.get_session_service)],
-) -> schemas.SessionRead:
-    return await service.create_session(patient_id, payload)
+@router.get("", response_model=list[SessionRead])
+async def list_sessions(
+    patient_id: UUID,
+    service: Annotated[SessionService, Depends(get_session_service)],
+    limit: int = Query(100, ge=1, le=500),
+    offset: int = Query(0, ge=0),
+) -> list[SessionRead]:
+    sessions = await service.list_for_patient(patient_id, limit=limit, offset=offset)
+    return [SessionRead.model_validate(s) for s in sessions]
 
 
-@router.get("/api/sessions/{session_id}", response_model=schemas.SessionRead)
+@router.post("", response_model=SessionRead, status_code=status.HTTP_201_CREATED)
+async def create_session(
+    patient_id: UUID,
+    payload: SessionCreate,
+    service: Annotated[SessionService, Depends(get_session_service)],
+) -> SessionRead:
+    session_obj = await service.create(patient_id, payload)
+    return SessionRead.model_validate(session_obj)
+
+
+@router.get("/{session_id}", response_model=SessionRead)
 async def get_session(
-    session_id: uuid.UUID,
-    service: Annotated[SessionService, Depends(deps.get_session_service)],
-) -> schemas.SessionRead:
-    return await service.get_session(session_id)
+    patient_id: UUID,
+    session_id: UUID,
+    service: Annotated[SessionService, Depends(get_session_service)],
+) -> SessionRead:
+    session_obj = await service.get_or_404(patient_id, session_id)
+    return SessionRead.model_validate(session_obj)
 
 
-@router.patch("/api/sessions/{session_id}", response_model=schemas.SessionRead)
+@router.patch("/{session_id}", response_model=SessionRead)
 async def update_session(
-    session_id: uuid.UUID,
-    payload: schemas.SessionUpdate,
-    service: Annotated[SessionService, Depends(deps.get_session_service)],
-) -> schemas.SessionRead:
-    return await service.update_session(session_id, payload)
+    patient_id: UUID,
+    session_id: UUID,
+    payload: SessionUpdate,
+    service: Annotated[SessionService, Depends(get_session_service)],
+) -> SessionRead:
+    session_obj = await service.update(patient_id, session_id, payload)
+    return SessionRead.model_validate(session_obj)
+
+
+@router.patch("/{session_id}/status", response_model=SessionRead)
+async def set_session_status(
+    patient_id: UUID,
+    session_id: UUID,
+    payload: SessionStatusUpdate,
+    service: Annotated[SessionService, Depends(get_session_service)],
+) -> SessionRead:
+    session_obj = await service.set_status(patient_id, session_id, payload.status)
+    return SessionRead.model_validate(session_obj)

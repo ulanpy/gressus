@@ -1,69 +1,51 @@
-"""Patient use cases."""
+"""Patient use cases and domain rules."""
 
 from __future__ import annotations
 
-import uuid
+from collections.abc import Sequence
+from datetime import datetime, timezone
 
-from backend.modules.patients import repository, schemas
-from fastapi import HTTPException, status
+from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from backend.modules.patients.models import Patient
+from backend.modules.patients.repository import PatientRepository
+from backend.modules.patients.schemas import PatientCreate, PatientUpdate
 
 
 class PatientService:
-    def __init__(self, db_session: AsyncSession) -> None:
-        self._repository = repository.PatientRepository(db_session)
+    def __init__(self, session: AsyncSession) -> None:
+        self._repo = PatientRepository(session)
 
-    async def create_patient(self, data: schemas.PatientCreate) -> schemas.PatientRead:
-        patient = await self._repository.create(data)
-        return schemas.PatientRead.model_validate(patient)
-
-    async def list_patients(self, *, include_archived: bool = False) -> list[schemas.PatientRead]:
-        patients = await self._repository.get_all(include_archived=include_archived)
-        return [schemas.PatientRead.model_validate(patient) for patient in patients]
-
-    async def get_patient(self, patient_id: uuid.UUID) -> schemas.PatientRead:
-        patient = await self._repository.get_by_id(patient_id)
+    async def get_or_404(self, patient_id: int) -> Patient:
+        patient = await self._repo.get(patient_id)
         if patient is None:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Patient not found",
-            )
-        return schemas.PatientRead.model_validate(patient)
+            raise HTTPException(status_code=404, detail=f"patient {patient_id} not found")
+        return patient
 
-    async def update_patient(
-        self,
-        patient_id: uuid.UUID,
-        data: schemas.PatientUpdate,
-    ) -> schemas.PatientRead:
-        patient = await self._repository.get_by_id(patient_id)
-        if patient is None:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Patient not found",
-            )
-        if patient.archived_at is not None:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Cannot update archived patient",
-            )
+    async def list(
+        self, *, include_archived: bool = False, limit: int = 100, offset: int = 0
+    ) -> Sequence[Patient]:
+        return await self._repo.list(
+            include_archived=include_archived, limit=limit, offset=offset
+        )
 
-        updated = await self._repository.update(patient_id, data)
-        assert updated is not None
-        return schemas.PatientRead.model_validate(updated)
+    async def create(self, payload: PatientCreate) -> Patient:
+        patient = Patient(**payload.model_dump())
+        return await self._repo.add(patient)
 
-    async def archive_patient(self, patient_id: uuid.UUID) -> schemas.PatientRead:
-        patient = await self._repository.get_by_id(patient_id)
-        if patient is None:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Patient not found",
-            )
-        if patient.archived_at is not None:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Patient is already archived",
-            )
+    async def update(self, patient_id: int, payload: PatientUpdate) -> Patient:
+        patient = await self.get_or_404(patient_id)
+        for field, value in payload.model_dump(exclude_unset=True).items():
+            setattr(patient, field, value)
+        await self._repo.flush()
+        return patient
 
-        archived = await self._repository.archive(patient_id)
-        assert archived is not None
-        return schemas.PatientRead.model_validate(archived)
+    async def archive(self, patient_id: int) -> Patient:
+        """Soft-delete: set ``archived_at`` instead of removing the row."""
+
+        patient = await self.get_or_404(patient_id)
+        if patient.archived_at is None:
+            patient.archived_at = datetime.now(timezone.utc)
+            await self._repo.flush()
+        return patient

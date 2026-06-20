@@ -1,52 +1,57 @@
-"""SQLAlchemy ORM model for Patient."""
+"""Patient ORM model."""
+
 from __future__ import annotations
 
 import uuid
 from datetime import date, datetime
-from typing import Any, Dict
+from typing import TYPE_CHECKING
 
-from sqlalchemy import CheckConstraint, DateTime, Index, Text
-from sqlalchemy.dialects.postgresql import JSONB, UUID
+from sqlalchemy import Boolean, CheckConstraint, Date, DateTime, Text
+from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-from sqlalchemy.sql import func
 
-from backend.core.database import Base
+from backend.core.database.base import Base, TimestampMixin
+
+if TYPE_CHECKING:
+    from backend.modules.assessments.models import Assessment
+    from backend.modules.sessions.models import Session
 
 
-class Patient(Base):
+class Patient(Base, TimestampMixin):
     __tablename__ = "patients"
+    __table_args__ = (
+        CheckConstraint(
+            "sex IN ('M', 'F', 'other', 'unknown')",
+            name="patients_sex_check",
+        ), 
+    )
 
-    id: Mapped[uuid.UUID] = mapped_column(
+    patient_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
     display_name: Mapped[str] = mapped_column(Text, nullable=False)
-    date_of_birth: Mapped[date | None] = mapped_column(nullable=True)
-    sex: Mapped[str | None] = mapped_column(
-        Text,
-        CheckConstraint("sex IN ('M', 'F', 'other', 'unknown')", name="patients_sex_check"),
-        nullable=False,
-    )
-    diagnosis_note: Mapped[str | None] = mapped_column(Text, nullable=True)
-    profile: Mapped[Dict[str, Any]] = mapped_column(
-        JSONB, nullable=False, default=dict, server_default="{}"
-    )
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), nullable=False
-    )
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        server_default=func.now(),
-        onupdate=func.now(),
-        nullable=False,
-    )
-    archived_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    date_of_birth: Mapped[date | None] = mapped_column(Date)
+    sex: Mapped[str] = mapped_column(Text, nullable=False)
+    cp_type: Mapped[str | None] = mapped_column(Text)
+    affected_side: Mapped[str | None] = mapped_column(Text)
+    gmfcs_current: Mapped[str | None] = mapped_column(Text)
+    dominant_side: Mapped[str | None] = mapped_column(Text)
+    comorbidities: Mapped[str | None] = mapped_column(Text)
+    contraindications: Mapped[str | None] = mapped_column(Text)
+    consent_on_file: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    consent_date: Mapped[date | None] = mapped_column(Date)
+    guardian_contact: Mapped[str | None] = mapped_column(Text)
+    enrollment_date: Mapped[date | None] = mapped_column(Date)
 
-    __table_args__ = (
-        Index(
-            "idx_patients_active",
-            "created_at",
-            postgresql_where="archived_at IS NULL",
-        ),
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    sessions: Mapped[list["Session"]] = relationship(
+        back_populates="patient",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+    assessments: Mapped[list["Assessment"]] = relationship(
+        back_populates="patient",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
     )

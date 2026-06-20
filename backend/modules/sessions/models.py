@@ -1,7 +1,13 @@
-"""SQLAlchemy ORM model for Session."""
+"""Session ORM model."""
+
 from __future__ import annotations
 
 import uuid
+from datetime import date
+from decimal import Decimal
+from typing import TYPE_CHECKING
+
+from sqlalchemy import Boolean, Date, Enum as SAEnum, ForeignKey, Integer, Numeric, Text
 from datetime import datetime
 
 from sqlalchemy import (
@@ -15,48 +21,45 @@ from sqlalchemy import (
 )
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-from sqlalchemy.sql import func
 
-from backend.core.database import Base
-from backend.modules.patients.models import Patient
+from backend.core.database.base import Base, TimestampMixin
+from backend.modules.sessions.enums import SessionStatus
+
+if TYPE_CHECKING:
+    from backend.modules.patients.models import Patient
 
 
-class Session(Base):
+class Session(Base, TimestampMixin):
     __tablename__ = "sessions"
 
-    id: Mapped[uuid.UUID] = mapped_column(
+    session_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
     patient_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("patients.id", ondelete="CASCADE"), nullable=False
+        UUID(as_uuid=True),
+        ForeignKey("patients.patient_id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
     )
-    session_number: Mapped[int] = mapped_column(Integer, nullable=False)
-    started_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False
-    )
-    ended_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
-    status: Mapped[str] = mapped_column(
-        Text,
-        CheckConstraint(
-            "status IN ('active', 'completed', 'failed', 'aborted')",
-            name="sessions_status_check",
+    session_date: Mapped[date | None] = mapped_column(Date)
+    session_type: Mapped[str | None] = mapped_column(Text)
+    session_number: Mapped[int | None] = mapped_column(Integer)
+    status: Mapped[SessionStatus] = mapped_column(
+        SAEnum(
+            SessionStatus,
+            name="session_status",
+            # store the lowercase ``.value`` ("active") rather than the name ("ACTIVE")
+            values_callable=lambda enum: [member.value for member in enum],
         ),
         nullable=False,
-        default="active",
-        server_default="active",
+        default=SessionStatus.ACTIVE,
+        server_default=SessionStatus.ACTIVE.value,
     )
-    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), nullable=False
+    passive_calibration_done: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False
     )
+    baseline_force_right: Mapped[Decimal | None] = mapped_column(Numeric(10, 2))
+    baseline_force_left: Mapped[Decimal | None] = mapped_column(Numeric(10, 2))
+    sampling_rate_hz: Mapped[Decimal | None] = mapped_column(Numeric)
 
-    patient: Mapped[Patient] = relationship("Patient")
-
-    __table_args__ = (
-        UniqueConstraint(
-            "patient_id", "session_number", name="uq_sessions_patient_number"
-        ),
-        Index("idx_sessions_patient", "patient_id", "started_at"),
-    )
+    patient: Mapped["Patient"] = relationship(back_populates="sessions")
