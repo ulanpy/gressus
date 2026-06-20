@@ -12,31 +12,53 @@ class Sex(str, Enum):
     OTHER = "other"
     UNKNOWN = "unknown"
 
-class PatientCreate(BaseModel):
+class PatientBase(BaseModel):
     display_name: str
     date_of_birth: date | None = None
-    sex: Sex
-    diagnosis_note: str | None = None
-    profile: Dict[str, Any] = Field(default_factory=dict)
+    sex: str 
+    cp_type: str | None = None
+    affected_side: str | None = None
+    gmfcs_current: str | None = None
+    dominant_side: str | None = None
+    comorbidities: str | None = None
+    contraindications: str | None = None
+    consent_on_file: bool = False
+    consent_date: date | None = None
+    guardian_contact: str | None = None
+    enrollment_date: date | None = None
 
 
 class PatientUpdate(BaseModel):
+     """Partial update; every field optional."""
     display_name: str | None = None
     date_of_birth: date | None = None
     sex: Sex | None = None
-    diagnosis_note: str | None = None
-    profile: Dict[str, Any] | None = None
-
+    cp_type: str | None = None
+    affected_side: str | None = None
+    gmfcs_current: str | None = None
+    dominant_side: str | None = None
+    comorbidities: str | None = None
+    contraindications: str | None = None
+    consent_on_file: bool | None = None
+    consent_date: date | None = None
+    guardian_contact: str | None = None
+    enrollment_date: date | None = None
 
 class PatientRead(BaseModel):
-    id: UUID
-    display_name: str
-    date_of_birth: date | None
-    sex: Sex
-    diagnosis_note: str | None
-    profile: Dict[str, Any]
-    created_at: datetime
-    updated_at: datetime
-    archived_at: datetime | None
+    model_config = ConfigDict(from_attributes=True)
 
-    model_config = {"from_attributes": True}
+    patient_id: UUID
+    display_name: str
+    date_of_birth: date | None = None
+    sex: str 
+    cp_type: str | None = None
+    affected_side: str | None = None
+    gmfcs_current: str | None = None
+    dominant_side: str | None = None
+    comorbidities: str | None = None
+    contraindications: str | None = None
+    consent_on_file: bool = False
+    consent_date: date | None = None
+    guardian_contact: str | None = None
+    enrollment_date: date | None = None
+

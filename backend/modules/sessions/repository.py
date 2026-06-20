@@ -1,74 +1,49 @@
+"""Session data access (SQLAlchemy 2.0, no commits here)."""
+
 from __future__ import annotations
 
-import uuid
+from collections.abc import Sequence
+from uuid import UUID
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.modules.patients.models import Patient
 from backend.modules.sessions.models import Session
-from backend.modules.sessions.schemas import SessionCreate, SessionUpdate
 
 
 class SessionRepository:
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
 
-    async def patient_exists(self, patient_id: uuid.UUID) -> bool:
-        result = await self._session.execute(
-            select(Patient.id).where(Patient.id == patient_id)
-        )
-        return result.scalar() is not None
+    async def get(self, session_id: UUID) -> Session | None:
+        return await self._session.get(Session, session_id)
 
-    async def patient_exists_and_active(self, patient_id: uuid.UUID) -> bool:
-        result = await self._session.execute(
-            select(Patient.id).where(
-                Patient.id == patient_id,
-                Patient.archived_at.is_(None),
-            )
-        )
-        return result.scalar() is not None
-
-    async def _next_session_number(self, patient_id: uuid.UUID) -> int:
-        result = await self._session.execute(
-            select(func.coalesce(func.max(Session.session_number), 0)).where(
-                Session.patient_id == patient_id
-            )
-        )
-        return result.scalar() + 1
-
-    async def create(self, data: SessionCreate) -> Session:
-        session_number = await self._next_session_number(data.patient_id)
-        session = Session(
-            **data.model_dump(),
-            session_number=session_number,
-            status="active",
-        )
-        self._session.add(session)
-        await self._session.flush()
-        await self._session.refresh(session)
-        return session
-
-    async def get_by_id(self, session_id: uuid.UUID) -> Session | None:
-        result = await self._session.execute(
-            select(Session).where(Session.id == session_id)
-        )
-        return result.scalars().first()
-
-    async def get_by_patient(self, patient_id: uuid.UUID) -> list[Session]:
-        result = await self._session.execute(
+    async def list_for_patient(
+        self, patient_id: UUID, *, limit: int = 100, offset: int = 0
+    ) -> Sequence[Session]:
+        stmt = (
             select(Session)
             .where(Session.patient_id == patient_id)
-            .order_by(Session.started_at.desc())
+            # UUID PKs are not chronologically ordered, so tie-break on created_at.
+            .order_by(Session.session_number, Session.created_at)
+            .limit(limit)
+            .offset(offset)
         )
-        return list(result.scalars().all())
+        result = await self._session.execute(stmt)
+        return result.scalars().all()
 
-    async def update(self, session_id: uuid.UUID, data: SessionUpdate) -> Session | None:
-        session = await self.get_by_id(session_id)
-        if session is None:
-            return None
-        for field, value in data.model_dump(exclude_unset=True).items():
-            setattr(session, field, value)
+    async def max_session_number(self, patient_id: UUID) -> int:
+        stmt = select(func.coalesce(func.max(Session.session_number), 0)).where(
+            Session.patient_id == patient_id
+        )
+        result = await self._session.execute(stmt)
+        return int(result.scalar_one())
+
+    async def add(self, session_obj: Session) -> Session:
+        self._session.add(session_obj)
         await self._session.flush()
-        await self._session.refresh(session)
-        return session
+        await self._session.refresh(session_obj)
+        return session_obj
+
+    async def flush(self) -> None:
+        await self._session.flush()

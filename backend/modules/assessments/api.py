@@ -1,0 +1,109 @@
+"""Assessment HTTP routes (nested under a patient), including detail blocks."""
+
+from __future__ import annotations
+
+from typing import Annotated
+
+from fastapi import APIRouter, Depends, Query, status
+
+from backend.modules.assessments.dependencies import get_assessment_service
+from backend.modules.assessments.schemas import (
+    AssessmentCreate,
+    AssessmentRead,
+    AssessmentUpdate,
+    BodyData,
+    ObservationsData,
+    SpatialGaitData,
+    WalkingTestsData,
+)
+from backend.modules.assessments.service import AssessmentService
+
+router = APIRouter(
+    prefix="/api/patients/{patient_id}/assessments", tags=["assessments"]
+)
+
+
+@router.get("", response_model=list[AssessmentRead])
+async def list_assessments(
+    patient_id: int,
+    service: Annotated[AssessmentService, Depends(get_assessment_service)],
+    limit: int = Query(100, ge=1, le=500),
+    offset: int = Query(0, ge=0),
+) -> list[AssessmentRead]:
+    items = await service.list_for_patient(patient_id, limit=limit, offset=offset)
+    return [AssessmentRead.model_validate(a) for a in items]
+
+
+@router.post("", response_model=AssessmentRead, status_code=status.HTTP_201_CREATED)
+async def create_assessment(
+    patient_id: int,
+    payload: AssessmentCreate,
+    service: Annotated[AssessmentService, Depends(get_assessment_service)],
+) -> AssessmentRead:
+    assessment = await service.create(patient_id, payload)
+    return AssessmentRead.model_validate(assessment)
+
+
+@router.get("/{assessment_id}", response_model=AssessmentRead)
+async def get_assessment(
+    patient_id: int,
+    assessment_id: int,
+    service: Annotated[AssessmentService, Depends(get_assessment_service)],
+) -> AssessmentRead:
+    assessment = await service.get_or_404(patient_id, assessment_id)
+    return AssessmentRead.model_validate(assessment)
+
+
+@router.patch("/{assessment_id}", response_model=AssessmentRead)
+async def update_assessment(
+    patient_id: int,
+    assessment_id: int,
+    payload: AssessmentUpdate,
+    service: Annotated[AssessmentService, Depends(get_assessment_service)],
+) -> AssessmentRead:
+    assessment = await service.update(patient_id, assessment_id, payload)
+    return AssessmentRead.model_validate(assessment)
+
+
+@router.put("/{assessment_id}/body", response_model=AssessmentRead)
+async def set_body(
+    patient_id: int,
+    assessment_id: int,
+    payload: BodyData,
+    service: Annotated[AssessmentService, Depends(get_assessment_service)],
+) -> AssessmentRead:
+    assessment = await service.set_body(patient_id, assessment_id, payload)
+    return AssessmentRead.model_validate(assessment)
+
+
+@router.put("/{assessment_id}/spatial-gait", response_model=AssessmentRead)
+async def set_spatial_gait(
+    patient_id: int,
+    assessment_id: int,
+    payload: SpatialGaitData,
+    service: Annotated[AssessmentService, Depends(get_assessment_service)],
+) -> AssessmentRead:
+    assessment = await service.set_spatial_gait(patient_id, assessment_id, payload)
+    return AssessmentRead.model_validate(assessment)
+
+
+@router.put("/{assessment_id}/walking-tests", response_model=AssessmentRead)
+async def set_walking_tests(
+    patient_id: int,
+    assessment_id: int,
+    payload: WalkingTestsData,
+    service: Annotated[AssessmentService, Depends(get_assessment_service)],
+) -> AssessmentRead:
+    assessment = await service.set_walking_tests(patient_id, assessment_id, payload)
+    return AssessmentRead.model_validate(assessment)
+
+
+@router.put("/{assessment_id}/observations", response_model=AssessmentRead)
+async def set_observations(
+    patient_id: int,
+    assessment_id: int,
+    payload: ObservationsData,
+    service: Annotated[AssessmentService, Depends(get_assessment_service)],
+) -> AssessmentRead:
+    assessment = await service.set_observations(patient_id, assessment_id, payload)
+    return AssessmentRead.model_validate(assessment)

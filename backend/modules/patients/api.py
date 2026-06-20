@@ -12,42 +12,53 @@ from fastapi import APIRouter, Depends, Query
 router = APIRouter(prefix="/api/patients", tags=["patients"])
 
 
-@router.get("", response_model=list[schemas.PatientRead])
+@router.get("", response_model=list[PatientRead])
 async def list_patients(
-    service: Annotated[PatientService, Depends(deps.get_patient_service)],
-    include_archived: bool = Query(default=False),
-) -> list[schemas.PatientRead]:
-    return await service.list_patients(include_archived=include_archived)
+    service: Annotated[PatientService, Depends(get_patient_service)],
+    include_archived: bool = Query(False),
+    limit: int = Query(100, ge=1, le=500),
+    offset: int = Query(0, ge=0),
+) -> list[PatientRead]:
+    patients = await service.list(
+        include_archived=include_archived, limit=limit, offset=offset
+    )
+    return [PatientRead.model_validate(p) for p in patients]
 
 
-@router.post("", response_model=schemas.PatientRead, status_code=201)
+@router.post("", response_model=PatientRead, status_code=status.HTTP_201_CREATED)
 async def create_patient(
-    payload: schemas.PatientCreate,
-    service: Annotated[PatientService, Depends(deps.get_patient_service)],
-) -> schemas.PatientRead:
-    return await service.create_patient(payload)
+    payload: PatientCreate,
+    service: Annotated[PatientService, Depends(get_patient_service)],
+) -> PatientRead:
+    patient = await service.create(payload)
+    return PatientRead.model_validate(patient)
 
 
-@router.get("/{patient_id}", response_model=schemas.PatientRead)
+@router.get("/{patient_id}", response_model=PatientRead)
 async def get_patient(
-    patient_id: uuid.UUID,
-    service: Annotated[PatientService, Depends(deps.get_patient_service)],
-) -> schemas.PatientRead:
-    return await service.get_patient(patient_id)
+    patient_id: int,
+    service: Annotated[PatientService, Depends(get_patient_service)],
+) -> PatientRead:
+    patient = await service.get_or_404(patient_id)
+    return PatientRead.model_validate(patient)
 
 
-@router.patch("/{patient_id}", response_model=schemas.PatientRead)
+@router.patch("/{patient_id}", response_model=PatientRead)
 async def update_patient(
-    patient_id: uuid.UUID,
-    payload: schemas.PatientUpdate,
-    service: Annotated[PatientService, Depends(deps.get_patient_service)],
-) -> schemas.PatientRead:
-    return await service.update_patient(patient_id, payload)
+    patient_id: int,
+    payload: PatientUpdate,
+    service: Annotated[PatientService, Depends(get_patient_service)],
+) -> PatientRead:
+    patient = await service.update(patient_id, payload)
+    return PatientRead.model_validate(patient)
 
 
-@router.delete("/{patient_id}", response_model=schemas.PatientRead)
+@router.delete("/{patient_id}", response_model=PatientRead)
 async def archive_patient(
-    patient_id: uuid.UUID,
-    service: Annotated[PatientService, Depends(deps.get_patient_service)],
-) -> schemas.PatientRead:
-    return await service.archive_patient(patient_id)
+    patient_id: int,
+    service: Annotated[PatientService, Depends(get_patient_service)],
+) -> PatientRead:
+    """Soft-delete (archive) a patient."""
+
+    patient = await service.archive(patient_id)
+    return PatientRead.model_validate(patient)
