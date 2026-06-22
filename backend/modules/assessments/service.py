@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+from uuid import UUID
 
 from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -31,12 +32,12 @@ class AssessmentService:
         self._repo = AssessmentRepository(session)
         self._patients = PatientRepository(session)
 
-    async def _ensure_patient(self, patient_id: int) -> None:
-        patient = await self._patients.get(patient_id)
+    async def _ensure_patient(self, patient_id: UUID) -> None:
+        patient = await self._patients.get_by_id(patient_id)
         if patient is None:
             raise HTTPException(status_code=404, detail=f"patient {patient_id} not found")
 
-    async def get_or_404(self, patient_id: int, assessment_id: int) -> Assessment:
+    async def get_or_404(self, patient_id: UUID, assessment_id: UUID) -> Assessment:
         assessment = await self._repo.get(assessment_id)
         if assessment is None or assessment.patient_id != patient_id:
             raise HTTPException(
@@ -46,12 +47,12 @@ class AssessmentService:
         return assessment
 
     async def list_for_patient(
-        self, patient_id: int, *, limit: int = 100, offset: int = 0
+        self, patient_id: UUID, *, limit: int = 100, offset: int = 0
     ) -> Sequence[Assessment]:
         await self._ensure_patient(patient_id)
         return await self._repo.list_for_patient(patient_id, limit=limit, offset=offset)
 
-    async def create(self, patient_id: int, payload: AssessmentCreate) -> Assessment:
+    async def create(self, patient_id: UUID, payload: AssessmentCreate) -> Assessment:
         await self._ensure_patient(patient_id)
         next_number = await self._repo.max_assessment_number(patient_id) + 1
         assessment = Assessment(
@@ -77,7 +78,7 @@ class AssessmentService:
         return await self._repo.add(assessment)
 
     async def update(
-        self, patient_id: int, assessment_id: int, payload: AssessmentUpdate
+        self, patient_id: UUID, assessment_id: UUID, payload: AssessmentUpdate
     ) -> Assessment:
         assessment = await self.get_or_404(patient_id, assessment_id)
         for field, value in payload.model_dump(exclude_unset=True).items():
@@ -85,10 +86,8 @@ class AssessmentService:
         await self._repo.flush()
         return assessment
 
-    # --- detail blocks: upsert one 1:1 child at a time -------------------------
-
     async def set_body(
-        self, patient_id: int, assessment_id: int, data: BodyData
+        self, patient_id: UUID, assessment_id: UUID, data: BodyData
     ) -> Assessment:
         assessment = await self.get_or_404(patient_id, assessment_id)
         if assessment.body is None:
@@ -100,7 +99,7 @@ class AssessmentService:
         return await self.get_or_404(patient_id, assessment_id)
 
     async def set_spatial_gait(
-        self, patient_id: int, assessment_id: int, data: SpatialGaitData
+        self, patient_id: UUID, assessment_id: UUID, data: SpatialGaitData
     ) -> Assessment:
         assessment = await self.get_or_404(patient_id, assessment_id)
         if assessment.spatial_gait is None:
@@ -112,7 +111,7 @@ class AssessmentService:
         return await self.get_or_404(patient_id, assessment_id)
 
     async def set_walking_tests(
-        self, patient_id: int, assessment_id: int, data: WalkingTestsData
+        self, patient_id: UUID, assessment_id: UUID, data: WalkingTestsData
     ) -> Assessment:
         assessment = await self.get_or_404(patient_id, assessment_id)
         if assessment.walking_tests is None:
@@ -124,7 +123,7 @@ class AssessmentService:
         return await self.get_or_404(patient_id, assessment_id)
 
     async def set_observations(
-        self, patient_id: int, assessment_id: int, data: ObservationsData
+        self, patient_id: UUID, assessment_id: UUID, data: ObservationsData
     ) -> Assessment:
         assessment = await self.get_or_404(patient_id, assessment_id)
         if assessment.observations is None:

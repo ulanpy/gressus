@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from typing import Literal
+from uuid import UUID
 
 from pydantic import BaseModel, Field
 
@@ -11,6 +12,8 @@ from backend.core.configs.config import config
 
 class StartRuntimeRequest(BaseModel):
     job: Literal["game", "calibrate_apriltag"]
+    sessionId: UUID | None = None
+    patientId: UUID | None = None
     display: int | None = None
     outputRotation: Literal[0, 90, 180, 270] = 270
     insoleThresholdKpa: float = Field(config.INSOLE_THRESHOLD_KPA, ge=0.0)

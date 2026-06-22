@@ -2,7 +2,7 @@ import type { FootFrame, FootSide, FramePayload, FootSilhouette, FootDashboard }
 import type { SourceMode } from './insole'
 import type { ViewMode, TherapistSection } from './navigation'
 import type { Language } from './i18n'
-import type { GameLaunchParams, RuntimePayload } from './runtime'
+import type { ClinicalRuntimeContext, GameLaunchParams, RuntimePayload } from './runtime'
 import type { ProgressSummary, SessionMetrics, TherapyRecommendation } from '../progressAnalytics'
 import type { CemrrProgressState } from '../hooks/useCemrrProgress'
 import type { PatientSessionWorkflow } from '../hooks/usePatientSessionWorkflow'
@@ -74,8 +74,11 @@ export type ControlPageProps = {
   runtime: RuntimePayload
   runtimeActionError: string | null
   runtimePending: boolean
-  startCalibration: (params: Pick<GameLaunchParams, 'outputRotation'>) => Promise<void>
-  startGame: (params: GameLaunchParams) => Promise<void>
+  startCalibration: (
+    params: Pick<GameLaunchParams, 'outputRotation'>,
+    clinical?: ClinicalRuntimeContext,
+  ) => Promise<void>
+  startGame: (params: GameLaunchParams, clinical?: ClinicalRuntimeContext) => Promise<void>
   stopRuntime: () => Promise<void>
 }
 

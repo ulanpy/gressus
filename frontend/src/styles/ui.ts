@@ -40,8 +40,9 @@ export const workflowField = 'grid gap-2 mt-3'
 
 export const workflowFieldLabel = 'text-[13px] font-bold text-muted'
 
-export const workflowFieldInput =
-  'w-full border border-panel-border rounded-[14px] px-3.5 py-3 [font:inherit] bg-white'
+export const workflowFieldInput = 'ui-input [font:inherit]'
+
+export const workflowDateInput = 'ui-date [font:inherit]'
 
 export const uiSelect = 'ui-select [font:inherit]'
 

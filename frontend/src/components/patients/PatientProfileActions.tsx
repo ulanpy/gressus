@@ -3,7 +3,8 @@ import { useI18n } from '../../i18n/context'
 import type { PatientSessionWorkflow } from '../../hooks/usePatientSessionWorkflow'
 import type { PatientCreate } from '../../types/patients'
 import { ConfirmModal } from '../ui/ConfirmModal'
-import { ArchiveIcon, IconButton, PencilIcon } from '../ui/IconButton'
+import { AssessmentModal } from '../assessments/AssessmentModal'
+import { ArchiveIcon, FilePlusIcon, IconButton, PencilIcon } from '../ui/IconButton'
 import { workflowStepActions } from '../../styles/ui'
 import { PatientForm } from './PatientForm'
 
@@ -21,6 +22,7 @@ export function PatientProfileActions({
   const { t } = useI18n()
   const [formOpen, setFormOpen] = useState(false)
   const [archiveOpen, setArchiveOpen] = useState(false)
+  const [assessmentOpen, setAssessmentOpen] = useState(false)
 
   const openEdit = () => {
     if (!workflow.selectedPatient) return
@@ -62,43 +64,18 @@ export function PatientProfileActions({
     </IconButton>
   )
 
-  if (layout === 'panel') {
-    return (
-      <>
-        <div className={workflowStepActions}>
-          {editButton}
-          {archiveButton}
-        </div>
-        <PatientForm
-          open={formOpen}
-          mode="edit"
-          initial={workflow.selectedPatient}
-          pending={workflow.pendingAction}
-          onClose={() => setFormOpen(false)}
-          onSubmit={handleSubmit}
-        />
-        <ConfirmModal
-          open={archiveOpen}
-          title={t.workflow.archiveTitle}
-          message={t.workflow.archiveConfirm}
-          confirmLabel={t.workflow.archivePatient}
-          cancelLabel={t.workflow.cancel}
-          pending={workflow.pendingAction}
-          onConfirm={handleArchive}
-          onClose={() => setArchiveOpen(false)}
-        />
-      </>
-    )
-  }
+  const createAssessmentButton = (
+    <IconButton
+      label={t.assessment.create}
+      onClick={() => setAssessmentOpen(true)}
+      disabled={!workflow.selectedPatient || workflow.pendingAction || locked}
+    >
+      <FilePlusIcon />
+    </IconButton>
+  )
 
-  return (
+  const modals = (
     <>
-      <div className="flex flex-wrap items-center gap-2">
-        {editButton}
-        {archiveButton}
-        {children}
-      </div>
-
       <PatientForm
         open={formOpen}
         mode="edit"
@@ -107,7 +84,6 @@ export function PatientProfileActions({
         onClose={() => setFormOpen(false)}
         onSubmit={handleSubmit}
       />
-
       <ConfirmModal
         open={archiveOpen}
         title={t.workflow.archiveTitle}
@@ -118,6 +94,40 @@ export function PatientProfileActions({
         onConfirm={handleArchive}
         onClose={() => setArchiveOpen(false)}
       />
+      <AssessmentModal
+        open={assessmentOpen}
+        mode="create"
+        assessment={null}
+        pending={workflow.pendingAction}
+        workflow={workflow}
+        onClose={() => setAssessmentOpen(false)}
+        onSaved={() => void workflow.refreshAssessments()}
+      />
+    </>
+  )
+
+  if (layout === 'panel') {
+    return (
+      <>
+        <div className={workflowStepActions}>
+          {editButton}
+          {createAssessmentButton}
+          {archiveButton}
+        </div>
+        {modals}
+      </>
+    )
+  }
+
+  return (
+    <>
+      <div className="flex flex-wrap items-center gap-2">
+        {editButton}
+        {createAssessmentButton}
+        {archiveButton}
+        {children}
+      </div>
+      {modals}
     </>
   )
 }

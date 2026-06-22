@@ -57,7 +57,7 @@ function DashboardShell({ language, setLanguage }: DashboardShellProps) {
             <span className="rounded-full bg-slate-900 px-3.5 py-2 text-[13px] font-bold whitespace-nowrap text-white">
               {t.workflow.contextBadge(
                 workflow.selectedPatient.display_name,
-                workflow.activeSession.session_number,
+                workflow.activeSession.session_number ?? 0,
               )}
             </span>
           )}

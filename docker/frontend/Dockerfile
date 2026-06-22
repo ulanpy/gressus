@@ -4,8 +4,8 @@ RUN apk add --no-cache bash curl git
 
 WORKDIR /gressus/frontend
 
-COPY frontend/package.json ./
-RUN npm install
+COPY frontend/package.json frontend/package-lock.json ./
+RUN npm ci
 
 COPY frontend .
 COPY docker/frontend/start.sh /start.sh

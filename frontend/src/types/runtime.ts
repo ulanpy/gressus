@@ -17,6 +17,11 @@ export type RuntimePayload = {
   } | null
 }
 
+export type ClinicalRuntimeContext = {
+  sessionId: string
+  patientId: string
+}
+
 export type GameLaunchParams = {
   display: number | null
   outputRotation: 0 | 90 | 180 | 270

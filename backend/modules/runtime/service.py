@@ -46,7 +46,7 @@ class RuntimeService:
         return body.get("runtime", body)
 
     def start(self, cfg: StartRuntimeRequest) -> dict[str, Any]:
-        payload = {
+        payload: dict[str, Any] = {
             "job": cfg.job,
             "display": cfg.display,
             "outputRotation": cfg.outputRotation,
@@ -56,6 +56,10 @@ class RuntimeService:
             "speed": cfg.speed,
             "stepTimeS": cfg.stepTimeS,
         }
+        if cfg.sessionId is not None:
+            payload["sessionId"] = str(cfg.sessionId)
+        if cfg.patientId is not None:
+            payload["patientId"] = str(cfg.patientId)
         return self._request("POST", "/session/start", payload)
 
     def stop(self, timeout_s: float) -> dict[str, Any]:

@@ -30,7 +30,7 @@ docs/media/     # README / marketing screenshots
 | `backend/modules/runtime/` | HTTP client for session manager |
 | `ros2_ws/src/gressus_pgear/` | P.GEAR UDP LogPacket_v2 codec + `pgear_bridge_node` → `/exoskeleton/telemetry` |
 | `ros2_ws/src/gressus_bringup/` | Launch files (`game`, `calibrate`, `session`, …) |
-| `ros2_ws/src/gressus_session/` | HTTP session manager (`session_manager` on `:9090`) |
+| `ros2_ws/src/gressus_session/` | HTTP `session_manager` on `:9090` — bridge backend ↔ ROS launches |
 | `ros2_ws/src/gressus_insole/` | TCP ingest, `/insole/pressure`, WebSocket fanout |
 | `ros2_ws/src/gressus_game/` | Tile game library + `tile_game_node` |
 | `ros2_ws/src/gressus_calibration/` | AprilTag calibration (`calibrate_apriltag`) |
@@ -91,7 +91,12 @@ WaveX (Windows) ──TCP JSONL :9100──► gressus_insole/insole_bridge_node
 ```
 Control UI ──POST /api/runtime/start──► RuntimeService ──HTTP──► session_manager (:9090)
                                                                         │
+                     sessionId / patientId ─────────────────────────────┘
+                                                                        │
                                                                         └── ros2 launch gressus_bringup …
+                                                                             env: GRESSUS_SESSION_ID,
+                                                                                   GRESSUS_PATIENT_ID,
+                                                                                   GRESSUS_SESSION_DATA_DIR
 ```
 
 **Mock / demo gait:** synthetic insole frames are generated in the frontend (`useInsoleFrame.ts`) when the operator selects mock mode. Live WebSocket requires `insole_bridge_node` (via `ros2 launch gressus_bringup insole.launch.py` or `session.launch.py`).

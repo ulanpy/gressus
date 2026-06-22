@@ -1,13 +1,13 @@
-"""Patient HTTP routes."""
-
 from __future__ import annotations
 
-import uuid
 from typing import Annotated
+from uuid import UUID
 
-from backend.modules.patients import dependencies as deps, schemas
+from fastapi import APIRouter, Depends, Query, status
+
+from backend.modules.patients.dependencies import get_patient_service
+from backend.modules.patients.schemas import PatientCreate, PatientRead, PatientUpdate
 from backend.modules.patients.service import PatientService
-from fastapi import APIRouter, Depends, Query
 
 router = APIRouter(prefix="/api/patients", tags=["patients"])
 
@@ -36,7 +36,7 @@ async def create_patient(
 
 @router.get("/{patient_id}", response_model=PatientRead)
 async def get_patient(
-    patient_id: int,
+    patient_id: UUID,
     service: Annotated[PatientService, Depends(get_patient_service)],
 ) -> PatientRead:
     patient = await service.get_or_404(patient_id)
@@ -45,7 +45,7 @@ async def get_patient(
 
 @router.patch("/{patient_id}", response_model=PatientRead)
 async def update_patient(
-    patient_id: int,
+    patient_id: UUID,
     payload: PatientUpdate,
     service: Annotated[PatientService, Depends(get_patient_service)],
 ) -> PatientRead:
@@ -55,7 +55,7 @@ async def update_patient(
 
 @router.delete("/{patient_id}", response_model=PatientRead)
 async def archive_patient(
-    patient_id: int,
+    patient_id: UUID,
     service: Annotated[PatientService, Depends(get_patient_service)],
 ) -> PatientRead:
     """Soft-delete (archive) a patient."""

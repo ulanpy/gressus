@@ -26,8 +26,11 @@ class Patient(Base, TimestampMixin):
         ), 
     )
 
-    patient_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    id: Mapped[uuid.UUID] = mapped_column(
+        "patient_id",
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4,
     )
     display_name: Mapped[str] = mapped_column(Text, nullable=False)
     date_of_birth: Mapped[date | None] = mapped_column(Date)

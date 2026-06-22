@@ -21,7 +21,7 @@ class SessionService:
         self._patients = PatientRepository(session)
 
     async def _ensure_patient(self, patient_id: UUID) -> None:
-        patient = await self._patients.get(patient_id)
+        patient = await self._patients.get_by_id(patient_id)
         if patient is None:
             raise HTTPException(status_code=404, detail=f"patient {patient_id} not found")
 

@@ -6,7 +6,7 @@ from datetime import date, datetime
 from decimal import Decimal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from backend.modules.sessions.enums import SessionStatus
 
@@ -40,9 +40,9 @@ class SessionStatusUpdate(BaseModel):
 
 
 class SessionRead(SessionBase):
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
-    session_id: UUID
+    session_id: UUID = Field(validation_alias="id")
     patient_id: UUID
     session_number: int | None = None
     status: SessionStatus

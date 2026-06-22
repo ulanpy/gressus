@@ -32,8 +32,11 @@ if TYPE_CHECKING:
 class Session(Base, TimestampMixin):
     __tablename__ = "sessions"
 
-    session_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    id: Mapped[uuid.UUID] = mapped_column(
+        "session_id",
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4,
     )
     patient_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),

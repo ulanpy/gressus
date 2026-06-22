@@ -1,9 +1,8 @@
-from typing import Any, Dict
-from uuid import UUID
 from datetime import date, datetime
 from enum import Enum
+from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class Sex(str, Enum):
@@ -12,10 +11,11 @@ class Sex(str, Enum):
     OTHER = "other"
     UNKNOWN = "unknown"
 
+
 class PatientBase(BaseModel):
     display_name: str
     date_of_birth: date | None = None
-    sex: str 
+    sex: str
     cp_type: str | None = None
     affected_side: str | None = None
     gmfcs_current: str | None = None
@@ -28,8 +28,13 @@ class PatientBase(BaseModel):
     enrollment_date: date | None = None
 
 
+class PatientCreate(PatientBase):
+    pass
+
+
 class PatientUpdate(BaseModel):
-     """Partial update; every field optional."""
+    """Partial update; every field optional."""
+
     display_name: str | None = None
     date_of_birth: date | None = None
     sex: Sex | None = None
@@ -44,13 +49,14 @@ class PatientUpdate(BaseModel):
     guardian_contact: str | None = None
     enrollment_date: date | None = None
 
-class PatientRead(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
 
-    patient_id: UUID
+class PatientRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
+
+    patient_id: UUID = Field(validation_alias="id")
     display_name: str
     date_of_birth: date | None = None
-    sex: str 
+    sex: str
     cp_type: str | None = None
     affected_side: str | None = None
     gmfcs_current: str | None = None
@@ -61,4 +67,6 @@ class PatientRead(BaseModel):
     consent_date: date | None = None
     guardian_contact: str | None = None
     enrollment_date: date | None = None
-
+    created_at: datetime
+    updated_at: datetime
+    archived_at: datetime | None = None

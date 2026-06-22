@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import type { GameLaunchParams, RuntimePayload } from '../types/runtime'
+import type { ClinicalRuntimeContext, GameLaunchParams, RuntimePayload } from '../types/runtime'
 
 function extractErrorMessage(text: string): string {
   if (!text) return 'runtime action failed'
@@ -76,14 +76,16 @@ export function useRuntimeControls() {
   }, [refreshStatus])
 
   const startGame = useCallback(
-    (params: GameLaunchParams) => runAction('/api/runtime/start', { job: 'game', ...params }),
+    (params: GameLaunchParams, clinical?: ClinicalRuntimeContext) =>
+      runAction('/api/runtime/start', { job: 'game', ...params, ...clinical }),
     [runAction],
   )
   const startCalibration = useCallback(
-    (params: Pick<GameLaunchParams, 'outputRotation'>) =>
+    (params: Pick<GameLaunchParams, 'outputRotation'>, clinical?: ClinicalRuntimeContext) =>
       runAction('/api/runtime/start', {
         job: 'calibrate_apriltag',
         outputRotation: params.outputRotation,
+        ...clinical,
       }),
     [runAction],
   )

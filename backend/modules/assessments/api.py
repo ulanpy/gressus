@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from typing import Annotated
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query, status
 
@@ -25,7 +26,7 @@ router = APIRouter(
 
 @router.get("", response_model=list[AssessmentRead])
 async def list_assessments(
-    patient_id: int,
+    patient_id: UUID,
     service: Annotated[AssessmentService, Depends(get_assessment_service)],
     limit: int = Query(100, ge=1, le=500),
     offset: int = Query(0, ge=0),
@@ -36,7 +37,7 @@ async def list_assessments(
 
 @router.post("", response_model=AssessmentRead, status_code=status.HTTP_201_CREATED)
 async def create_assessment(
-    patient_id: int,
+    patient_id: UUID,
     payload: AssessmentCreate,
     service: Annotated[AssessmentService, Depends(get_assessment_service)],
 ) -> AssessmentRead:
@@ -46,8 +47,8 @@ async def create_assessment(
 
 @router.get("/{assessment_id}", response_model=AssessmentRead)
 async def get_assessment(
-    patient_id: int,
-    assessment_id: int,
+    patient_id: UUID,
+    assessment_id: UUID,
     service: Annotated[AssessmentService, Depends(get_assessment_service)],
 ) -> AssessmentRead:
     assessment = await service.get_or_404(patient_id, assessment_id)
@@ -56,8 +57,8 @@ async def get_assessment(
 
 @router.patch("/{assessment_id}", response_model=AssessmentRead)
 async def update_assessment(
-    patient_id: int,
-    assessment_id: int,
+    patient_id: UUID,
+    assessment_id: UUID,
     payload: AssessmentUpdate,
     service: Annotated[AssessmentService, Depends(get_assessment_service)],
 ) -> AssessmentRead:
@@ -67,8 +68,8 @@ async def update_assessment(
 
 @router.put("/{assessment_id}/body", response_model=AssessmentRead)
 async def set_body(
-    patient_id: int,
-    assessment_id: int,
+    patient_id: UUID,
+    assessment_id: UUID,
     payload: BodyData,
     service: Annotated[AssessmentService, Depends(get_assessment_service)],
 ) -> AssessmentRead:
@@ -78,8 +79,8 @@ async def set_body(
 
 @router.put("/{assessment_id}/spatial-gait", response_model=AssessmentRead)
 async def set_spatial_gait(
-    patient_id: int,
-    assessment_id: int,
+    patient_id: UUID,
+    assessment_id: UUID,
     payload: SpatialGaitData,
     service: Annotated[AssessmentService, Depends(get_assessment_service)],
 ) -> AssessmentRead:
@@ -89,8 +90,8 @@ async def set_spatial_gait(
 
 @router.put("/{assessment_id}/walking-tests", response_model=AssessmentRead)
 async def set_walking_tests(
-    patient_id: int,
-    assessment_id: int,
+    patient_id: UUID,
+    assessment_id: UUID,
     payload: WalkingTestsData,
     service: Annotated[AssessmentService, Depends(get_assessment_service)],
 ) -> AssessmentRead:
@@ -100,8 +101,8 @@ async def set_walking_tests(
 
 @router.put("/{assessment_id}/observations", response_model=AssessmentRead)
 async def set_observations(
-    patient_id: int,
-    assessment_id: int,
+    patient_id: UUID,
+    assessment_id: UUID,
     payload: ObservationsData,
     service: Annotated[AssessmentService, Depends(get_assessment_service)],
 ) -> AssessmentRead:

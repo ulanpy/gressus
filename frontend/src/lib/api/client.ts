@@ -76,3 +76,12 @@ export async function apiDelete<T>(path: string): Promise<T> {
   const response = await fetch(`${API_PREFIX}${path}`, { method: 'DELETE' })
   return parseResponse<T>(response)
 }
+
+export async function apiPut<T>(path: string, body: unknown): Promise<T> {
+  const response = await fetch(`${API_PREFIX}${path}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  return parseResponse<T>(response)
+}

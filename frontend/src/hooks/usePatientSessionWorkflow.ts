@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import * as assessmentsApi from '../lib/api/assessments'
 import * as patientsApi from '../lib/api/patients'
 import * as sessionsApi from '../lib/api/sessions'
 import { ApiError } from '../lib/api/client'
+import type { Assessment, AssessmentCreate, AssessmentUpdate, BodyData, ObservationsData, SpatialGaitData, WalkingTestsData } from '../types/assessments'
 import type { Patient, PatientCreate, PatientUpdate } from '../types/patients'
-import type { SessionStatus, TherapySession } from '../types/sessions'
+import type { SessionCreateBody, SessionStatus, TherapySession } from '../types/sessions'
 
 const STORAGE_KEY = 'gressus:selectedPatientId'
 
@@ -31,17 +33,21 @@ function findActiveSession(sessions: TherapySession[]): TherapySession | null {
   return sessions.find((s) => s.status === 'active') ?? null
 }
 
+function todayIsoDate(): string {
+  return new Date().toISOString().slice(0, 10)
+}
+
 export type PatientSessionWorkflow = {
   patients: Patient[]
   selectedPatient: Patient | null
   selectedPatientId: string | null
   sessions: TherapySession[]
+  assessments: Assessment[]
   activeSession: TherapySession | null
   loading: boolean
   pendingAction: boolean
   error: string | null
   canUseRuntime: boolean
-  /** Lock patient CRUD / switch while a session is active. */
   patientLocked: boolean
   refreshPatients: () => Promise<void>
   selectPatient: (patientId: string | null) => void
@@ -49,8 +55,15 @@ export type PatientSessionWorkflow = {
   updatePatient: (patientId: string, data: PatientUpdate) => Promise<Patient>
   archivePatient: (patientId: string) => Promise<void>
   refreshSessions: () => Promise<void>
-  startSession: (notes?: string | null) => Promise<TherapySession>
+  startSession: (data?: SessionCreateBody) => Promise<TherapySession>
   endSession: (status?: Exclude<SessionStatus, 'active'>) => Promise<TherapySession>
+  refreshAssessments: () => Promise<void>
+  createAssessment: (data: AssessmentCreate) => Promise<Assessment>
+  updateAssessment: (assessmentId: string, data: AssessmentUpdate) => Promise<Assessment>
+  saveAssessmentBody: (assessmentId: string, data: BodyData) => Promise<Assessment>
+  saveAssessmentSpatialGait: (assessmentId: string, data: SpatialGaitData) => Promise<Assessment>
+  saveAssessmentWalkingTests: (assessmentId: string, data: WalkingTestsData) => Promise<Assessment>
+  saveAssessmentObservations: (assessmentId: string, data: ObservationsData) => Promise<Assessment>
   clearError: () => void
 }
 
@@ -58,6 +71,7 @@ export function usePatientSessionWorkflow(): PatientSessionWorkflow {
   const [patients, setPatients] = useState<Patient[]>([])
   const [selectedPatientId, setSelectedPatientId] = useState<string | null>(readStoredPatientId)
   const [sessions, setSessions] = useState<TherapySession[]>([])
+  const [assessments, setAssessments] = useState<Assessment[]>([])
   const [loading, setLoading] = useState(true)
   const [pendingAction, setPendingAction] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -68,7 +82,6 @@ export function usePatientSessionWorkflow(): PatientSessionWorkflow {
   )
 
   const activeSession = useMemo(() => findActiveSession(sessions), [sessions])
-
   const canUseRuntime = activeSession?.status === 'active'
   const patientLocked = activeSession !== null
 
@@ -106,6 +119,15 @@ export function usePatientSessionWorkflow(): PatientSessionWorkflow {
     setSessions(list)
   }, [selectedPatientId])
 
+  const refreshAssessments = useCallback(async () => {
+    if (!selectedPatientId) {
+      setAssessments([])
+      return
+    }
+    const list = await assessmentsApi.listPatientAssessments(selectedPatientId)
+    setAssessments(list)
+  }, [selectedPatientId])
+
   useEffect(() => {
     let cancelled = false
     const load = async () => {
@@ -132,15 +154,16 @@ export function usePatientSessionWorkflow(): PatientSessionWorkflow {
   useEffect(() => {
     if (!selectedPatientId) {
       setSessions([])
+      setAssessments([])
       return
     }
     let cancelled = false
     const load = async () => {
       try {
-        await refreshSessions()
+        await Promise.all([refreshSessions(), refreshAssessments()])
       } catch (err) {
         if (!cancelled) {
-          handleError(err, 'Не удалось загрузить сессии')
+          handleError(err, 'Не удалось загрузить данные пациента')
         }
       }
     }
@@ -148,13 +171,32 @@ export function usePatientSessionWorkflow(): PatientSessionWorkflow {
     return () => {
       cancelled = true
     }
-  }, [selectedPatientId, refreshSessions, handleError])
+  }, [selectedPatientId, refreshSessions, refreshAssessments, handleError])
 
   const selectPatient = useCallback((patientId: string | null) => {
     setSelectedPatientId(patientId)
     writeStoredPatientId(patientId)
     setError(null)
   }, [])
+
+  const withPatientAction = useCallback(
+    async <T>(fn: (patientId: string) => Promise<T>, fallback: string): Promise<T> => {
+      if (!selectedPatientId) {
+        throw new Error('Пациент не выбран')
+      }
+      setPendingAction(true)
+      setError(null)
+      try {
+        return await fn(selectedPatientId)
+      } catch (err) {
+        handleError(err, fallback)
+        throw err
+      } finally {
+        setPendingAction(false)
+      }
+    },
+    [selectedPatientId, handleError],
+  )
 
   const createPatient = useCallback(
     async (data: PatientCreate) => {
@@ -214,7 +256,7 @@ export function usePatientSessionWorkflow(): PatientSessionWorkflow {
   )
 
   const startSession = useCallback(
-    async (notes?: string | null) => {
+    async (data: SessionCreateBody = {}) => {
       if (!selectedPatientId) {
         throw new Error('Пациент не выбран')
       }
@@ -225,8 +267,8 @@ export function usePatientSessionWorkflow(): PatientSessionWorkflow {
       setError(null)
       try {
         const created = await sessionsApi.createSession(selectedPatientId, {
-          started_at: new Date().toISOString(),
-          notes: notes ?? null,
+          session_date: data.session_date ?? todayIsoDate(),
+          ...data,
         })
         await refreshSessions()
         return created
@@ -242,16 +284,17 @@ export function usePatientSessionWorkflow(): PatientSessionWorkflow {
 
   const endSession = useCallback(
     async (status: Exclude<SessionStatus, 'active'> = 'completed') => {
-      if (!activeSession) {
+      if (!selectedPatientId || !activeSession) {
         throw new Error('Нет активной сессии')
       }
       setPendingAction(true)
       setError(null)
       try {
-        const updated = await sessionsApi.updateSession(activeSession.id, {
-          ended_at: new Date().toISOString(),
+        const updated = await sessionsApi.updateSessionStatus(
+          selectedPatientId,
+          activeSession.id,
           status,
-        })
+        )
         await refreshSessions()
         return updated
       } catch (err) {
@@ -261,7 +304,79 @@ export function usePatientSessionWorkflow(): PatientSessionWorkflow {
         setPendingAction(false)
       }
     },
-    [activeSession, refreshSessions, handleError],
+    [selectedPatientId, activeSession, refreshSessions, handleError],
+  )
+
+  const createAssessment = useCallback(
+    async (data: AssessmentCreate) =>
+      withPatientAction(async (patientId) => {
+        const created = await assessmentsApi.createAssessment(patientId, data)
+        await refreshAssessments()
+        return created
+      }, 'Не удалось создать оценку'),
+    [withPatientAction, refreshAssessments],
+  )
+
+  const updateAssessment = useCallback(
+    async (assessmentId: string, data: AssessmentUpdate) =>
+      withPatientAction(async (patientId) => {
+        const updated = await assessmentsApi.updateAssessment(patientId, assessmentId, data)
+        await refreshAssessments()
+        return updated
+      }, 'Не удалось обновить оценку'),
+    [withPatientAction, refreshAssessments],
+  )
+
+  const saveAssessmentBody = useCallback(
+    async (assessmentId: string, data: BodyData) =>
+      withPatientAction(async (patientId) => {
+        const updated = await assessmentsApi.setAssessmentBody(patientId, assessmentId, data)
+        await refreshAssessments()
+        return updated
+      }, 'Не удалось сохранить антропометрию'),
+    [withPatientAction, refreshAssessments],
+  )
+
+  const saveAssessmentSpatialGait = useCallback(
+    async (assessmentId: string, data: SpatialGaitData) =>
+      withPatientAction(async (patientId) => {
+        const updated = await assessmentsApi.setAssessmentSpatialGait(
+          patientId,
+          assessmentId,
+          data,
+        )
+        await refreshAssessments()
+        return updated
+      }, 'Не удалось сохранить пространственные параметры'),
+    [withPatientAction, refreshAssessments],
+  )
+
+  const saveAssessmentWalkingTests = useCallback(
+    async (assessmentId: string, data: WalkingTestsData) =>
+      withPatientAction(async (patientId) => {
+        const updated = await assessmentsApi.setAssessmentWalkingTests(
+          patientId,
+          assessmentId,
+          data,
+        )
+        await refreshAssessments()
+        return updated
+      }, 'Не удалось сохранить тесты ходьбы'),
+    [withPatientAction, refreshAssessments],
+  )
+
+  const saveAssessmentObservations = useCallback(
+    async (assessmentId: string, data: ObservationsData) =>
+      withPatientAction(async (patientId) => {
+        const updated = await assessmentsApi.setAssessmentObservations(
+          patientId,
+          assessmentId,
+          data,
+        )
+        await refreshAssessments()
+        return updated
+      }, 'Не удалось сохранить наблюдения'),
+    [withPatientAction, refreshAssessments],
   )
 
   const clearError = useCallback(() => setError(null), [])
@@ -272,6 +387,7 @@ export function usePatientSessionWorkflow(): PatientSessionWorkflow {
       selectedPatient,
       selectedPatientId,
       sessions,
+      assessments,
       activeSession,
       loading,
       pendingAction,
@@ -286,6 +402,13 @@ export function usePatientSessionWorkflow(): PatientSessionWorkflow {
       refreshSessions,
       startSession,
       endSession,
+      refreshAssessments,
+      createAssessment,
+      updateAssessment,
+      saveAssessmentBody,
+      saveAssessmentSpatialGait,
+      saveAssessmentWalkingTests,
+      saveAssessmentObservations,
       clearError,
     }),
     [
@@ -293,6 +416,7 @@ export function usePatientSessionWorkflow(): PatientSessionWorkflow {
       selectedPatient,
       selectedPatientId,
       sessions,
+      assessments,
       activeSession,
       loading,
       pendingAction,
@@ -307,6 +431,13 @@ export function usePatientSessionWorkflow(): PatientSessionWorkflow {
       refreshSessions,
       startSession,
       endSession,
+      refreshAssessments,
+      createAssessment,
+      updateAssessment,
+      saveAssessmentBody,
+      saveAssessmentSpatialGait,
+      saveAssessmentWalkingTests,
+      saveAssessmentObservations,
       clearError,
     ],
   )

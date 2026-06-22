@@ -1,5 +1,8 @@
+import { useEffect, useState } from 'react'
 import { useI18n } from '../../i18n/context'
 import type { PatientSessionWorkflow } from '../../hooks/usePatientSessionWorkflow'
+import { AssessmentSection } from '../assessments/AssessmentSection'
+import { SessionHistoryList } from '../sessions/SessionHistoryList'
 import {
   uiSelect,
   workflowField,
@@ -7,8 +10,9 @@ import {
   workflowMuted,
   workflowStep,
 } from '../../styles/ui'
-import { PatientDemographics } from './PatientDemographics'
+import { PatientCard } from './PatientCard'
 import { PatientProfileActions } from './PatientProfileActions'
+import { PatientViewMenu, type PatientWorkspaceView } from './PatientViewMenu'
 
 type PatientSelectorProps = {
   workflow: PatientSessionWorkflow
@@ -16,6 +20,11 @@ type PatientSelectorProps = {
 
 export function PatientSelector({ workflow }: PatientSelectorProps) {
   const { t } = useI18n()
+  const [workspaceView, setWorkspaceView] = useState<PatientWorkspaceView>('profile')
+
+  useEffect(() => {
+    setWorkspaceView('profile')
+  }, [workflow.selectedPatientId])
 
   return (
     <section className={workflowStep} aria-label={t.workflow.selectPatient}>
@@ -42,9 +51,40 @@ export function PatientSelector({ workflow }: PatientSelectorProps) {
             </select>
           </label>
 
-          {workflow.selectedPatient && <PatientDemographics patient={workflow.selectedPatient} />}
+          {workflow.selectedPatient && (
+            <>
+              <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+                <h2 className="m-0 min-w-0 truncate text-xl font-bold tracking-[-0.02em] text-text-strong">
+                  {workflow.selectedPatient.display_name}
+                </h2>
+                <PatientProfileActions workflow={workflow} />
+              </div>
 
-          {workflow.selectedPatient && <PatientProfileActions workflow={workflow} layout="panel" />}
+              <PatientViewMenu
+                className="mt-3"
+                value={workspaceView}
+                onChange={setWorkspaceView}
+                disabled={workflow.pendingAction}
+              />
+
+              <div className="w-full">
+                {workspaceView === 'profile' && (
+                  <PatientCard patient={workflow.selectedPatient} />
+                )}
+
+                {workspaceView === 'sessions' && (
+                  <SessionHistoryList
+                    sessions={workflow.sessions}
+                    activeSessionId={workflow.activeSession?.id ?? null}
+                  />
+                )}
+
+                {workspaceView === 'assessments' && (
+                  <AssessmentSection workflow={workflow} embedded />
+                )}
+              </div>
+            </>
+          )}
         </>
       )}
     </section>

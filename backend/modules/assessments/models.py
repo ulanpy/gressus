@@ -1,7 +1,7 @@
 """Assessment ORM models: the assessment header and its four 1:1 detail tables.
 
-Each detail table shares the assessment's primary key (``assessment_id`` is both
-PK and FK), giving a strict one-to-one relationship with ``assessments``.
+Each detail table shares the assessment's primary key (column ``assessment_id`` is
+both PK and FK), giving a strict one-to-one relationship with ``assessments``.
 """
 
 from __future__ import annotations
@@ -9,23 +9,23 @@ from __future__ import annotations
 import uuid
 from datetime import date
 from decimal import Decimal
-from typing import TYPE_CHECKING
 
 from sqlalchemy import Boolean, Date, ForeignKey, Integer, Numeric, Text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from backend.core.database.base import Base, TimestampMixin
-
-if TYPE_CHECKING:
-    from backend.modules.patients.models import Patient
+from backend.modules.patients.models import Patient  # noqa: F401 — registers mapper for relationship()
 
 
 class Assessment(Base, TimestampMixin):
     __tablename__ = "assessments"
 
-    assessment_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    id: Mapped[uuid.UUID] = mapped_column(
+        "assessment_id",
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4,
     )
     patient_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
@@ -68,7 +68,8 @@ class Assessment(Base, TimestampMixin):
 class AssessmentBody(Base):
     __tablename__ = "assessment_body"
 
-    assessment_id: Mapped[uuid.UUID] = mapped_column(
+    id: Mapped[uuid.UUID] = mapped_column(
+        "assessment_id",
         UUID(as_uuid=True),
         ForeignKey("assessments.assessment_id", ondelete="CASCADE"),
         primary_key=True,
@@ -84,7 +85,8 @@ class AssessmentBody(Base):
 class AssessmentSpatialGait(Base):
     __tablename__ = "assessment_spatial_gait"
 
-    assessment_id: Mapped[uuid.UUID] = mapped_column(
+    id: Mapped[uuid.UUID] = mapped_column(
+        "assessment_id",
         UUID(as_uuid=True),
         ForeignKey("assessments.assessment_id", ondelete="CASCADE"),
         primary_key=True,
@@ -104,7 +106,8 @@ class AssessmentSpatialGait(Base):
 class AssessmentWalkingTests(Base):
     __tablename__ = "assessment_walking_tests"
 
-    assessment_id: Mapped[uuid.UUID] = mapped_column(
+    id: Mapped[uuid.UUID] = mapped_column(
+        "assessment_id",
         UUID(as_uuid=True),
         ForeignKey("assessments.assessment_id", ondelete="CASCADE"),
         primary_key=True,
@@ -121,7 +124,8 @@ class AssessmentWalkingTests(Base):
 class AssessmentObservations(Base):
     __tablename__ = "assessment_observations"
 
-    assessment_id: Mapped[uuid.UUID] = mapped_column(
+    id: Mapped[uuid.UUID] = mapped_column(
+        "assessment_id",
         UUID(as_uuid=True),
         ForeignKey("assessments.assessment_id", ondelete="CASCADE"),
         primary_key=True,

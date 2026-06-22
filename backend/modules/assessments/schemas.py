@@ -4,8 +4,9 @@ from __future__ import annotations
 
 from datetime import date, datetime
 from decimal import Decimal
+from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 # --- detail blocks -------------------------------------------------------------
@@ -92,10 +93,10 @@ class AssessmentUpdate(BaseModel):
 
 
 class AssessmentRead(AssessmentBase):
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
-    assessment_id: int
-    patient_id: int
+    assessment_id: UUID = Field(validation_alias="id")
+    patient_id: UUID
     assessment_number: int | None = None
     created_at: datetime
     updated_at: datetime

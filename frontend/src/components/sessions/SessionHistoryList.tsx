@@ -1,13 +1,12 @@
 import { formatDateTime } from '../../lib/format'
 import { useI18n } from '../../i18n/context'
 import type { TherapySession } from '../../types/sessions'
+import { HistoryIcon } from '../patients/PatientFieldIcons'
 import {
   sessionCardMeta,
   sessionHistory,
   sessionHistoryItem,
-  sessionHistoryNotes,
   sessionHistoryStatus,
-  workflowMuted,
 } from '../../styles/ui'
 
 type SessionHistoryListProps = {
@@ -20,7 +19,14 @@ export function SessionHistoryList({ sessions, activeSessionId }: SessionHistory
   const history = sessions.filter((s) => s.id !== activeSessionId)
 
   if (history.length === 0) {
-    return <p className={workflowMuted}>{t.workflow.noSessionHistory}</p>
+    return (
+      <div className="flex items-center gap-3 rounded-xl border border-dashed border-slate-200 bg-white/70 px-4 py-5 text-slate-500">
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-indigo-500">
+          <HistoryIcon />
+        </div>
+        <p className="m-0 text-sm font-medium">{t.workflow.noSessionHistory}</p>
+      </div>
+    )
   }
 
   const statusLabel = (status: TherapySession['status']) => {
@@ -41,14 +47,17 @@ export function SessionHistoryList({ sessions, activeSessionId }: SessionHistory
       {history.map((session) => (
         <li key={session.id} className={sessionHistoryItem}>
           <div>
-            <strong>{t.workflow.sessionNumber(session.session_number)}</strong>
+            <strong>{t.workflow.sessionNumber(session.session_number ?? 0)}</strong>
             <span className={sessionHistoryStatus}>{statusLabel(session.status)}</span>
           </div>
           <div className={sessionCardMeta}>
-            <span>{formatDateTime(session.started_at, language)}</span>
-            {session.ended_at && <span>→ {formatDateTime(session.ended_at, language)}</span>}
+            {session.session_date && <span>{session.session_date}</span>}
+            {session.session_type && <span>{session.session_type}</span>}
+            <span>{formatDateTime(session.created_at, language)}</span>
           </div>
-          {session.notes && <p className={sessionHistoryNotes}>{session.notes}</p>}
+          {session.passive_calibration_done && (
+            <p className="m-0 mt-1 text-xs text-muted">{t.workflow.passiveCalibrationDone}</p>
+          )}
         </li>
       ))}
     </ul>

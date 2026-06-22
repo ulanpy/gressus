@@ -1,19 +1,24 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useI18n } from '../i18n/context'
 import type { ControlPageProps } from '../types/components'
-import type { GameLaunchParams } from '../types/runtime'
+import type { GameLaunchParams, ClinicalRuntimeContext } from '../types/runtime'
 import type { PatientSessionWorkflow } from '../hooks/usePatientSessionWorkflow'
+import { AssessmentSection } from '../components/assessments/AssessmentSection'
 import { PatientCreateAction } from '../components/patients/PatientCreateAction'
-import { PatientDemographics } from '../components/patients/PatientDemographics'
+import { PatientCard } from '../components/patients/PatientCard'
 import { PatientProfileActions } from '../components/patients/PatientProfileActions'
 import { PatientSelector } from '../components/patients/PatientSelector'
 import { PatientSwitch } from '../components/patients/PatientSwitch'
+import {
+  PatientViewMenu,
+  type PatientWorkspaceView,
+} from '../components/patients/PatientViewMenu'
 import { SessionHistoryList } from '../components/sessions/SessionHistoryList'
 import { SessionStartModal } from '../components/sessions/SessionStartModal'
 import { RuntimeControls } from '../components/runtime/RuntimeControls'
 import { IconButton, PlayIcon, StopIcon } from '../components/ui/IconButton'
 import { cn } from '../lib/cn'
-import { container, panel, sessionHistoryBlock } from '../styles/ui'
+import { container, panel } from '../styles/ui'
 
 type ControlPhase = 'patient' | 'session' | 'runtime'
 
@@ -26,68 +31,80 @@ function getPhase(workflow: PatientSessionWorkflow): ControlPhase {
 function ControlContextBar({ workflow }: { workflow: PatientSessionWorkflow }) {
   const { t } = useI18n()
   const [startOpen, setStartOpen] = useState(false)
-  const showHistory = !workflow.activeSession
+  const [workspaceView, setWorkspaceView] = useState<PatientWorkspaceView>('profile')
+
+  useEffect(() => {
+    setWorkspaceView('profile')
+  }, [workflow.selectedPatientId])
 
   if (!workflow.selectedPatient) return null
 
-  const handleStartSession = async (notes: string | null) => {
-    await workflow.startSession(notes)
+  const handleStartSession = async (data: Parameters<PatientSessionWorkflow['startSession']>[0]) => {
+    await workflow.startSession(data)
   }
 
   return (
     <>
-      <div className={cn(panel, 'relative z-0 rounded-2xl px-4 py-3')}>
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div className="min-w-0 flex-1">
-            <div className="flex min-w-0 items-center gap-2">
-              <h2 className="m-0 min-w-0 truncate text-lg font-bold tracking-[-0.02em] text-text-strong">
-                {workflow.selectedPatient.display_name}
-              </h2>
-              <PatientSwitch workflow={workflow} menuAlign="left" compact />
-            </div>
-            <PatientDemographics patient={workflow.selectedPatient} />
-            {workflow.activeSession && (
-              <p className="m-0 mt-1.5 text-xs font-semibold text-brand">
-                {t.workflow.sessionNumber(workflow.activeSession.session_number)} ·{' '}
-                {t.workflow.statusActive}
-              </p>
-            )}
-          </div>
+      <div className={cn(panel, 'relative z-0 w-full rounded-2xl px-5 py-4')}>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h2 className="m-0 min-w-0 truncate text-xl font-bold tracking-[-0.02em] text-text-strong">
+            {workflow.selectedPatient.display_name}
+          </h2>
 
-          <PatientProfileActions workflow={workflow}>
-            {!workflow.activeSession ? (
-              <IconButton
-                label={t.workflow.startSession}
-                variant="primary"
-                onClick={() => setStartOpen(true)}
-                disabled={workflow.pendingAction}
-              >
-                <PlayIcon />
-              </IconButton>
-            ) : (
-              <IconButton
-                label={t.workflow.endSession}
-                variant="danger"
-                onClick={() => void workflow.endSession('completed')}
-                disabled={workflow.pendingAction}
-              >
-                <StopIcon />
-              </IconButton>
-            )}
-          </PatientProfileActions>
+          <div className="flex flex-wrap items-center gap-2">
+            <PatientSwitch workflow={workflow} menuAlign="right" />
+            <PatientProfileActions workflow={workflow}>
+              {!workflow.activeSession ? (
+                <IconButton
+                  label={t.workflow.startSession}
+                  variant="primary"
+                  onClick={() => setStartOpen(true)}
+                  disabled={workflow.pendingAction}
+                >
+                  <PlayIcon />
+                </IconButton>
+              ) : (
+                <IconButton
+                  label={t.workflow.endSession}
+                  variant="danger"
+                  onClick={() => void workflow.endSession('completed')}
+                  disabled={workflow.pendingAction}
+                >
+                  <StopIcon />
+                </IconButton>
+              )}
+            </PatientProfileActions>
+          </div>
         </div>
 
-        {showHistory && (
-          <div className={cn(sessionHistoryBlock, 'mt-4 border-t border-panel-border pt-4')}>
-            <h3 className="m-0 mb-0 text-sm font-bold text-text-strong">
-              {t.workflow.sessionHistory}
-            </h3>
+        {workflow.activeSession && (
+          <p className="m-0 mt-3 text-sm font-semibold text-brand">
+            {t.workflow.sessionNumber(workflow.activeSession.session_number ?? 0)} ·{' '}
+            {t.workflow.statusActive}
+          </p>
+        )}
+
+        <PatientViewMenu
+          className="mt-3"
+          value={workspaceView}
+          onChange={setWorkspaceView}
+          disabled={workflow.pendingAction}
+        />
+
+        <div className="w-full">
+          {workspaceView === 'profile' && <PatientCard patient={workflow.selectedPatient} />}
+
+          {workspaceView === 'sessions' && (
             <SessionHistoryList
               sessions={workflow.sessions}
               activeSessionId={workflow.activeSession?.id ?? null}
             />
-          </div>
-        )}
+          )}
+
+          {workspaceView === 'assessments' && (
+            <AssessmentSection workflow={workflow} embedded />
+          )}
+        </div>
       </div>
 
       <SessionStartModal
@@ -112,18 +129,26 @@ export function ControlPage({
   const { t } = useI18n()
   const phase = getPhase(workflow)
 
+  const clinicalContext = useCallback((): ClinicalRuntimeContext | undefined => {
+    if (!workflow.activeSession || !workflow.selectedPatientId) return undefined
+    return {
+      sessionId: workflow.activeSession.id,
+      patientId: workflow.selectedPatientId,
+    }
+  }, [workflow.activeSession, workflow.selectedPatientId])
+
   const handleStartGame = useCallback(
     async (params: GameLaunchParams) => {
-      await startGame(params)
+      await startGame(params, clinicalContext())
     },
-    [startGame],
+    [startGame, clinicalContext],
   )
 
   const handleStartCalibration = useCallback(
     async (params: Pick<GameLaunchParams, 'outputRotation'>) => {
-      await startCalibration(params)
+      await startCalibration(params, clinicalContext())
     },
-    [startCalibration],
+    [startCalibration, clinicalContext],
   )
 
   return (

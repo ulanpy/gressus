@@ -6,6 +6,7 @@ from typing import List
 
 from fastapi import APIRouter
 
+from backend.modules.assessments.api import router as assessments_router
 from backend.modules.health.api import router as health_router
 from backend.modules.insole.api import router as insole_router
 from backend.modules.patients.api import router as patients_router
@@ -16,6 +17,7 @@ routers: List[APIRouter] = [
     health_router,
     insole_router,
     patients_router,
-    runtime_router,
     sessions_router,
+    assessments_router,
+    runtime_router,
 ]
