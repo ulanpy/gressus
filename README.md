@@ -47,7 +47,7 @@ docker compose up -d --build
 | URL | Service |
 |-----|---------|
 | http://localhost:5173 | Web client |
-| http://localhost:8000/api/health | Backend API |
+| http://localhost:8000/docs | Backend API (OpenAPI) |
 | http://127.0.0.1:9090/session/status | Session manager (ROS container) |
 
 <p align="center">

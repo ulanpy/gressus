@@ -24,8 +24,6 @@ docs/             # Project documentation
 | `backend/modules/sessions/` | Clinical sessions per patient |
 | `backend/modules/assessments/` | Assessment forms |
 | `backend/modules/runtime/` | `SessionManagerClient` + `RuntimeService` → session manager `:9090` |
-| `backend/modules/insole/` | Static sensor geometry API |
-| `backend/modules/health/` | `/api/health` |
 
 ROS packages referenced by runtime: `gressus_session`, `gressus_pgear`, `gressus_bringup` — details in [ROS.md](ROS.md).
 
@@ -48,10 +46,6 @@ Proxied to session manager (`SESSION_MANAGER_URL`, default `http://127.0.0.1:909
 | `POST /api/runtime/stop` | Legacy alias → stack stop |
 
 `sessionId` and `patientId` on stack start are forwarded to session manager and exported as ROS env vars — see [architecture.md](architecture.md).
-
-## Insole geometry
-
-`GET /api/geometry?size=M|S` — static sensor layout for frontend heatmaps. Live pressure is **not** served by the backend; it comes from `insole_bridge_node` WebSocket.
 
 ## Docker
 

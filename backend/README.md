@@ -6,7 +6,7 @@
 
 ## Где что лежит
 
-- **Модули** — `backend/modules/<module_name>/` (например `patients`, `sessions`, `runtime`, `insole`, `health`).
+- **Модули** — `backend/modules/<module_name>/` (например `patients`, `sessions`, `runtime`).
 - **Общая инфраструктура** — `backend/core/` (конфиг, БД), `backend/common/` (общие `Depends`).
 - **Состояние приложения** — `backend/app_state/` (инициализация БД, runtime manager).
 - **Точка входа** — `backend/main.py`, lifespan — `backend/lifespan.py`.
@@ -41,7 +41,7 @@ Gressus обычно разворачивается в **локальном ко
 
 Модули не лезут в репозитории и сервисы друг друга. Общие вещи (ORM-модели, DTO) импортируются по явному контракту — например, `sessions` проверяет существование пациента через `Patient` из `patients.models`, без вызова `PatientRepository`.
 
-Не все модули обязаны иметь полный набор слоёв (например `runtime` и `insole` работают без БД).
+Не все модули обязаны иметь полный набор слоёв (например `runtime` работает без БД).
 
 ---
 

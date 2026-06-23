@@ -34,7 +34,7 @@ Web app in `frontend/`. Operator-facing areas:
 - **Control** — start/stop feedback stacks, P.GEAR commands, calibration and legacy game modes.
 - **Patient** — simplified session view.
 
-Live insole data: WebSocket `ws://127.0.0.1:8765/ws/insole` from `insole_bridge_node` (not the backend).
+Live insole data: WebSocket `ws://127.0.0.1:8765/ws/insole` from `insole_bridge_node`. Sensor layout for heatmaps is static data in `frontend/src/constants/insoleGeometry/`.
 
 ## Backend
 

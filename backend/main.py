@@ -8,7 +8,13 @@ from fastapi.middleware.cors import CORSMiddleware
 from backend.lifespan import lifespan
 from backend.core.configs.config import config
 
-app = FastAPI(title="Gressus backend", lifespan=lifespan)
+app = FastAPI(
+    title="Gressus backend",
+    debug=True,
+    lifespan=lifespan,
+    docs_url="/api/docs",
+    redoc_url="/api/redoc",
+)
 
 app.add_middleware(
     CORSMiddleware,
