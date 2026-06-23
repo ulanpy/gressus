@@ -8,6 +8,9 @@
   <license>Apache-2.0</license>
 
   <exec_depend>gressus_bringup</exec_depend>
+  <exec_depend>gressus_msgs</exec_depend>
+  <exec_depend>rclpy</exec_depend>
+  <exec_depend>std_srvs</exec_depend>
 
   <test_depend>ament_copyright</test_depend>
   <test_depend>ament_flake8</test_depend>

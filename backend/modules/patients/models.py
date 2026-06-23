@@ -58,3 +58,6 @@ class Patient(Base, TimestampMixin):
         cascade="all, delete-orphan",
         passive_deletes=True,
     )
+
+
+

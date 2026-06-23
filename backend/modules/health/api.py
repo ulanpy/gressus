@@ -14,12 +14,12 @@ router = APIRouter(prefix="/api", tags=["health"])
 
 
 @router.get("/health")
-def health(
+async def health(
     cfg: Annotated[Config, Depends(get_config)],
     service: Annotated[RuntimeService, Depends(get_runtime_service)],
 ) -> dict:
     return {
         "ok": True,
         "insoleWsUrl": cfg.INSOLE_WS_URL,
-        "runtime": service.snapshot(),
+        "runtime": await service.snapshot(),
     }

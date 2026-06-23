@@ -1,106 +1,72 @@
-# Backend layout
+# Backend
 
 FastAPI entrypoint: `backend/main.py` (`uvicorn backend.main:app`).
 
-Layering follows the NU Space backend pattern: **API → Service → infrastructure**, with shared config and lifespan hooks.
+Layering: **API → Service → infrastructure** (repository or HTTP client). Coding rules: [../backend/README.md](../backend/README.md).
+
+System context (frontend, ROS, session lifecycle): [architecture.md](architecture.md).
 
 ## Repository layout
 
 ```
-backend/          # FastAPI server, runtime control, pgear telemetry
-ros2_ws/src/    # ROS 2 packages (common, calibration, game, insole, realsense, msgs, bringup, session)
-ros2_ws/tools/  # dev scripts (realsense_depth_preview; source install/setup.bash first)
-frontend/       # Web UI (public/ + src/assets/ for bundled static)
-config/         # Machine-local JSON (calibration.json gitignored; see example)
-docs/media/     # README / marketing screenshots
+backend/          # FastAPI server
+frontend/         # Web UI
+ros2_ws/src/      # ROS 2 packages
+config/           # Machine-local JSON (calibration.json gitignored)
+docs/             # Project documentation
 ```
 
-## Backend directories
+## Modules
 
 | Path | Role |
 |------|------|
-| `backend/main.py` | App factory, CORS |
-| `backend/lifespan.py` | Startup/shutdown, router registration |
-| `backend/routers.py` | Router list (no re-export `__init__.` files) |
-| `backend/core/configs/config.py` | `pydantic-settings` (env / `.env`) |
-| `backend/app_state/` | Lifespan hooks (stop session on shutdown) |
-| `backend/common/dependencies.py` | FastAPI `Depends` wiring |
+| `backend/modules/patients/` | Patient CRUD |
+| `backend/modules/sessions/` | Clinical sessions per patient |
+| `backend/modules/assessments/` | Assessment forms |
+| `backend/modules/runtime/` | `SessionManagerClient` + `RuntimeService` → session manager `:9090` |
+| `backend/modules/insole/` | Static sensor geometry API |
 | `backend/modules/health/` | `/api/health` |
-| `backend/modules/insole/` | Static sensor geometry API (`/api/geometry`; data in `sensors_m.py` / `sensors_s.py`) |
-| `backend/modules/runtime/` | HTTP client for session manager |
-| `ros2_ws/src/gressus_pgear/` | P.GEAR UDP LogPacket_v2 codec + `pgear_bridge_node` → `/exoskeleton/telemetry` |
-| `ros2_ws/src/gressus_bringup/` | Launch files (`game`, `calibrate`, `session`, …) |
-| `ros2_ws/src/gressus_session/` | HTTP `session_manager` on `:9090` — bridge backend ↔ ROS launches |
-| `ros2_ws/src/gressus_insole/` | TCP ingest, `/insole/pressure`, WebSocket fanout |
-| `ros2_ws/src/gressus_game/` | Tile game library + `tile_game_node` |
-| `ros2_ws/src/gressus_calibration/` | AprilTag calibration (`calibrate_apriltag`) |
-| `ros2_ws/src/gressus_realsense/` | RealSense publisher + depth helpers |
 
-## Shared with ROS nodes (`gressus_common/` + `gressus_game/`)
+ROS packages referenced by runtime: `gressus_session`, `gressus_pgear`, `gressus_bringup` — details in [ROS.md](ROS.md).
 
-| Path | Role |
-|------|------|
-| `gressus_common/insole_types.py` | `InsoleSnapshot`, `PressureStats` |
-| `gressus_common/insole_frame_payload.py` | JSON frame builder for WebSocket clients |
-| `gressus_game/insole_ros_feed.py` | ROS topic → snapshot cache for the game |
-| `gressus_game/tile_game.py` | Pygame loop; fed by ROS topics via `tile_game_node` |
-| `gressus_game/paths.py` | Fixed repo paths (`config/calibration.json`) |
-| `gressus_game/calibration.py` | Load `config/calibration.json` |
-| `gressus_game/display.py` | Fullscreen projector window helper |
-| `gressus_realsense/realsense_depth.py` | RealSense pipeline + tile depth/RGB signals |
+## Runtime API
 
-## Module files
+Proxied to session manager (`SESSION_MANAGER_URL`, default `http://127.0.0.1:9090`).
 
-Each feature module uses:
+| Endpoint | Purpose |
+|----------|---------|
+| `GET /api/runtime/status` | Session manager snapshot |
+| `POST /api/runtime/stack/start` | Launch ROS stack (`job`: `feedback`, `game`, `calibrate_apriltag`) |
+| `POST /api/runtime/stack/stop` | Stop active launch |
+| `POST /api/runtime/pgear/load-profile` | Load P.GEAR exo profile JSON |
+| `POST /api/runtime/pgear/arm` | Arm exoskeleton |
+| `POST /api/runtime/pgear/disarm` | Disarm |
+| `POST /api/runtime/pgear/run` | Start gait |
+| `POST /api/runtime/pgear/stop-gait` | Stop gait |
+| `POST /api/runtime/pgear/estop` | Emergency stop |
+| `POST /api/runtime/start` | Legacy alias → stack start (game modes) |
+| `POST /api/runtime/stop` | Legacy alias → stack stop |
 
-- `api.py` — routes only
-- `service.py` — business logic, no HTTP
-- `schemas.py` — Pydantic DTOs
+`sessionId` and `patientId` on stack start are forwarded to session manager and exported as ROS env vars — see [architecture.md](architecture.md).
 
-Imports use absolute paths (`from backend.modules.insole.service import InsoleService`). No barrel `__init__.py` re-exports.
+## Insole geometry
 
-## Docker Compose
+`GET /api/geometry?size=M|S` — static sensor layout for frontend heatmaps. Live pressure is **not** served by the backend; it comes from `insole_bridge_node` WebSocket.
 
-Three services, all `network_mode: host`:
+## Docker
 
-| Service | Image | Role |
-|---------|-------|------|
-| `ros2` | `gressus-ros2` | ROS workspace, `session_manager` on `:9090`, hardware |
-| `backend` | `gressus-backend` | FastAPI on `:8000` |
-| `frontend` | `gressus-frontend` | Vite dev on `:5173` (proxies `/api` and `/ws`) |
+Backend runs in the `backend` compose service on port `:8000`. Startup and compose overview: [../README.md](../README.md).
 
-```bash
-docker compose up -d --build
-```
+Dependencies: `backend/pyproject.toml` (FastAPI, httpx, SQLAlchemy, asyncpg, Alembic).
 
-Backend deps live in `backend/pyproject.toml` (FastAPI + httpx only). Runtime control goes to `SESSION_MANAGER_URL` (default `http://127.0.0.1:9090`).
-
-## Data flow
+## Data flow (backend-centric)
 
 ```
-WaveX (Windows) ──TCP JSONL :9100──► gressus_insole/insole_bridge_node
-                                         │
-                         ┌───────────────┴───────────────────────┐
-                         │                                       │
-                  /insole/pressure (ROS)              ws://…:8765/ws/insole
-                         │                                       │
-                 tile_game_node                         frontend (Therapist tab)
-                    RosInsoleFeed                              WebSocket
+Frontend ──REST──► Backend
+                      │
+                      ├── PostgreSQL (patients, sessions, assessments)
+                      │
+                      └── RuntimeService ──HTTP──► session_manager (:9090)
 ```
 
-```
-Control UI ──POST /api/runtime/start──► RuntimeService ──HTTP──► session_manager (:9090)
-                                                                        │
-                     sessionId / patientId ─────────────────────────────┘
-                                                                        │
-                                                                        └── ros2 launch gressus_bringup …
-                                                                             env: GRESSUS_SESSION_ID,
-                                                                                   GRESSUS_PATIENT_ID,
-                                                                                   GRESSUS_SESSION_DATA_DIR
-```
-
-**Mock / demo gait:** synthetic insole frames are generated in the frontend (`useInsoleFrame.ts`) when the operator selects mock mode. Live WebSocket requires `insole_bridge_node` (via `ros2 launch gressus_bringup insole.launch.py` or `session.launch.py`).
-
-**Insole threshold:** the Control panel slider sets `insole_thresh_kpa` at game start via launch arguments. WebSocket clients pass `threshold_kpa=…`; `pressed` stats in each frame use the same threshold.
-
-**Launch mode from Control UI:** demo → game only; no insoles → camera + game; default → insole + camera + game (`session.launch.py`).
+Insole WebSocket and ROS topics bypass the backend — see [architecture.md](architecture.md).

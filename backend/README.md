@@ -117,4 +117,4 @@ Gressus обычно разворачивается в **локальном ко
 
 Без БД, с внешним вызовом:
 
-- `backend/modules/runtime` — прокси к `session_manager` на `:9090` (старт/стоп игры и калибровки).
+- `backend/modules/runtime` — `SessionManagerClient` + `RuntimeService` → HTTP `:9090` (stack lifecycle, P.GEAR commands).

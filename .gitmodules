@@ -1,0 +1,4 @@
+[submodule "third_party/pgear_tools"]
+	path = third_party/pgear_tools
+	url = https://github.com/Keikibayev/pgear_tools.git
+	branch = feature/patient-profiles-cp-support

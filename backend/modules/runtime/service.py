@@ -1,66 +1,71 @@
-"""Runtime control via gressus_session HTTP API."""
+"""Runtime use cases — orchestrates session_manager and future domain rules."""
 
 from __future__ import annotations
 
-from typing import Any
+from collections.abc import Awaitable, Callable
+from typing import Any, TypeVar
 
-import httpx
 from fastapi import HTTPException
 
-from backend.core.configs.config import Config
-from backend.modules.runtime.schemas import StartRuntimeRequest
+from backend.modules.runtime.client import SessionManagerClient, SessionManagerError
+from backend.modules.runtime.schemas import (
+    SessionPgearLoadProfilePayload,
+    SessionStartPayload,
+    SessionStopPayload,
+    StartStackRequest,
+    StopStackRequest,
+)
+
+T = TypeVar("T")
 
 
 class RuntimeService:
-    def __init__(self, *, config: Config) -> None:
-        self._config = config
+    """Backend runtime control.
 
-    def _url(self, path: str) -> str:
-        return f"{self._config.SESSION_MANAGER_URL.rstrip('/')}{path}"
+    - Stack lifecycle: start/stop ``ros2 launch`` jobs (feedback pipeline or legacy game).
+    - P.GEAR commands: proxy to ``pgear_device_node`` via session_manager rclpy client.
+    """
 
-    def _request(self, method: str, path: str, payload: dict[str, Any] | None = None) -> dict[str, Any]:
+    def __init__(self, *, session_manager: SessionManagerClient) -> None:
+        self._session_manager = session_manager
+
+    async def _call(self, fn: Callable[[], Awaitable[T]]) -> T:
         try:
-            with httpx.Client(timeout=self._config.SESSION_MANAGER_TIMEOUT_S) as client:
-                response = client.request(method, self._url(path), json=payload)
-        except httpx.HTTPError as exc:
-            raise HTTPException(
-                status_code=503,
-                detail=f"session manager unavailable at {self._config.SESSION_MANAGER_URL}: {exc}",
-            ) from exc
+            return await fn()
+        except SessionManagerError as exc:
+            raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
 
-        try:
-            body = response.json()
-        except ValueError as exc:
-            raise HTTPException(
-                status_code=502,
-                detail={"message": "invalid JSON from session manager", "status": response.status_code},
-            ) from exc
-
-        if response.status_code >= 400:
-            detail: Any = body.get("error", body)
-            raise HTTPException(status_code=response.status_code, detail=detail)
-        return body
-
-    def snapshot(self) -> dict[str, Any]:
-        body = self._request("GET", "/session/status")
+    async def snapshot(self) -> dict[str, Any]:
+        body = await self._call(self._session_manager.get_status)
         return body.get("runtime", body)
 
-    def start(self, cfg: StartRuntimeRequest) -> dict[str, Any]:
-        payload: dict[str, Any] = {
-            "job": cfg.job,
-            "display": cfg.display,
-            "outputRotation": cfg.outputRotation,
-            "insoleThresholdKpa": cfg.insoleThresholdKpa,
-            "noInsole": cfg.noInsole,
-            "demo": cfg.demo,
-            "speed": cfg.speed,
-            "stepTimeS": cfg.stepTimeS,
-        }
-        if cfg.sessionId is not None:
-            payload["sessionId"] = str(cfg.sessionId)
-        if cfg.patientId is not None:
-            payload["patientId"] = str(cfg.patientId)
-        return self._request("POST", "/session/start", payload)
+    async def start_stack(self, cfg: StartStackRequest) -> dict[str, Any]:
+        payload = SessionStartPayload.from_api(cfg)
+        return await self._call(lambda: self._session_manager.start_stack(payload))
 
-    def stop(self, timeout_s: float) -> dict[str, Any]:
-        return self._request("POST", "/session/stop", {"timeoutS": timeout_s})
+    async def stop_stack(self, cfg: StopStackRequest) -> dict[str, Any]:
+        payload = SessionStopPayload.from_api(cfg)
+        return await self._call(lambda: self._session_manager.stop_stack(payload))
+
+    # Aliases kept for existing callers.
+    start = start_stack
+    stop = stop_stack
+
+    async def pgear_load_profile(self, profile_json: str) -> dict[str, Any]:
+        payload = SessionPgearLoadProfilePayload(profileJson=profile_json)
+        return await self._call(lambda: self._session_manager.pgear_load_profile(payload))
+
+    async def pgear_arm(self) -> dict[str, Any]:
+        return await self._call(self._session_manager.pgear_arm)
+
+    async def pgear_disarm(self) -> dict[str, Any]:
+        return await self._call(self._session_manager.pgear_disarm)
+
+    async def pgear_run(self) -> dict[str, Any]:
+        return await self._call(self._session_manager.pgear_run)
+
+    async def pgear_stop_gait(self) -> dict[str, Any]:
+        return await self._call(self._session_manager.pgear_stop_gait)
+
+    async def pgear_estop(self) -> dict[str, Any]:
+        return await self._call(self._session_manager.pgear_estop)

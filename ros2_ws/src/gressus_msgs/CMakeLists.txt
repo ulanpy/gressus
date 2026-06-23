@@ -13,6 +13,7 @@ find_package(std_msgs REQUIRED)
 rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/InsolePressure.msg"
   "msg/PgearTelemetry.msg"
+  "srv/LoadPgearProfile.srv"
   DEPENDENCIES builtin_interfaces std_msgs
 )
 

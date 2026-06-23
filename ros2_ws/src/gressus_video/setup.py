@@ -1,6 +1,6 @@
 from setuptools import find_packages, setup
 
-package_name = 'gressus_pgear'
+package_name = 'gressus_video'
 
 setup(
     name=package_name,
@@ -13,10 +13,10 @@ setup(
     ],
     install_requires=['setuptools'],
     zip_safe=True,
-    maintainer='Ulan Sharipov',
-    maintainer_email='ulan.sharipov@nu.edu.kz',
-    description='P.GEAR exoskeleton device node (Esp32Link via pgear_tools)',
-    license='Apache-2.0',
+    maintainer='root',
+    maintainer_email='root@todo.todo',
+    description='TODO: Package description',
+    license='TODO: License declaration',
     extras_require={
         'test': [
             'pytest',
@@ -24,7 +24,6 @@ setup(
     },
     entry_points={
         'console_scripts': [
-            'pgear_device_node = gressus_pgear.pgear_device_node:main',
         ],
     },
 )

@@ -25,4 +25,4 @@ def get_insole_service(_request: Request) -> InsoleService:
 
 
 def get_runtime_service(request: Request) -> RuntimeService:
-    return RuntimeService(config=request.app.state.config)
+    return request.app.state.runtime_service

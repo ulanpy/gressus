@@ -24,5 +24,5 @@ async def lifespan(app: FastAPI):
     try:
         yield
     finally:
-        cleanup_runtime_manager(app)
+        await cleanup_runtime_manager(app)
         await cleanup_db(app)

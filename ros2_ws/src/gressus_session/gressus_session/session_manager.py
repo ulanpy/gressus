@@ -1,4 +1,10 @@
-"""HTTP session manager: start/stop gressus_bringup launch files."""
+"""HTTP session manager: bridge backend clinical sessions to ROS launch jobs.
+
+Plain Python HTTP server (``ros2 run gressus_session session_manager``).
+
+- ``POST /session/start|stop`` — spawn ``ros2 launch`` subprocesses.
+- ``POST /session/pgear/*`` — call ``pgear_device_node`` services via rclpy (not CLI).
+"""
 
 from __future__ import annotations
 
@@ -12,9 +18,21 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
 from urllib.parse import urlparse
 
+from gressus_session.pgear_ros_client import get_pgear_client
 from gressus_session.process_manager import LaunchProcessManager
+from gressus_session.session_context import ClinicalSessionContext
 
 _MANAGER = LaunchProcessManager()
+_CLINICAL_CONTEXT: ClinicalSessionContext | None = None
+
+_PGEAR_ROUTES: dict[str, str] = {
+    "/session/pgear/load-profile": "load_profile",
+    "/session/pgear/arm": "arm",
+    "/session/pgear/disarm": "disarm",
+    "/session/pgear/run": "run",
+    "/session/pgear/stop-gait": "stop_gait",
+    "/session/pgear/estop": "estop",
+}
 
 
 def _json_response(handler: BaseHTTPRequestHandler, status: int, payload: dict[str, Any]) -> None:
@@ -55,6 +73,16 @@ def _pick_launch_file(payload: dict[str, Any]) -> str:
     return 'session.launch.py'
 
 
+def _feedback_launch_args(payload: dict[str, Any]) -> list[str]:
+    esp_host = payload.get('espHost', payload.get('esp_host', ''))
+    args = [
+        f"insole_thresh_kpa:={payload.get('insoleThresholdKpa', 8.0)}",
+    ]
+    if esp_host is not None and str(esp_host).strip():
+        args.append(f"esp_host:={esp_host}")
+    return args
+
+
 def _game_launch_args(payload: dict[str, Any]) -> list[str]:
     demo = _boolish(payload.get('demo', False))
     no_insole = _boolish(payload.get('noInsole', False)) or demo
@@ -83,6 +111,15 @@ def _launch_command(payload: dict[str, Any]) -> tuple[str, list[str]]:
             f"output_rotation:={payload.get('outputRotation', 270)}",
         ]
 
+    if job == 'feedback':
+        return job, [
+            'ros2',
+            'launch',
+            'gressus_bringup',
+            'feedback.launch.py',
+            *_feedback_launch_args(payload),
+        ]
+
     launch_file = _pick_launch_file(payload)
     return job, [
         'ros2',
@@ -91,6 +128,15 @@ def _launch_command(payload: dict[str, Any]) -> tuple[str, list[str]]:
         launch_file,
         *_game_launch_args(payload),
     ]
+
+
+def _runtime_snapshot() -> dict[str, Any]:
+    snap = _MANAGER.snapshot()
+    if _CLINICAL_CONTEXT is not None:
+        clinical = _CLINICAL_CONTEXT.to_snapshot()
+        if clinical is not None:
+            snap["clinicalSession"] = clinical
+    return snap
 
 
 class SessionHandler(BaseHTTPRequestHandler):
@@ -102,7 +148,7 @@ class SessionHandler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:
         path = urlparse(self.path).path
         if path == "/session/status":
-            _json_response(self, HTTPStatus.OK, {"ok": True, "runtime": _MANAGER.snapshot()})
+            _json_response(self, HTTPStatus.OK, {"ok": True, "runtime": _runtime_snapshot()})
             return
         _json_response(self, HTTPStatus.NOT_FOUND, {"ok": False, "error": "not found"})
 
@@ -120,38 +166,86 @@ class SessionHandler(BaseHTTPRequestHandler):
         if path == "/session/stop":
             self._handle_stop(payload)
             return
+        pgear_action = _PGEAR_ROUTES.get(path)
+        if pgear_action is not None:
+            self._handle_pgear(pgear_action, payload)
+            return
         _json_response(self, HTTPStatus.NOT_FOUND, {"ok": False, "error": "not found"})
 
+    def _handle_pgear(self, action: str, payload: dict[str, Any]) -> None:
+        try:
+            client = get_pgear_client()
+            if action == "load_profile":
+                profile_json = str(payload.get("profileJson", "")).strip()
+                if not profile_json:
+                    _json_response(
+                        self,
+                        HTTPStatus.BAD_REQUEST,
+                        {"ok": False, "error": "profileJson required"},
+                    )
+                    return
+                result = client.load_profile(profile_json)
+            elif action == "arm":
+                result = client.arm()
+            elif action == "disarm":
+                result = client.disarm()
+            elif action == "run":
+                result = client.run()
+            elif action == "stop_gait":
+                result = client.stop_gait()
+            elif action == "estop":
+                result = client.estop()
+            else:
+                _json_response(self, HTTPStatus.NOT_FOUND, {"ok": False, "error": "unknown action"})
+                return
+        except Exception as exc:
+            _json_response(
+                self,
+                HTTPStatus.INTERNAL_SERVER_ERROR,
+                {"ok": False, "success": False, "message": str(exc)},
+            )
+            return
+
+        status = HTTPStatus.OK if result.get("ok") else HTTPStatus.SERVICE_UNAVAILABLE
+        _json_response(self, status, result)
+
     def _handle_start(self, payload: dict[str, Any]) -> None:
+        global _CLINICAL_CONTEXT
         try:
             job, command = _launch_command(payload)
+            clinical = ClinicalSessionContext.from_payload(payload)
+            launch_env = {
+                "QT_QPA_PLATFORM": os.environ.get("QT_QPA_PLATFORM", "xcb"),
+                **clinical.to_env(),
+            }
             sys.stderr.write(
                 f"[session_manager] start payload={payload}\n"
                 f"[session_manager] start command={' '.join(command)}\n"
+                f"[session_manager] clinical env={clinical.to_env()}\n"
             )
             started = _MANAGER.start(
                 name=job,
                 command=command,
-                env={
-                    "QT_QPA_PLATFORM": os.environ.get("QT_QPA_PLATFORM", "xcb"),
-                },
+                env=launch_env,
             )
+            _CLINICAL_CONTEXT = clinical if clinical.to_snapshot() else None
         except RuntimeError as exc:
             _json_response(
                 self,
                 HTTPStatus.CONFLICT,
-                {"ok": False, "error": str(exc), "runtime": _MANAGER.snapshot()},
+                {"ok": False, "error": str(exc), "runtime": _runtime_snapshot()},
             )
             return
 
         if not _MANAGER.wait_briefly(0.3):
+            _CLINICAL_CONTEXT = None
             _json_response(
                 self,
                 HTTPStatus.INTERNAL_SERVER_ERROR,
                 {
                     "ok": False,
                     "error": f"{job} exited immediately",
-                    "runtime": _MANAGER.snapshot(),
+                    "runtime": _runtime_snapshot(),
                 },
             )
             return
@@ -166,17 +260,20 @@ class SessionHandler(BaseHTTPRequestHandler):
                     "pid": started.pid,
                     "command": list(started.command),
                 },
-                "runtime": _MANAGER.snapshot(),
+                "clinicalSession": clinical.to_snapshot(),
+                "runtime": _runtime_snapshot(),
             },
         )
 
     def _handle_stop(self, payload: dict[str, Any]) -> None:
+        global _CLINICAL_CONTEXT
         timeout_s = float(payload.get("timeoutS", 3.0))
         stopped = _MANAGER.stop(timeout_s=timeout_s)
+        _CLINICAL_CONTEXT = None
         _json_response(
             self,
             HTTPStatus.OK,
-            {"ok": True, "stopped": stopped, "runtime": _MANAGER.snapshot()},
+            {"ok": True, "stopped": stopped, "runtime": _runtime_snapshot()},
         )
 
 
