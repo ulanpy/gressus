@@ -1,3 +1,5 @@
+"""Patient records — selector, profile, archive."""
+
 from __future__ import annotations
 
 from typing import Annotated
@@ -19,6 +21,7 @@ async def list_patients(
     limit: int = Query(100, ge=1, le=500),
     offset: int = Query(0, ge=0),
 ) -> list[PatientRead]:
+    """Patient picker and lists. Archived hidden unless ``include_archived=true``."""
     patients = await service.list(
         include_archived=include_archived, limit=limit, offset=offset
     )
@@ -30,6 +33,7 @@ async def create_patient(
     payload: PatientCreate,
     service: Annotated[PatientService, Depends(get_patient_service)],
 ) -> PatientRead:
+    """New patient. Minimum: ``display_name``, ``sex``."""
     patient = await service.create(payload)
     return PatientRead.model_validate(patient)
 
@@ -39,6 +43,7 @@ async def get_patient(
     patient_id: UUID,
     service: Annotated[PatientService, Depends(get_patient_service)],
 ) -> PatientRead:
+    """Single patient card. 404 if missing or archived."""
     patient = await service.get_or_404(patient_id)
     return PatientRead.model_validate(patient)
 
@@ -49,6 +54,7 @@ async def update_patient(
     payload: PatientUpdate,
     service: Annotated[PatientService, Depends(get_patient_service)],
 ) -> PatientRead:
+    """Patch only the fields you send."""
     patient = await service.update(patient_id, payload)
     return PatientRead.model_validate(patient)
 
@@ -58,7 +64,6 @@ async def archive_patient(
     patient_id: UUID,
     service: Annotated[PatientService, Depends(get_patient_service)],
 ) -> PatientRead:
-    """Soft-delete (archive) a patient."""
-
+    """Soft-delete; sessions and assessments stay in the DB."""
     patient = await service.archive(patient_id)
     return PatientRead.model_validate(patient)

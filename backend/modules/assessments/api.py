@@ -1,4 +1,4 @@
-"""Assessment HTTP routes (nested under a patient), including detail blocks."""
+"""Clinical assessments — intake forms split into saveable blocks."""
 
 from __future__ import annotations
 
@@ -31,6 +31,7 @@ async def list_assessments(
     limit: int = Query(100, ge=1, le=500),
     offset: int = Query(0, ge=0),
 ) -> list[AssessmentRead]:
+    """All assessments for a patient."""
     items = await service.list_for_patient(patient_id, limit=limit, offset=offset)
     return [AssessmentRead.model_validate(a) for a in items]
 
@@ -41,6 +42,7 @@ async def create_assessment(
     payload: AssessmentCreate,
     service: Annotated[AssessmentService, Depends(get_assessment_service)],
 ) -> AssessmentRead:
+    """New assessment; optional blocks can be sent in the same body."""
     assessment = await service.create(patient_id, payload)
     return AssessmentRead.model_validate(assessment)
 
@@ -51,6 +53,7 @@ async def get_assessment(
     assessment_id: UUID,
     service: Annotated[AssessmentService, Depends(get_assessment_service)],
 ) -> AssessmentRead:
+    """Full form including body, gait, tests, observations."""
     assessment = await service.get_or_404(patient_id, assessment_id)
     return AssessmentRead.model_validate(assessment)
 
@@ -62,6 +65,7 @@ async def update_assessment(
     payload: AssessmentUpdate,
     service: Annotated[AssessmentService, Depends(get_assessment_service)],
 ) -> AssessmentRead:
+    """Patch header fields only; use PUT routes below for whole blocks."""
     assessment = await service.update(patient_id, assessment_id, payload)
     return AssessmentRead.model_validate(assessment)
 
@@ -73,6 +77,7 @@ async def set_body(
     payload: BodyData,
     service: Annotated[AssessmentService, Depends(get_assessment_service)],
 ) -> AssessmentRead:
+    """Save anthropometrics / ROM block."""
     assessment = await service.set_body(patient_id, assessment_id, payload)
     return AssessmentRead.model_validate(assessment)
 
@@ -84,6 +89,7 @@ async def set_spatial_gait(
     payload: SpatialGaitData,
     service: Annotated[AssessmentService, Depends(get_assessment_service)],
 ) -> AssessmentRead:
+    """Save spatial–temporal gait block."""
     assessment = await service.set_spatial_gait(patient_id, assessment_id, payload)
     return AssessmentRead.model_validate(assessment)
 
@@ -95,6 +101,7 @@ async def set_walking_tests(
     payload: WalkingTestsData,
     service: Annotated[AssessmentService, Depends(get_assessment_service)],
 ) -> AssessmentRead:
+    """Save walking tests (6MWT, 10 m, etc.)."""
     assessment = await service.set_walking_tests(patient_id, assessment_id, payload)
     return AssessmentRead.model_validate(assessment)
 
@@ -106,5 +113,6 @@ async def set_observations(
     payload: ObservationsData,
     service: Annotated[AssessmentService, Depends(get_assessment_service)],
 ) -> AssessmentRead:
+    """Save therapist notes and observations."""
     assessment = await service.set_observations(patient_id, assessment_id, payload)
     return AssessmentRead.model_validate(assessment)

@@ -1,4 +1,4 @@
-"""Session HTTP routes (nested under a patient)."""
+"""Therapy sessions for a patient — workflow before/during ROS runs."""
 
 from __future__ import annotations
 
@@ -26,6 +26,7 @@ async def list_sessions(
     limit: int = Query(100, ge=1, le=500),
     offset: int = Query(0, ge=0),
 ) -> list[SessionRead]:
+    """Session history for the selected patient."""
     sessions = await service.list_for_patient(patient_id, limit=limit, offset=offset)
     return [SessionRead.model_validate(s) for s in sessions]
 
@@ -36,6 +37,10 @@ async def create_session(
     payload: SessionCreate,
     service: Annotated[SessionService, Depends(get_session_service)],
 ) -> SessionRead:
+    """Open a session (``status=active``, auto ``session_number``).
+
+    Use ``session_id`` + ``patient_id`` in ``POST /api/runtime/stack/start``.
+    """
     session_obj = await service.create(patient_id, payload)
     return SessionRead.model_validate(session_obj)
 
@@ -46,6 +51,7 @@ async def get_session(
     session_id: UUID,
     service: Annotated[SessionService, Depends(get_session_service)],
 ) -> SessionRead:
+    """One session; 404 if it does not belong to this patient."""
     session_obj = await service.get_or_404(patient_id, session_id)
     return SessionRead.model_validate(session_obj)
 
@@ -57,6 +63,7 @@ async def update_session(
     payload: SessionUpdate,
     service: Annotated[SessionService, Depends(get_session_service)],
 ) -> SessionRead:
+    """Edit metadata (date, baselines, calibration flags). Not for status changes."""
     session_obj = await service.update(patient_id, session_id, payload)
     return SessionRead.model_validate(session_obj)
 
@@ -68,5 +75,6 @@ async def set_session_status(
     payload: SessionStatusUpdate,
     service: Annotated[SessionService, Depends(get_session_service)],
 ) -> SessionRead:
+    """Finish or abort: ``completed``, ``failed``, ``aborted``, or reopen ``active``."""
     session_obj = await service.set_status(patient_id, session_id, payload.status)
     return SessionRead.model_validate(session_obj)

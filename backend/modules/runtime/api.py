@@ -1,4 +1,4 @@
-"""Runtime control routes — stack lifecycle and P.GEAR device commands."""
+"""Runtime control — ROS stack lifecycle and P.GEAR exoskeleton commands."""
 
 from __future__ import annotations
 
@@ -25,6 +25,7 @@ router = APIRouter(prefix="/api/runtime", tags=["runtime"])
 async def runtime_status(
     service: Annotated[RuntimeService, Depends(get_runtime_service)],
 ) -> RuntimeSnapshot:
+    """Poll whether a ROS stack is running (Control panel, ~1.5 s interval)."""
     return await service.snapshot()
 
 
@@ -33,7 +34,11 @@ async def stack_start(
     payload: StartStackRequest,
     service: Annotated[RuntimeService, Depends(get_runtime_service)],
 ) -> StackStartResponse:
-    """Start a ROS launch stack (``feedback`` clinical pipeline or legacy ``game`` / calibrate)."""
+    """Launch a ROS stack.
+
+    ``job``: ``feedback`` (clinical), ``game`` (projector tiles), or ``calibrate_apriltag``.
+    Pass ``sessionId`` + ``patientId`` to tie the run to a DB session and ROS data dir.
+    """
     return await service.start_stack(payload)
 
 
@@ -42,15 +47,16 @@ async def stack_stop(
     payload: StopStackRequest,
     service: Annotated[RuntimeService, Depends(get_runtime_service)],
 ) -> StackStopResponse:
+    """Stop the active launch job. ``timeoutS`` — grace period before force kill."""
     return await service.stop_stack(payload)
 
 
-# Legacy projector-game routes (frontend still uses these).
 @router.post("/start", response_model=StackStartResponse)
 async def runtime_start_legacy(
     payload: StartStackRequest,
     service: Annotated[RuntimeService, Depends(get_runtime_service)],
 ) -> StackStartResponse:
+    """Same as ``POST /stack/start`` — kept for existing Control UI."""
     return await service.start_stack(payload)
 
 
@@ -59,6 +65,7 @@ async def runtime_stop_legacy(
     payload: StopStackRequest,
     service: Annotated[RuntimeService, Depends(get_runtime_service)],
 ) -> StackStopResponse:
+    """Same as ``POST /stack/stop`` — kept for existing Control UI."""
     return await service.stop_stack(payload)
 
 
@@ -67,6 +74,7 @@ async def pgear_load_profile(
     payload: LoadPgearProfileRequest,
     service: Annotated[RuntimeService, Depends(get_runtime_service)],
 ) -> PgearCommandResponse:
+    """Apply exo profile JSON to the device. Stack with ``pgear_device_node`` must be up."""
     return await service.pgear_load_profile(payload.profileJson)
 
 
@@ -74,6 +82,7 @@ async def pgear_load_profile(
 async def pgear_arm(
     service: Annotated[RuntimeService, Depends(get_runtime_service)],
 ) -> PgearCommandResponse:
+    """Enable motors, hold position."""
     return await service.pgear_arm()
 
 
@@ -81,6 +90,7 @@ async def pgear_arm(
 async def pgear_disarm(
     service: Annotated[RuntimeService, Depends(get_runtime_service)],
 ) -> PgearCommandResponse:
+    """Disable motors, safe idle."""
     return await service.pgear_disarm()
 
 
@@ -88,6 +98,7 @@ async def pgear_disarm(
 async def pgear_run(
     service: Annotated[RuntimeService, Depends(get_runtime_service)],
 ) -> PgearCommandResponse:
+    """Start assisted gait."""
     return await service.pgear_run()
 
 
@@ -95,6 +106,7 @@ async def pgear_run(
 async def pgear_stop_gait(
     service: Annotated[RuntimeService, Depends(get_runtime_service)],
 ) -> PgearCommandResponse:
+    """Stop gait, stay armed."""
     return await service.pgear_stop_gait()
 
 
@@ -102,4 +114,5 @@ async def pgear_stop_gait(
 async def pgear_estop(
     service: Annotated[RuntimeService, Depends(get_runtime_service)],
 ) -> PgearCommandResponse:
+    """Emergency stop on the device."""
     return await service.pgear_estop()
