@@ -2,17 +2,23 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, TypeVar
 
 import httpx
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 
 from backend.core.configs.config import Config
 from backend.modules.runtime.schemas import (
+    PgearCommandResponse,
     SessionPgearLoadProfilePayload,
     SessionStartPayload,
+    SessionStatusResponse,
     SessionStopPayload,
+    StackStartResponse,
+    StackStopResponse,
 )
+
+T = TypeVar("T", bound=BaseModel)
 
 
 class SessionManagerError(Exception):
@@ -41,8 +47,10 @@ class SessionManagerClient:
         self,
         method: str,
         path: str,
-        payload: BaseModel | None = None,
-    ) -> dict[str, Any]:
+        payload: BaseModel | None,
+        *,
+        response_model: type[T],
+    ) -> T:
         json_body = payload.model_dump(mode="json", exclude_none=True) if payload is not None else None
         try:
             response = await self._client.request(method, self._url(path), json=json_body)
@@ -68,31 +76,59 @@ class SessionManagerClient:
                 status_code=response.status_code,
                 detail=detail,
             )
-        return body
 
-    async def get_status(self) -> dict[str, Any]:
-        return await self._request("GET", "/session/status")
+        try:
+            return response_model.model_validate(body)
+        except ValidationError as exc:
+            raise SessionManagerError(
+                "session manager response validation failed",
+                status_code=502,
+                detail={"message": str(exc), "body": body},
+            ) from exc
 
-    async def start_stack(self, payload: SessionStartPayload) -> dict[str, Any]:
-        return await self._request("POST", "/session/start", payload)
+    async def get_status(self) -> SessionStatusResponse:
+        return await self._request("GET", "/session/status", None, response_model=SessionStatusResponse)
 
-    async def stop_stack(self, payload: SessionStopPayload) -> dict[str, Any]:
-        return await self._request("POST", "/session/stop", payload)
+    async def start_stack(self, payload: SessionStartPayload) -> StackStartResponse:
+        return await self._request(
+            "POST",
+            "/session/start",
+            payload,
+            response_model=StackStartResponse,
+        )
 
-    async def pgear_load_profile(self, payload: SessionPgearLoadProfilePayload) -> dict[str, Any]:
-        return await self._request("POST", "/session/pgear/load-profile", payload)
+    async def stop_stack(self, payload: SessionStopPayload) -> StackStopResponse:
+        return await self._request(
+            "POST",
+            "/session/stop",
+            payload,
+            response_model=StackStopResponse,
+        )
 
-    async def pgear_arm(self) -> dict[str, Any]:
-        return await self._request("POST", "/session/pgear/arm")
+    async def pgear_load_profile(self, payload: SessionPgearLoadProfilePayload) -> PgearCommandResponse:
+        return await self._request(
+            "POST",
+            "/session/pgear/load-profile",
+            payload,
+            response_model=PgearCommandResponse,
+        )
 
-    async def pgear_disarm(self) -> dict[str, Any]:
-        return await self._request("POST", "/session/pgear/disarm")
+    async def pgear_arm(self) -> PgearCommandResponse:
+        return await self._request("POST", "/session/pgear/arm", None, response_model=PgearCommandResponse)
 
-    async def pgear_run(self) -> dict[str, Any]:
-        return await self._request("POST", "/session/pgear/run")
+    async def pgear_disarm(self) -> PgearCommandResponse:
+        return await self._request("POST", "/session/pgear/disarm", None, response_model=PgearCommandResponse)
 
-    async def pgear_stop_gait(self) -> dict[str, Any]:
-        return await self._request("POST", "/session/pgear/stop-gait")
+    async def pgear_run(self) -> PgearCommandResponse:
+        return await self._request("POST", "/session/pgear/run", None, response_model=PgearCommandResponse)
 
-    async def pgear_estop(self) -> dict[str, Any]:
-        return await self._request("POST", "/session/pgear/estop")
+    async def pgear_stop_gait(self) -> PgearCommandResponse:
+        return await self._request(
+            "POST",
+            "/session/pgear/stop-gait",
+            None,
+            response_model=PgearCommandResponse,
+        )
+
+    async def pgear_estop(self) -> PgearCommandResponse:
+        return await self._request("POST", "/session/pgear/estop", None, response_model=PgearCommandResponse)

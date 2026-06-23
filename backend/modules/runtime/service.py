@@ -3,15 +3,19 @@
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
-from typing import Any, TypeVar
+from typing import TypeVar
 
 from fastapi import HTTPException
 
 from backend.modules.runtime.client import SessionManagerClient, SessionManagerError
 from backend.modules.runtime.schemas import (
+    PgearCommandResponse,
+    RuntimeSnapshot,
     SessionPgearLoadProfilePayload,
     SessionStartPayload,
     SessionStopPayload,
+    StackStartResponse,
+    StackStopResponse,
     StartStackRequest,
     StopStackRequest,
 )
@@ -35,15 +39,15 @@ class RuntimeService:
         except SessionManagerError as exc:
             raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
 
-    async def snapshot(self) -> dict[str, Any]:
+    async def snapshot(self) -> RuntimeSnapshot:
         body = await self._call(self._session_manager.get_status)
-        return body.get("runtime", body)
+        return body.runtime
 
-    async def start_stack(self, cfg: StartStackRequest) -> dict[str, Any]:
+    async def start_stack(self, cfg: StartStackRequest) -> StackStartResponse:
         payload = SessionStartPayload.from_api(cfg)
         return await self._call(lambda: self._session_manager.start_stack(payload))
 
-    async def stop_stack(self, cfg: StopStackRequest) -> dict[str, Any]:
+    async def stop_stack(self, cfg: StopStackRequest) -> StackStopResponse:
         payload = SessionStopPayload.from_api(cfg)
         return await self._call(lambda: self._session_manager.stop_stack(payload))
 
@@ -51,21 +55,21 @@ class RuntimeService:
     start = start_stack
     stop = stop_stack
 
-    async def pgear_load_profile(self, profile_json: str) -> dict[str, Any]:
+    async def pgear_load_profile(self, profile_json: str) -> PgearCommandResponse:
         payload = SessionPgearLoadProfilePayload(profileJson=profile_json)
         return await self._call(lambda: self._session_manager.pgear_load_profile(payload))
 
-    async def pgear_arm(self) -> dict[str, Any]:
+    async def pgear_arm(self) -> PgearCommandResponse:
         return await self._call(self._session_manager.pgear_arm)
 
-    async def pgear_disarm(self) -> dict[str, Any]:
+    async def pgear_disarm(self) -> PgearCommandResponse:
         return await self._call(self._session_manager.pgear_disarm)
 
-    async def pgear_run(self) -> dict[str, Any]:
+    async def pgear_run(self) -> PgearCommandResponse:
         return await self._call(self._session_manager.pgear_run)
 
-    async def pgear_stop_gait(self) -> dict[str, Any]:
+    async def pgear_stop_gait(self) -> PgearCommandResponse:
         return await self._call(self._session_manager.pgear_stop_gait)
 
-    async def pgear_estop(self) -> dict[str, Any]:
+    async def pgear_estop(self) -> PgearCommandResponse:
         return await self._call(self._session_manager.pgear_estop)

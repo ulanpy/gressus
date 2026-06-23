@@ -29,7 +29,7 @@ ROS packages referenced by runtime: `gressus_session`, `gressus_pgear`, `gressus
 
 ## Runtime API
 
-Proxied to session manager (`SESSION_MANAGER_URL`, default `http://127.0.0.1:9090`).
+Proxied to session manager (`SESSION_MANAGER_URL`, default `http://127.0.0.1:9090`). Response shapes: `backend/modules/runtime/schemas.py`.
 
 | Endpoint | Purpose |
 |----------|---------|

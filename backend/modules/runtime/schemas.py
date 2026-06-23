@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from backend.core.configs.config import config
 
@@ -43,14 +43,6 @@ class LoadPgearProfileRequest(BaseModel):
     profileJson: str = Field(min_length=2)
 
 
-class PgearCommandResponse(BaseModel):
-    """Result of a P.GEAR device command proxied through session_manager."""
-
-    ok: bool
-    success: bool
-    message: str
-
-
 class SessionStartPayload(BaseModel):
     """JSON body for ``POST /session/start`` on session_manager."""
 
@@ -85,3 +77,89 @@ class SessionPgearLoadProfilePayload(BaseModel):
     """JSON body for ``POST /session/pgear/load-profile`` on session_manager."""
 
     profileJson: str = Field(min_length=2)
+
+
+class ClinicalSessionSnapshot(BaseModel):
+    """Clinical ids injected by session_manager into launch env."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    sessionId: str
+    patientId: str
+    dataDir: str | None = None
+
+
+class ActiveJobSnapshot(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    name: str
+    command: list[str]
+    pid: int
+    uptimeS: float = Field(ge=0.0)
+
+
+class LastExitSnapshot(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    name: str | None = None
+    code: int | None = None
+    finishedAt: float | None = None
+
+
+class RuntimeSnapshot(BaseModel):
+    """Launch job state returned by ``GET /session/status`` → ``runtime``."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    state: Literal["idle", "running"]
+    activeJob: ActiveJobSnapshot | None = None
+    lastExit: LastExitSnapshot | None = None
+    clinicalSession: ClinicalSessionSnapshot | None = None
+
+
+class SessionStatusResponse(BaseModel):
+    """``GET /session/status`` response body."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    ok: bool
+    runtime: RuntimeSnapshot
+
+
+class StartedJobSnapshot(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    name: str
+    pid: int
+    command: list[str]
+
+
+class StackStartResponse(BaseModel):
+    """``POST /session/start`` success body."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    ok: bool
+    started: StartedJobSnapshot
+    clinicalSession: ClinicalSessionSnapshot | None = None
+    runtime: RuntimeSnapshot
+
+
+class StackStopResponse(BaseModel):
+    """``POST /session/stop`` response body."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    ok: bool
+    stopped: bool
+    runtime: RuntimeSnapshot
+
+
+class PgearCommandResponse(BaseModel):
+    """P.GEAR device command result (``POST /session/pgear/*``)."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    ok: bool
+    success: bool
+    message: str
