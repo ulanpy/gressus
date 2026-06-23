@@ -48,10 +48,10 @@ export function TherapistPage({
           <h1 className="m-0 max-w-[760px] text-[clamp(32px,6vw,56px)] leading-[0.95] tracking-[-0.06em] text-text-strong">
             {t.therapist.title}
           </h1>
-          <p className="mt-6 mb-0 max-w-[680px] text-lg leading-[1.7] text-muted">{t.therapist.lede}</p>
+          {/* <p className="mt-6 mb-0 max-w-[680px] text-lg leading-[1.7] text-muted">{t.therapist.lede}</p> */}
         </div>
 
-        <StatusSummary dynamicScale={dashboard.dynamicScale} source={source} status={status} />
+        {/* <StatusSummary dynamicScale={dashboard.dynamicScale} source={source} status={status} /> */}
       </section>
 
       <TherapistSectionTabs activeSection={activeSection} setActiveSection={setActiveSection} />

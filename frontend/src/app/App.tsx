@@ -14,7 +14,6 @@ import { useCemrrProgress } from '../hooks/useCemrrProgress'
 import { PageTabs } from '../components/layout/PageTabs'
 import { LanguageToggle } from '../components/layout/LanguageToggle'
 import { TherapistPage } from '../pages/TherapistPage'
-import { PatientPage } from '../pages/PatientPage'
 import { ControlPage } from '../pages/ControlPage'
 import { container } from '../styles/ui'
 import { cn } from '../lib/cn'
@@ -36,11 +35,11 @@ function DashboardShell({ language, setLanguage }: DashboardShellProps) {
   const isGameRunning =
     runtime.state.state === 'running' && runtime.state.activeJob?.name === 'game'
   const livePanelVisible =
-    activeView === 'patient' || (activeView === 'therapist' && therapistSection === 'live')
+    activeView === 'therapist' && therapistSection === 'live'
   const liveGateOpen = livePanelVisible && (source === 'mock' || isGameRunning)
   const liveInactive = source === 'live' && !isGameRunning
   const { geometry, setStatus, status } = useGeometry(INSOLE_SIZE)
-  const { frame, patientSuggestion } = useInsoleFrame(source, INSOLE_SIZE, setStatus, liveGateOpen)
+  const { frame } = useInsoleFrame(source, INSOLE_SIZE, setStatus, liveGateOpen)
   const dashboard = useFootDashboard(geometry, frame)
 
   return (
@@ -78,15 +77,6 @@ function DashboardShell({ language, setLanguage }: DashboardShellProps) {
           cemrr={cemrr}
           activeSection={therapistSection}
           setActiveSection={setTherapistSection}
-        />
-      )}
-
-      {activeView === 'patient' && (
-        <PatientPage
-          dashboard={dashboard}
-          frame={frame}
-          liveInactive={liveInactive}
-          movementMessage={patientSuggestion}
         />
       )}
 

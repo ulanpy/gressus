@@ -26,10 +26,35 @@ type PatientFormProps = {
 }
 
 const SEX_OPTIONS: Sex[] = ['M', 'F', 'other', 'unknown']
+const CP_TYPE_OPTIONS = [
+  'spastic diplegia',
+  'spastic hemiplegia',
+  'spastic quadriplegia',
+  'dyskinetic',
+  'ataxic',
+] as const
+const SIDE_OPTIONS = ['left', 'right'] as const
+const GMFCS_OPTIONS = ['I', 'II', 'III', 'IV', 'V'] as const
+const OTHER_OPTION = '__other__'
+
+function optionOrExisting(value: string, options: readonly string[]) {
+  if (!value || options.includes(value)) return value
+  return OTHER_OPTION
+}
 
 const modalPanelClass = cn(
   workflowModalPanel,
-  'max-h-[85vh] max-w-[560px] overflow-y-auto',
+  'patient-form-scroll max-h-[85vh] max-w-[560px] gap-0 overflow-y-auto',
+)
+const modalTitleClass = 'm-0 text-2xl font-bold tracking-[-0.025em] text-text-strong'
+const sectionClass = 'm-0 border-0 p-0 pt-6'
+const dividedSectionClass = cn(sectionClass, 'mt-6 border-t border-slate-200/80')
+const sectionTitleClass =
+  'mb-1 text-[11px] font-bold uppercase tracking-[0.14em] text-brand'
+const patientFieldClass = cn(workflowField, 'mt-4 gap-1.5')
+const patientFieldLabelClass = cn(
+  workflowFieldLabel,
+  'text-xs font-semibold tracking-[0.01em] text-slate-500',
 )
 
 export function PatientForm({ open, mode, initial, pending, onClose, onSubmit }: PatientFormProps) {
@@ -38,6 +63,7 @@ export function PatientForm({ open, mode, initial, pending, onClose, onSubmit }:
   const [dateOfBirth, setDateOfBirth] = useState('')
   const [sex, setSex] = useState<Sex>('unknown')
   const [cpType, setCpType] = useState('')
+  const [cpTypeOther, setCpTypeOther] = useState('')
   const [affectedSide, setAffectedSide] = useState('')
   const [gmfcsCurrent, setGmfcsCurrent] = useState('')
   const [dominantSide, setDominantSide] = useState('')
@@ -53,10 +79,15 @@ export function PatientForm({ open, mode, initial, pending, onClose, onSubmit }:
     setDisplayName(initial?.display_name ?? '')
     setDateOfBirth(initial?.date_of_birth ?? '')
     setSex(initial?.sex ?? 'unknown')
-    setCpType(initial?.cp_type ?? '')
-    setAffectedSide(initial?.affected_side ?? '')
-    setGmfcsCurrent(initial?.gmfcs_current ?? '')
-    setDominantSide(initial?.dominant_side ?? '')
+    const initialCpType = initial?.cp_type ?? ''
+    const initialAffectedSide = initial?.affected_side?.toLowerCase() ?? ''
+    const initialGmfcs = initial?.gmfcs_current?.toUpperCase() ?? ''
+    const initialDominantSide = initial?.dominant_side?.toLowerCase() ?? ''
+    setCpType(optionOrExisting(initialCpType, CP_TYPE_OPTIONS))
+    setCpTypeOther(CP_TYPE_OPTIONS.includes(initialCpType as (typeof CP_TYPE_OPTIONS)[number]) ? '' : initialCpType)
+    setAffectedSide(optionOrExisting(initialAffectedSide, SIDE_OPTIONS))
+    setGmfcsCurrent(optionOrExisting(initialGmfcs, GMFCS_OPTIONS))
+    setDominantSide(optionOrExisting(initialDominantSide, SIDE_OPTIONS))
     setComorbidities(initial?.comorbidities ?? '')
     setContraindications(initial?.contraindications ?? '')
     setConsentOnFile(initial?.consent_on_file ?? false)
@@ -87,10 +118,10 @@ export function PatientForm({ open, mode, initial, pending, onClose, onSubmit }:
       display_name: displayName.trim(),
       date_of_birth: dateOfBirth || null,
       sex,
-      cp_type: cpType.trim() || null,
-      affected_side: affectedSide.trim() || null,
-      gmfcs_current: gmfcsCurrent.trim() || null,
-      dominant_side: dominantSide.trim() || null,
+      cp_type: (cpType === OTHER_OPTION ? cpTypeOther : cpType).trim() || null,
+      affected_side: (affectedSide === OTHER_OPTION ? initial?.affected_side ?? '' : affectedSide).trim() || null,
+      gmfcs_current: (gmfcsCurrent === OTHER_OPTION ? initial?.gmfcs_current ?? '' : gmfcsCurrent).trim() || null,
+      dominant_side: (dominantSide === OTHER_OPTION ? initial?.dominant_side ?? '' : dominantSide).trim() || null,
       comorbidities: comorbidities.trim() || null,
       contraindications: contraindications.trim() || null,
       consent_on_file: consentOnFile,
@@ -105,16 +136,16 @@ export function PatientForm({ open, mode, initial, pending, onClose, onSubmit }:
       <div className={workflowModalBackdrop} onClick={onClose} />
       <form className={modalPanelClass} onSubmit={(e) => void handleSubmit(e)}>
         <header>
-          <h2 className="m-0">
+          <h2 className={modalTitleClass}>
             {mode === 'create' ? t.workflow.createPatient : t.workflow.editPatient}
           </h2>
         </header>
 
-        <fieldset className="m-0 border-0 p-0">
-          <legend className="mb-1 text-sm font-bold text-text-strong">{t.workflow.sectionBasic}</legend>
+        <fieldset className={sectionClass}>
+          <legend className={sectionTitleClass}>{t.workflow.sectionBasic}</legend>
 
-          <label className={workflowField}>
-            <span className={workflowFieldLabel}>{t.workflow.displayName}</span>
+          <label className={patientFieldClass}>
+            <span className={patientFieldLabelClass}>{t.workflow.displayName}</span>
             <input
               type="text"
               className={workflowFieldInput}
@@ -125,8 +156,8 @@ export function PatientForm({ open, mode, initial, pending, onClose, onSubmit }:
             />
           </label>
 
-          <label className={workflowField}>
-            <span className={workflowFieldLabel}>{t.workflow.dateOfBirth}</span>
+          <label className={patientFieldClass}>
+            <span className={patientFieldLabelClass}>{t.workflow.dateOfBirth}</span>
             <input
               type="date"
               className={workflowDateInput}
@@ -135,8 +166,8 @@ export function PatientForm({ open, mode, initial, pending, onClose, onSubmit }:
             />
           </label>
 
-          <label className={workflowField}>
-            <span className={workflowFieldLabel}>{t.workflow.sex}</span>
+          <label className={patientFieldClass}>
+            <span className={patientFieldLabelClass}>{t.workflow.sex}</span>
             <select
               className="ui-select [font:inherit]"
               value={sex}
@@ -151,51 +182,91 @@ export function PatientForm({ open, mode, initial, pending, onClose, onSubmit }:
           </label>
         </fieldset>
 
-        <fieldset className="m-0 mt-2 border-0 border-t border-panel-border p-0 pt-3">
-          <legend className="mb-1 text-sm font-bold text-text-strong">{t.workflow.sectionClinical}</legend>
+        <fieldset className={dividedSectionClass}>
+          <legend className={sectionTitleClass}>{t.workflow.sectionClinical}</legend>
 
-          <label className={workflowField}>
-            <span className={workflowFieldLabel}>{t.workflow.cpType}</span>
-            <input
-              type="text"
-              className={workflowFieldInput}
+          <label className={patientFieldClass}>
+            <span className={patientFieldLabelClass}>{t.workflow.cpType}</span>
+            <select
+              className="ui-select [font:inherit]"
               value={cpType}
               onChange={(e) => setCpType(e.target.value)}
-            />
+            >
+              <option value="">{t.workflow.selectOption}</option>
+              {CP_TYPE_OPTIONS.map((option, index) => (
+                <option key={option} value={option}>
+                  {t.workflow.cpTypeOptions[index]}
+                </option>
+              ))}
+              <option value={OTHER_OPTION}>{t.workflow.otherOption}</option>
+            </select>
           </label>
 
-          <label className={workflowField}>
-            <span className={workflowFieldLabel}>{t.workflow.affectedSide}</span>
-            <input
-              type="text"
-              className={workflowFieldInput}
+          {cpType === OTHER_OPTION && (
+            <label className={patientFieldClass}>
+              <span className={patientFieldLabelClass}>{t.workflow.otherCpType}</span>
+              <input
+                type="text"
+                className={workflowFieldInput}
+                value={cpTypeOther}
+                onChange={(e) => setCpTypeOther(e.target.value)}
+              />
+            </label>
+          )}
+
+          <label className={patientFieldClass}>
+            <span className={patientFieldLabelClass}>{t.workflow.affectedSide}</span>
+            <select
+              className="ui-select [font:inherit]"
               value={affectedSide}
               onChange={(e) => setAffectedSide(e.target.value)}
-            />
+            >
+              <option value="">{t.workflow.selectOption}</option>
+              <option value="left">{t.workflow.sideLeft}</option>
+              <option value="right">{t.workflow.sideRight}</option>
+              {affectedSide === OTHER_OPTION && (
+                <option value={OTHER_OPTION}>{initial?.affected_side}</option>
+              )}
+            </select>
           </label>
 
-          <label className={workflowField}>
-            <span className={workflowFieldLabel}>{t.workflow.gmfcsCurrent}</span>
-            <input
-              type="text"
-              className={workflowFieldInput}
+          <label className={patientFieldClass}>
+            <span className={patientFieldLabelClass}>{t.workflow.gmfcsCurrent}</span>
+            <select
+              className="ui-select [font:inherit]"
               value={gmfcsCurrent}
               onChange={(e) => setGmfcsCurrent(e.target.value)}
-            />
+            >
+              <option value="">{t.workflow.selectOption}</option>
+              {GMFCS_OPTIONS.map((option) => (
+                <option key={option} value={option}>
+                  {option}
+                </option>
+              ))}
+              {gmfcsCurrent === OTHER_OPTION && (
+                <option value={OTHER_OPTION}>{initial?.gmfcs_current}</option>
+              )}
+            </select>
           </label>
 
-          <label className={workflowField}>
-            <span className={workflowFieldLabel}>{t.workflow.dominantSide}</span>
-            <input
-              type="text"
-              className={workflowFieldInput}
+          <label className={patientFieldClass}>
+            <span className={patientFieldLabelClass}>{t.workflow.dominantSide}</span>
+            <select
+              className="ui-select [font:inherit]"
               value={dominantSide}
               onChange={(e) => setDominantSide(e.target.value)}
-            />
+            >
+              <option value="">{t.workflow.selectOption}</option>
+              <option value="left">{t.workflow.sideLeft}</option>
+              <option value="right">{t.workflow.sideRight}</option>
+              {dominantSide === OTHER_OPTION && (
+                <option value={OTHER_OPTION}>{initial?.dominant_side}</option>
+              )}
+            </select>
           </label>
 
-          <label className={workflowField}>
-            <span className={workflowFieldLabel}>{t.workflow.comorbidities}</span>
+          <label className={patientFieldClass}>
+            <span className={patientFieldLabelClass}>{t.workflow.comorbidities}</span>
             <textarea
               className={workflowFieldInput}
               value={comorbidities}
@@ -204,8 +275,8 @@ export function PatientForm({ open, mode, initial, pending, onClose, onSubmit }:
             />
           </label>
 
-          <label className={workflowField}>
-            <span className={workflowFieldLabel}>{t.workflow.contraindications}</span>
+          <label className={patientFieldClass}>
+            <span className={patientFieldLabelClass}>{t.workflow.contraindications}</span>
             <textarea
               className={workflowFieldInput}
               value={contraindications}
@@ -215,8 +286,8 @@ export function PatientForm({ open, mode, initial, pending, onClose, onSubmit }:
           </label>
         </fieldset>
 
-        <fieldset className="m-0 mt-2 border-0 border-t border-panel-border p-0 pt-3">
-          <legend className="mb-1 text-sm font-bold text-text-strong">{t.workflow.sectionConsent}</legend>
+        <fieldset className={dividedSectionClass}>
+          <legend className={sectionTitleClass}>{t.workflow.sectionConsent}</legend>
 
           <label className="mt-2 flex items-center gap-2 text-sm">
             <input
@@ -227,8 +298,8 @@ export function PatientForm({ open, mode, initial, pending, onClose, onSubmit }:
             <span>{t.workflow.consentOnFile}</span>
           </label>
 
-          <label className={workflowField}>
-            <span className={workflowFieldLabel}>{t.workflow.consentDate}</span>
+          <label className={patientFieldClass}>
+            <span className={patientFieldLabelClass}>{t.workflow.consentDate}</span>
             <input
               type="date"
               className={workflowDateInput}
@@ -237,8 +308,8 @@ export function PatientForm({ open, mode, initial, pending, onClose, onSubmit }:
             />
           </label>
 
-          <label className={workflowField}>
-            <span className={workflowFieldLabel}>{t.workflow.guardianContact}</span>
+          <label className={patientFieldClass}>
+            <span className={patientFieldLabelClass}>{t.workflow.guardianContact}</span>
             <input
               type="text"
               className={workflowFieldInput}
@@ -247,8 +318,8 @@ export function PatientForm({ open, mode, initial, pending, onClose, onSubmit }:
             />
           </label>
 
-          <label className={workflowField}>
-            <span className={workflowFieldLabel}>{t.workflow.enrollmentDate}</span>
+          <label className={patientFieldClass}>
+            <span className={patientFieldLabelClass}>{t.workflow.enrollmentDate}</span>
             <input
               type="date"
               className={workflowDateInput}
@@ -258,7 +329,7 @@ export function PatientForm({ open, mode, initial, pending, onClose, onSubmit }:
           </label>
         </fieldset>
 
-        <footer className={workflowModalActions}>
+        <footer className={cn(workflowModalActions, 'mt-6 border-t border-slate-200/80 pt-5')}>
           <button type="button" className={workflowBtnSecondary} onClick={onClose}>
             {t.workflow.cancel}
           </button>

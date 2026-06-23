@@ -8,7 +8,7 @@ export function PageTabs({ activeView, setActiveView }: PageTabsProps) {
 
   return (
     <nav
-      className={cn(pillNav, 'm-0 max-sm:grid max-sm:grid-cols-3')}
+      className={cn(pillNav, 'm-0 max-sm:grid max-sm:grid-cols-2')}
       aria-label="Page view"
     >
       <button
@@ -21,17 +21,6 @@ export function PageTabs({ activeView, setActiveView }: PageTabsProps) {
         onClick={() => setActiveView('therapist')}
       >
         {t.tabs.therapist}
-      </button>
-      <button
-        type="button"
-        className={cn(
-          pillNavButton,
-          'max-sm:min-w-0',
-          activeView === 'patient' && pillNavButtonActive,
-        )}
-        onClick={() => setActiveView('patient')}
-      >
-        {t.tabs.patient}
       </button>
       <button
         type="button"
