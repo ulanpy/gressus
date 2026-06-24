@@ -9,7 +9,10 @@ export type ExoskeletonJointTelemetry = {
 }
 
 export type ExoskeletonTelemetryFrame = {
-  source: 'live'
+  source: 'live' | 'mock'
+  mode?: 'real' | 'mock'
+  scenario?: string
+  state?: string
   seq: number
   connected: boolean
   error: string | null
