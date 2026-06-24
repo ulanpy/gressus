@@ -5,6 +5,7 @@ export type ExoskeletonJointTelemetry = {
   vel: number
   measTorque: number
   iq: number
+  motorEffort?: number
 }
 
 export type ExoskeletonTelemetryFrame = {
@@ -15,6 +16,8 @@ export type ExoskeletonTelemetryFrame = {
   gaitPhase: number
   gaitPhaseName: string
   stepIdx: number
+  profileSlot?: number
+  version?: number
   sensorHealthMask: number
   flags: number
   running: boolean
@@ -27,5 +30,11 @@ export type ExoskeletonTelemetryFrame = {
   ampL: number
   assistR: number
   assistL: number
+  ctrlLoopUs?: number
+  linkCrcFails?: number
+  linkResyncs?: number
+  crossCheckFault?: number
+  hbErrorByte?: number
+  hbAgeMs?: number[]
   joints: ExoskeletonJointTelemetry[]
 }
