@@ -8,3 +8,10 @@ export function websocketUrl(size: InsoleSize) {
 
   return `${protocol}//${window.location.host}/ws/insole?${params}`
 }
+
+export function exoskeletonWebSocketUrl(hz = 20) {
+  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+  const params = new URLSearchParams({ hz: String(hz) })
+
+  return `${protocol}//${window.location.host}/ws/exoskeleton?${params}`
+}

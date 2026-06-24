@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { useExoskeletonTelemetry } from '../hooks/useExoskeletonTelemetry'
 import { useI18n } from '../i18n/context'
 import {
   postPgearCommand,
@@ -42,6 +43,7 @@ export function ExoskeletonControl() {
   const [lastCommand, setLastCommand] = useState<PgearCommandKey | null>(null)
   const [response, setResponse] = useState<PgearCommandResponse | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const { frame: telemetry, status: wsStatus } = useExoskeletonTelemetry(true)
 
   const commands = useMemo<CommandConfig[]>(
     () => [
@@ -188,6 +190,68 @@ export function ExoskeletonControl() {
             )
           })}
         </div>
+      </section>
+
+      <section className={cn(panel, 'grid gap-3 rounded-[18px] p-4 font-mono text-xs')}>
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
+          <strong>{t.exoskeleton.telemetryTitle}</strong>
+          <span className="text-muted">{t.exoskeleton.wsStatus}: {wsStatus}</span>
+          <span className={telemetry?.connected ? 'text-emerald-700' : 'text-red-700'}>
+            {t.exoskeleton.device}: {telemetry?.connected ? 'OK' : '—'}
+          </span>
+        </div>
+
+        {telemetry ? (
+          <>
+            <div className="grid gap-1 sm:grid-cols-2 lg:grid-cols-4">
+              <div>seq: {telemetry.seq}</div>
+              <div>
+                gait: {telemetry.gaitPhase} ({telemetry.gaitPhaseName})
+              </div>
+              <div>step: {telemetry.stepIdx}</div>
+              <div>sensor_health: 0x{telemetry.sensorHealthMask.toString(16)}</div>
+              <div>flags: 0x{telemetry.flags.toString(16)}</div>
+              <div>running: {telemetry.running ? 'yes' : 'no'}</div>
+              <div>estop: {telemetry.estop ? 'yes' : 'no'}</div>
+              <div>link_age_ms: {telemetry.linkAgeMs}</div>
+              <div>amp_r/l: {telemetry.ampR.toFixed(2)} / {telemetry.ampL.toFixed(2)}</div>
+              <div>
+                assist_r/l: {telemetry.assistR.toFixed(2)} / {telemetry.assistL.toFixed(2)}
+              </div>
+            </div>
+            {telemetry.error ? (
+              <div className="text-red-700">error: {telemetry.error}</div>
+            ) : null}
+            <div className="overflow-x-auto">
+              <table className="min-w-full border-collapse">
+                <thead>
+                  <tr className="text-left text-muted">
+                    <th className="pr-3">joint</th>
+                    <th className="pr-3">ref</th>
+                    <th className="pr-3">pos</th>
+                    <th className="pr-3">vel</th>
+                    <th className="pr-3">torque</th>
+                    <th>iq</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {telemetry.joints.map((joint) => (
+                    <tr key={joint.name}>
+                      <td className="pr-3">{joint.name}</td>
+                      <td className="pr-3">{joint.refPos.toFixed(3)}</td>
+                      <td className="pr-3">{joint.pos.toFixed(3)}</td>
+                      <td className="pr-3">{joint.vel.toFixed(3)}</td>
+                      <td className="pr-3">{joint.measTorque.toFixed(3)}</td>
+                      <td>{joint.iq.toFixed(3)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
+        ) : (
+          <div className="text-muted">{t.exoskeleton.telemetryWaiting}</div>
+        )}
       </section>
 
       {(lastCommand || error || response) && (

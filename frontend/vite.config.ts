@@ -4,13 +4,17 @@ import tailwindcss from '@tailwindcss/vite'
 
 export default defineConfig({
   plugins: [react(), tailwindcss()],
-  server: {
+    server: {
     host: '0.0.0.0',
     allowedHosts: ['.trycloudflare.com', '.archlinux'],
     proxy: {
       '/api': 'http://127.0.0.1:8000',
-      '/ws': {
+      '/ws/insole': {
         target: 'ws://127.0.0.1:8765',
+        ws: true,
+      },
+      '/ws/exoskeleton': {
+        target: 'ws://127.0.0.1:8766',
         ws: true,
       },
     },

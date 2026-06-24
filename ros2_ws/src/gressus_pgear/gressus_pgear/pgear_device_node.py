@@ -16,7 +16,9 @@ from gressus_msgs.srv import CalibratePgearBaseline, LoadPgearProfile
 from gressus_pgear.baseline_calibration import run_baseline_calibration
 from gressus_pgear.esp32_adapter import Esp32Adapter
 from gressus_pgear.ros_msg import empty_msg
+from gressus_pgear.telemetry_hub import TelemetryHub
 from gressus_pgear.telemetry_mapper import telemetry_to_msg
+from gressus_pgear.ws_server import PgearWsServer
 
 
 class PgearDeviceNode(Node):
@@ -27,12 +29,22 @@ class PgearDeviceNode(Node):
         self.declare_parameter("stale_after_s", 0.5)
         self.declare_parameter("topic", "/exoskeleton/telemetry")
         self.declare_parameter("frame_id", "exoskeleton")
+        self.declare_parameter("serve_ws", True)
+        self.declare_parameter("ws_host", "0.0.0.0")
+        self.declare_parameter("ws_port", 8766)
+        self.declare_parameter("ws_path", "/ws/exoskeleton")
+        self.declare_parameter("ws_hz", 20.0)
 
         esp_host = str(self.get_parameter("esp_host").value).strip() or None
         hz = float(self.get_parameter("publish_hz").value)
         self._stale_after_s = float(self.get_parameter("stale_after_s").value)
         topic = str(self.get_parameter("topic").value)
         frame_id = str(self.get_parameter("frame_id").value)
+        serve_ws = bool(self.get_parameter("serve_ws").value)
+        ws_host = str(self.get_parameter("ws_host").value)
+        ws_port = int(self.get_parameter("ws_port").value)
+        ws_path = str(self.get_parameter("ws_path").value)
+        ws_hz = float(self.get_parameter("ws_hz").value)
 
         self._frame_id = frame_id
         self._armed = False
@@ -41,9 +53,21 @@ class PgearDeviceNode(Node):
         self._cal_running = False
         self._adapter = Esp32Adapter(esp_host=esp_host)
         self._adapter.start()
+        self._telemetry_hub = TelemetryHub()
 
         self._pub = self.create_publisher(PgearTelemetry, topic, 10)
         self.create_timer(1.0 / max(hz, 1.0), self._publish)
+
+        self._ws_server: PgearWsServer | None = None
+        if serve_ws:
+            self._ws_server = PgearWsServer(
+                self._telemetry_hub,
+                host=ws_host,
+                port=ws_port,
+                path=ws_path,
+                default_hz=ws_hz,
+            )
+            self._ws_server.start()
 
         srv_group = ReentrantCallbackGroup()
         self.create_service(Trigger, "~/estop", self._handle_estop, callback_group=srv_group)
@@ -62,38 +86,34 @@ class PgearDeviceNode(Node):
         )
 
         host_label = esp_host or "auto"
+        ws_label = f", WebSocket ws://{ws_host}:{ws_port}{ws_path}" if serve_ws else ""
         self.get_logger().info(
             f"P.GEAR device node: esp_host={host_label} -> {topic} @ {hz:.1f} Hz "
-            f"(stale>{self._stale_after_s:.2f}s)"
+            f"(stale>{self._stale_after_s:.2f}s){ws_label}"
         )
+
+    def _publish_msg(self, msg: PgearTelemetry) -> None:
+        self._pub.publish(msg)
+        self._telemetry_hub.update(msg)
+
+    def _publish_disconnected(self, stamp, *, error: str) -> None:
+        msg = empty_msg(stamp, connected=False, error=error, frame_id=self._frame_id)
+        self._pub.publish(msg)
+        self._telemetry_hub.update_disconnected(error=error)
 
     def _publish(self) -> None:
         stamp = self.get_clock().now().to_msg()
         telemetry, age_s, connected, error = self._adapter.latest_snapshot(self._stale_after_s)
 
         if telemetry is None:
-            self._pub.publish(
-                empty_msg(
-                    stamp,
-                    connected=False,
-                    error=error or "waiting for telemetry",
-                    frame_id=self._frame_id,
-                )
-            )
+            self._publish_disconnected(stamp, error=error or "waiting for telemetry")
             return
 
         if not connected:
-            self._pub.publish(
-                empty_msg(
-                    stamp,
-                    connected=False,
-                    error=error or "disconnected",
-                    frame_id=self._frame_id,
-                )
-            )
+            self._publish_disconnected(stamp, error=error or "disconnected")
             return
 
-        self._pub.publish(
+        self._publish_msg(
             telemetry_to_msg(
                 telemetry,
                 stamp,
@@ -210,6 +230,9 @@ class PgearDeviceNode(Node):
         return response
 
     def destroy_node(self) -> bool:
+        if self._ws_server is not None:
+            self._ws_server.stop()
+            self._ws_server = None
         self._adapter.stop()
         return super().destroy_node()
 

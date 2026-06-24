@@ -79,6 +79,10 @@ export const translations = {
       status: 'Status',
       commandSent: 'Command sent',
       commandFailed: 'Command failed',
+      telemetryTitle: 'Телеметрия live',
+      wsStatus: 'WebSocket',
+      device: 'Устройство',
+      telemetryWaiting: 'Ожидание кадров…',
     },
     workflow: {
       selectPatient: 'Выберите пациента',
@@ -476,6 +480,10 @@ export const translations = {
       status: 'Status',
       commandSent: 'Command sent',
       commandFailed: 'Command failed',
+      telemetryTitle: 'Live telemetry',
+      wsStatus: 'WebSocket',
+      device: 'Device',
+      telemetryWaiting: 'Waiting for frames…',
     },
     workflow: {
       selectPatient: 'Select patient',
@@ -873,6 +881,10 @@ export const translations = {
       status: 'Status',
       commandSent: 'Command sent',
       commandFailed: 'Command failed',
+      telemetryTitle: 'Тelemetry live',
+      wsStatus: 'WebSocket',
+      device: 'Құрылғы',
+      telemetryWaiting: 'Кадрлар күтілуде…',
     },
     workflow: {
       selectPatient: 'Пациентті таңдаңыз',

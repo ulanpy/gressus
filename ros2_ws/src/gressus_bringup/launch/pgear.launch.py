@@ -11,6 +11,10 @@ def generate_launch_description() -> LaunchDescription:
         DeclareLaunchArgument('stale_after_s', default_value='0.5'),
         DeclareLaunchArgument('topic', default_value='/exoskeleton/telemetry'),
         DeclareLaunchArgument('frame_id', default_value='exoskeleton'),
+        DeclareLaunchArgument('serve_ws', default_value='true'),
+        DeclareLaunchArgument('ws_port', default_value='8766'),
+        DeclareLaunchArgument('ws_path', default_value='/ws/exoskeleton'),
+        DeclareLaunchArgument('ws_hz', default_value='20.0'),
         Node(
             package='gressus_pgear',
             executable='pgear_device_node',
@@ -22,6 +26,10 @@ def generate_launch_description() -> LaunchDescription:
                 'stale_after_s': LaunchConfiguration('stale_after_s'),
                 'topic': LaunchConfiguration('topic'),
                 'frame_id': LaunchConfiguration('frame_id'),
+                'serve_ws': LaunchConfiguration('serve_ws'),
+                'ws_port': LaunchConfiguration('ws_port'),
+                'ws_path': LaunchConfiguration('ws_path'),
+                'ws_hz': LaunchConfiguration('ws_hz'),
             }],
         ),
     ])

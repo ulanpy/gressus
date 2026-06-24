@@ -77,6 +77,18 @@ POST /api/runtime/start  {"job":"feedback","espHost":"192.168.1.50", ...}
 | `stale_after_s` | `0.5` | таймаут «живой» телеметрии |
 | `topic` | `/exoskeleton/telemetry` | |
 | `frame_id` | `exoskeleton` | |
+| `serve_ws` | `true` | Enable WebSocket fanout |
+| `ws_port` | `8766` | WebSocket port |
+| `ws_path` | `/ws/exoskeleton` | WebSocket path |
+| `ws_hz` | `20` | WebSocket publish rate |
+
+---
+
+## WebSocket (live UI)
+
+**`ws://0.0.0.0:8766/ws/exoskeleton`** — JSON frames @ ~20 Hz (same fields as telemetry topic, camelCase).
+
+Vite dev proxy: `/ws/exoskeleton` → `:8766`.
 
 ---
 

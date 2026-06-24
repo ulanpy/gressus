@@ -34,7 +34,7 @@ Web app in `frontend/`. Operator-facing areas:
 - **Control** — start/stop feedback stacks, P.GEAR commands, calibration and legacy game modes.
 - **Patient** — simplified session view.
 
-Live insole data: WebSocket `ws://127.0.0.1:8765/ws/insole` from `insole_bridge_node`. Sensor layout for heatmaps is static data in `frontend/src/constants/insoleGeometry/`.
+Live insole data: WebSocket `ws://127.0.0.1:8765/ws/insole` from `insole_bridge_node`. Exoskeleton telemetry: `ws://127.0.0.1:8766/ws/exoskeleton` from `pgear_device_node`.
 
 ## Backend
 
@@ -73,6 +73,7 @@ All application containers use `network_mode: host` so localhost ports are share
 | `:5435` | PostgreSQL (host-mapped) |
 | `:9090` | Session manager |
 | `:8765` | Insole WebSocket |
+| `:8766` | Exoskeleton WebSocket |
 | `:9100` | Insole TCP ingest |
 
 ## Related docs
