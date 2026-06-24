@@ -35,9 +35,31 @@ function buildCommandBody(command: PgearCommandKey, profileJson: string, duratio
   return undefined
 }
 
+const DEFAULT_PGEAR_PROFILE_JSON = `{
+  "mode": "position",
+  "cps": 0.36,
+  "amp_r": 0.5,
+  "amp_l": 0.5,
+  "assist": 0.5,
+  "aan": false,
+  "coeffs": [],
+  "rom": {
+    "0": [-18, 25],
+    "1": [-6, 31],
+    "2": [-18, 25],
+    "3": [-6, 31]
+  },
+  "enable": {
+    "0": true,
+    "1": true,
+    "2": true,
+    "3": true
+  }
+}`
+
 export function ExoskeletonControl() {
   const { t } = useI18n()
-  const [profileJson, setProfileJson] = useState('{\n  "patient_id": "demo"\n}')
+  const [profileJson, setProfileJson] = useState(DEFAULT_PGEAR_PROFILE_JSON)
   const [durationS, setDurationS] = useState(0)
   const [pendingCommand, setPendingCommand] = useState<PgearCommandKey | null>(null)
   const [lastCommand, setLastCommand] = useState<PgearCommandKey | null>(null)
