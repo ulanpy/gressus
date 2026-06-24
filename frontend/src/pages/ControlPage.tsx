@@ -1,7 +1,6 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useI18n } from '../i18n/context'
 import type { ControlPageProps } from '../types/components'
-import type { GameLaunchParams, ClinicalRuntimeContext } from '../types/runtime'
 import type { PatientSessionWorkflow } from '../hooks/usePatientSessionWorkflow'
 import { AssessmentSection } from '../components/assessments/AssessmentSection'
 import { PatientCreateAction } from '../components/patients/PatientCreateAction'
@@ -15,7 +14,6 @@ import {
 } from '../components/patients/PatientViewMenu'
 import { SessionHistoryList } from '../components/sessions/SessionHistoryList'
 import { SessionStartModal } from '../components/sessions/SessionStartModal'
-import { RuntimeControls } from '../components/runtime/RuntimeControls'
 import { IconButton, PlayIcon, StopIcon } from '../components/ui/IconButton'
 import { cn } from '../lib/cn'
 import { container, panel } from '../styles/ui'
@@ -52,7 +50,6 @@ function ControlContextBar({ workflow }: { workflow: PatientSessionWorkflow }) {
           </h2>
 
           <div className="flex flex-wrap items-center gap-2">
-            <PatientSwitch workflow={workflow} menuAlign="right" />
             <PatientProfileActions workflow={workflow}>
               {!workflow.activeSession ? (
                 <IconButton
@@ -119,37 +116,9 @@ function ControlContextBar({ workflow }: { workflow: PatientSessionWorkflow }) {
 
 export function ControlPage({
   workflow,
-  runtime,
-  runtimeActionError,
-  runtimePending,
-  startCalibration,
-  startGame,
-  stopRuntime,
 }: ControlPageProps) {
   const { t } = useI18n()
   const phase = getPhase(workflow)
-
-  const clinicalContext = useCallback((): ClinicalRuntimeContext | undefined => {
-    if (!workflow.activeSession || !workflow.selectedPatientId) return undefined
-    return {
-      sessionId: workflow.activeSession.id,
-      patientId: workflow.selectedPatientId,
-    }
-  }, [workflow.activeSession, workflow.selectedPatientId])
-
-  const handleStartGame = useCallback(
-    async (params: GameLaunchParams) => {
-      await startGame(params, clinicalContext())
-    },
-    [startGame, clinicalContext],
-  )
-
-  const handleStartCalibration = useCallback(
-    async (params: Pick<GameLaunchParams, 'outputRotation'>) => {
-      await startCalibration(params, clinicalContext())
-    },
-    [startCalibration, clinicalContext],
-  )
 
   return (
     <div className={cn(container, 'grid gap-5')}>
@@ -162,14 +131,17 @@ export function ControlPage({
             <p className="mt-2 mb-0 text-sm text-muted">{t.control.setupHint}</p>
           )}
         </div>
-        <PatientCreateAction workflow={workflow} />
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <PatientSwitch workflow={workflow} menuAlign="right" />
+          <PatientCreateAction workflow={workflow} />
+        </div>
       </header>
 
       {phase !== 'patient' && <ControlContextBar workflow={workflow} />}
 
       {phase === 'patient' && <PatientSelector workflow={workflow} />}
 
-      {phase === 'runtime' && (
+      {/* {phase === 'runtime' && (
         <RuntimeControls
           runtime={runtime}
           actionError={runtimeActionError ?? workflow.error}
@@ -179,7 +151,7 @@ export function ControlPage({
           startGame={handleStartGame}
           stopRuntime={stopRuntime}
         />
-      )}
+      )} */}
     </div>
   )
 }

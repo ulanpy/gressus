@@ -1,7 +1,6 @@
 import { MAX_KPA } from '../constants/insole'
 import { useI18n } from '../i18n/context'
 import type { TherapistPageProps } from '../types/components'
-import { StatusSummary } from '../components/layout/StatusSummary'
 import { TherapistSectionTabs } from '../components/progress/TherapistSectionTabs'
 import { DashboardControls } from '../components/feet/DashboardControls'
 import { LiveInactiveCard } from '../components/session/LiveInactiveCard'
@@ -22,7 +21,7 @@ export function TherapistPage({
   setSource,
   showSensors,
   source,
-  status,
+  status: _status,
   cemrr,
   activeSection,
   setActiveSection,

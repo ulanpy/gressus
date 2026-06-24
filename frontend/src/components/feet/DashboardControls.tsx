@@ -12,7 +12,7 @@ import {
 
 
 export function DashboardControls({
-  frame,
+  frame: _frame,
   setShowSensors,
   setSource,
   showSensors,
@@ -44,8 +44,8 @@ export function DashboardControls({
       </button>
 
       <div className={frameMeta}>
-        seq {frame?.seq ?? '-'} / dt {frame?.dtMs ?? '-'} мс / age{' '}
-        {frame?.ageS == null ? '-' : `${frame.ageS.toFixed(2)}с`}
+        {/* seq {frame?.seq ?? '-'} / dt {frame?.dtMs ?? '-'} мс / age{' '} */}
+        {/* {frame?.ageS == null ? '-' : `${frame.ageS.toFixed(2)}с`} */}
       </div>
     </section>
   )

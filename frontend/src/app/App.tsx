@@ -15,6 +15,7 @@ import { PageTabs } from '../components/layout/PageTabs'
 import { LanguageToggle } from '../components/layout/LanguageToggle'
 import { TherapistPage } from '../pages/TherapistPage'
 import { ControlPage } from '../pages/ControlPage'
+import { ExoskeletonControl } from '../pages/ExoskeletonControl'
 import { container } from '../styles/ui'
 import { cn } from '../lib/cn'
 
@@ -91,6 +92,8 @@ function DashboardShell({ language, setLanguage }: DashboardShellProps) {
           stopRuntime={runtime.stopRuntime}
         />
       )}
+
+      {activeView === 'exoskeleton' && <ExoskeletonControl />}
     </main>
   )
 }
