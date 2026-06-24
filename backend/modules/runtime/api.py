@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends
 
 from backend.common.dependencies import get_runtime_service
 from backend.modules.runtime.schemas import (
+    CalibratePgearBaselineRequest,
     LoadPgearProfileRequest,
     PgearCommandResponse,
     RuntimeSnapshot,
@@ -116,3 +117,28 @@ async def pgear_estop(
 ) -> PgearCommandResponse:
     """Emergency stop on the device."""
     return await service.pgear_estop()
+
+
+@router.post("/pgear/estop-reset", response_model=PgearCommandResponse)
+async def pgear_estop_reset(
+    service: Annotated[RuntimeService, Depends(get_runtime_service)],
+) -> PgearCommandResponse:
+    """Clear faults after E-STOP so the device can be re-armed."""
+    return await service.pgear_estop_reset()
+
+
+@router.post("/pgear/full-cal", response_model=PgearCommandResponse)
+async def pgear_full_cal(
+    service: Annotated[RuntimeService, Depends(get_runtime_service)],
+) -> PgearCommandResponse:
+    """ODrive motor/encoder FULL CAL. Device must be DISARM; motors will move."""
+    return await service.pgear_full_cal()
+
+
+@router.post("/pgear/calibrate-baseline", response_model=PgearCommandResponse)
+async def pgear_calibrate_baseline(
+    payload: CalibratePgearBaselineRequest,
+    service: Annotated[RuntimeService, Depends(get_runtime_service)],
+) -> PgearCommandResponse:
+    """Fit empty-exo iq baselines (~30 s). Call after ``arm`` + ``run`` (gait_phase=2)."""
+    return await service.pgear_calibrate_baseline(payload.durationS)

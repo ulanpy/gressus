@@ -42,6 +42,9 @@ Proxied to session manager (`SESSION_MANAGER_URL`, default `http://127.0.0.1:909
 | `POST /api/runtime/pgear/run` | Start gait |
 | `POST /api/runtime/pgear/stop-gait` | Stop gait |
 | `POST /api/runtime/pgear/estop` | Emergency stop |
+| `POST /api/runtime/pgear/estop-reset` | Clear faults after E-STOP |
+| `POST /api/runtime/pgear/full-cal` | ODrive FULL CAL (DISARM only) |
+| `POST /api/runtime/pgear/calibrate-baseline` | Empty-exo baseline fit (~30 s, ARM+RUN) |
 | `POST /api/runtime/start` | Legacy alias → stack start (game modes) |
 | `POST /api/runtime/stop` | Legacy alias → stack stop |
 

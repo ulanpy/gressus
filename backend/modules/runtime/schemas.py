@@ -43,6 +43,22 @@ class LoadPgearProfileRequest(BaseModel):
     profileJson: str = Field(min_length=2)
 
 
+class CalibratePgearBaselineRequest(BaseModel):
+    """Empty-exo baseline fit (~30 s). Device must be ARM+RUN in GAIT before calling."""
+
+    durationS: float = Field(0.0, ge=0.0, le=120.0, description="0 = default 30 s")
+
+
+class SessionPgearCalibrateBaselinePayload(BaseModel):
+    """JSON body for ``POST /session/pgear/calibrate-baseline`` on session_manager."""
+
+    durationS: float = Field(0.0, ge=0.0, le=120.0)
+
+    @classmethod
+    def from_api(cls, req: CalibratePgearBaselineRequest) -> SessionPgearCalibrateBaselinePayload:
+        return cls(durationS=req.durationS)
+
+
 class SessionStartPayload(BaseModel):
     """JSON body for ``POST /session/start`` on session_manager."""
 

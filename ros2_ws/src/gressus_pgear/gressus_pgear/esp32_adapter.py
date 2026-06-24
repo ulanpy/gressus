@@ -66,6 +66,23 @@ class Esp32Adapter:
     def stop_gait(self) -> bool:
         return bool(self._link.stop_gait())
 
+    def full_cal(self) -> bool:
+        return bool(self._link.full_cal())
+
+    def load_coeffs(
+        self,
+        joint: int,
+        kind: int,
+        coef5: list[float],
+        *,
+        resid_std: float = 0.0,
+        cal_cps: float = 0.0,
+        cal_amp: float = 0.0,
+    ) -> bool:
+        return bool(
+            self._link.load_coeffs(joint, kind, coef5, resid_std, cal_cps, cal_amp)
+        )
+
     def load_profile_dict(self, profile: dict[str, Any]) -> None:
         apply_profile(self._link, profile)
 

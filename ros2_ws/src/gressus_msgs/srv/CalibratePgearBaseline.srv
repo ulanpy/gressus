@@ -1,0 +1,6 @@
+# Empty-exo baseline calibration (~30 s gait sample + fit).
+# Preconditions: load_profile with enable/ROM, then arm + run (gait_phase=2).
+float32 duration_s  # 0 = default (30 s)
+---
+bool success
+string message

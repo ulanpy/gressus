@@ -32,6 +32,9 @@ _PGEAR_ROUTES: dict[str, str] = {
     "/session/pgear/run": "run",
     "/session/pgear/stop-gait": "stop_gait",
     "/session/pgear/estop": "estop",
+    "/session/pgear/estop-reset": "estop_reset",
+    "/session/pgear/full-cal": "full_cal",
+    "/session/pgear/calibrate-baseline": "calibrate_baseline",
 }
 
 
@@ -195,6 +198,13 @@ class SessionHandler(BaseHTTPRequestHandler):
                 result = client.stop_gait()
             elif action == "estop":
                 result = client.estop()
+            elif action == "estop_reset":
+                result = client.estop_reset()
+            elif action == "full_cal":
+                result = client.full_cal()
+            elif action == "calibrate_baseline":
+                duration_s = float(payload.get("durationS", payload.get("duration_s", 0)) or 0)
+                result = client.calibrate_baseline(duration_s=duration_s)
             else:
                 _json_response(self, HTTPStatus.NOT_FOUND, {"ok": False, "error": "unknown action"})
                 return

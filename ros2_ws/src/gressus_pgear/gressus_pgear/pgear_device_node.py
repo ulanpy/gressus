@@ -1,13 +1,19 @@
 """ROS 2 node: P.GEAR device control via pgear_tools Esp32Link (UDP + TCP)."""
 
+from __future__ import annotations
+
 import json
+import threading
 
 import rclpy
+from rclpy.callback_groups import ReentrantCallbackGroup
+from rclpy.executors import MultiThreadedExecutor
 from rclpy.node import Node
 from std_srvs.srv import Trigger
 
 from gressus_msgs.msg import PgearTelemetry
-from gressus_msgs.srv import LoadPgearProfile
+from gressus_msgs.srv import CalibratePgearBaseline, LoadPgearProfile
+from gressus_pgear.baseline_calibration import run_baseline_calibration
 from gressus_pgear.esp32_adapter import Esp32Adapter
 from gressus_pgear.ros_msg import empty_msg
 from gressus_pgear.telemetry_mapper import telemetry_to_msg
@@ -29,18 +35,31 @@ class PgearDeviceNode(Node):
         frame_id = str(self.get_parameter("frame_id").value)
 
         self._frame_id = frame_id
+        self._armed = False
+        self._last_cps = 0.36
+        self._cal_lock = threading.Lock()
+        self._cal_running = False
         self._adapter = Esp32Adapter(esp_host=esp_host)
         self._adapter.start()
 
         self._pub = self.create_publisher(PgearTelemetry, topic, 10)
         self.create_timer(1.0 / max(hz, 1.0), self._publish)
 
-        self.create_service(Trigger, "~/estop", self._handle_estop)
-        self.create_service(Trigger, "~/arm", self._handle_arm)
-        self.create_service(Trigger, "~/disarm", self._handle_disarm)
-        self.create_service(Trigger, "~/run", self._handle_run)
-        self.create_service(Trigger, "~/stop_gait", self._handle_stop_gait)
-        self.create_service(LoadPgearProfile, "~/load_profile", self._handle_load_profile)
+        srv_group = ReentrantCallbackGroup()
+        self.create_service(Trigger, "~/estop", self._handle_estop, callback_group=srv_group)
+        self.create_service(Trigger, "~/estop_reset", self._handle_estop_reset, callback_group=srv_group)
+        self.create_service(Trigger, "~/arm", self._handle_arm, callback_group=srv_group)
+        self.create_service(Trigger, "~/disarm", self._handle_disarm, callback_group=srv_group)
+        self.create_service(Trigger, "~/full_cal", self._handle_full_cal, callback_group=srv_group)
+        self.create_service(Trigger, "~/run", self._handle_run, callback_group=srv_group)
+        self.create_service(Trigger, "~/stop_gait", self._handle_stop_gait, callback_group=srv_group)
+        self.create_service(LoadPgearProfile, "~/load_profile", self._handle_load_profile, callback_group=srv_group)
+        self.create_service(
+            CalibratePgearBaseline,
+            "~/calibrate_baseline",
+            self._handle_calibrate_baseline,
+            callback_group=srv_group,
+        )
 
         host_label = esp_host or "auto"
         self.get_logger().info(
@@ -95,15 +114,42 @@ class PgearDeviceNode(Node):
         return response
 
     def _handle_estop(self, _request: Trigger.Request, _response: Trigger.Response) -> Trigger.Response:
+        self._armed = False
         return self._trigger("estop", self._adapter.estop)
 
+    def _handle_estop_reset(
+        self, _request: Trigger.Request, _response: Trigger.Response
+    ) -> Trigger.Response:
+        return self._trigger("estop_reset", self._adapter.estop_reset)
+
     def _handle_arm(self, _request: Trigger.Request, _response: Trigger.Response) -> Trigger.Response:
-        return self._trigger("arm", self._adapter.arm)
+        response = self._trigger("arm", self._adapter.arm)
+        if response.success:
+            self._armed = True
+        return response
 
     def _handle_disarm(self, _request: Trigger.Request, _response: Trigger.Response) -> Trigger.Response:
-        return self._trigger("disarm", self._adapter.disarm)
+        response = self._trigger("disarm", self._adapter.disarm)
+        if response.success:
+            self._armed = False
+        return response
+
+    def _handle_full_cal(self, _request: Trigger.Request, _response: Trigger.Response) -> Trigger.Response:
+        response = Trigger.Response()
+        if self._armed:
+            response.success = False
+            response.message = "full_cal: disarm first (ODrive cal runs from IDLE)"
+            self.get_logger().warn(response.message)
+            return response
+        return self._trigger("full_cal", self._adapter.full_cal)
 
     def _handle_run(self, _request: Trigger.Request, _response: Trigger.Response) -> Trigger.Response:
+        if not self._armed:
+            response = Trigger.Response()
+            response.success = False
+            response.message = "run: arm first"
+            self.get_logger().warn(response.message)
+            return response
         return self._trigger("run", self._adapter.run)
 
     def _handle_stop_gait(self, _request: Trigger.Request, _response: Trigger.Response) -> Trigger.Response:
@@ -121,9 +167,46 @@ class PgearDeviceNode(Node):
             response.message = str(exc)
             self.get_logger().error(f"load_profile: {exc}")
             return response
+        if "cps" in profile:
+            self._last_cps = float(profile["cps"])
         response.success = True
         response.message = f"loaded keys={list(profile.keys())}"
         self.get_logger().info(response.message)
+        return response
+
+    def _handle_calibrate_baseline(
+        self,
+        request: CalibratePgearBaseline.Request,
+        response: CalibratePgearBaseline.Response,
+    ) -> CalibratePgearBaseline.Response:
+        with self._cal_lock:
+            if self._cal_running:
+                response.success = False
+                response.message = "calibrate_baseline: already running"
+                return response
+            self._cal_running = True
+
+        duration_s = float(request.duration_s)
+        self.get_logger().info(
+            f"calibrate_baseline: started (~{duration_s or 30.0:.0f}s, keep ARM+RUN)"
+        )
+        try:
+            ok, message = run_baseline_calibration(
+                self._adapter,
+                duration_s=duration_s,
+                stale_after_s=self._stale_after_s,
+                cps=self._last_cps,
+            )
+        finally:
+            with self._cal_lock:
+                self._cal_running = False
+
+        response.success = ok
+        response.message = message
+        if ok:
+            self.get_logger().info(f"calibrate_baseline: {message}")
+        else:
+            self.get_logger().warn(f"calibrate_baseline: {message}")
         return response
 
     def destroy_node(self) -> bool:
@@ -134,8 +217,10 @@ class PgearDeviceNode(Node):
 def main(args=None) -> None:
     rclpy.init(args=args)
     node = PgearDeviceNode()
+    executor = MultiThreadedExecutor(num_threads=4)
+    executor.add_node(node)
     try:
-        rclpy.spin(node)
+        executor.spin()
     except KeyboardInterrupt:
         pass
     finally:

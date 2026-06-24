@@ -27,6 +27,9 @@ ros2 run gressus_session session_manager -- --host 127.0.0.1 --port 9090
 | `POST` | `/session/pgear/run` | Start gait |
 | `POST` | `/session/pgear/stop-gait` | Stop gait |
 | `POST` | `/session/pgear/estop` | Emergency stop |
+| `POST` | `/session/pgear/estop-reset` | Clear faults after E-STOP |
+| `POST` | `/session/pgear/full-cal` | ODrive FULL CAL (DISARM only) |
+| `POST` | `/session/pgear/calibrate-baseline` | Empty-exo baseline fit (~30 s, ARM+RUN) |
 
 The backend proxies these via `/api/runtime/*` — see [BACKEND.md](BACKEND.md).
 
@@ -57,7 +60,7 @@ ros2 launch gressus_bringup pgear.launch.py esp_host:=<ESP32_IP>
 ros2 run gressus_pgear pgear_device_node --ros-args -p esp_host:=<ESP32_IP>
 ```
 
-Services (under `/pgear_device_node/`): `load_profile`, `arm`, `disarm`, `run`, `stop_gait`, `estop`.  
+Services (under `/pgear_device_node/`): `load_profile`, `arm`, `disarm`, `run`, `stop_gait`, `estop`, `estop_reset`, `full_cal`, `calibrate_baseline`.  
 Telemetry topic: `/exoskeleton/telemetry`.
 
 Full protocol and profile format: [../ros2_ws/src/gressus_pgear/README.md](../ros2_ws/src/gressus_pgear/README.md).

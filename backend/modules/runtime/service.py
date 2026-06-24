@@ -11,6 +11,7 @@ from backend.modules.runtime.client import SessionManagerClient, SessionManagerE
 from backend.modules.runtime.schemas import (
     PgearCommandResponse,
     RuntimeSnapshot,
+    SessionPgearCalibrateBaselinePayload,
     SessionPgearLoadProfilePayload,
     SessionStartPayload,
     SessionStopPayload,
@@ -73,3 +74,13 @@ class RuntimeService:
 
     async def pgear_estop(self) -> PgearCommandResponse:
         return await self._call(self._session_manager.pgear_estop)
+
+    async def pgear_estop_reset(self) -> PgearCommandResponse:
+        return await self._call(self._session_manager.pgear_estop_reset)
+
+    async def pgear_full_cal(self) -> PgearCommandResponse:
+        return await self._call(self._session_manager.pgear_full_cal)
+
+    async def pgear_calibrate_baseline(self, duration_s: float = 0.0) -> PgearCommandResponse:
+        payload = SessionPgearCalibrateBaselinePayload(durationS=duration_s)
+        return await self._call(lambda: self._session_manager.pgear_calibrate_baseline(payload))

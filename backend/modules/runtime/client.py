@@ -11,6 +11,7 @@ from backend.core.configs.config import Config
 from backend.modules.runtime.schemas import (
     PgearCommandResponse,
     SessionPgearLoadProfilePayload,
+    SessionPgearCalibrateBaselinePayload,
     SessionStartPayload,
     SessionStatusResponse,
     SessionStopPayload,
@@ -132,3 +133,24 @@ class SessionManagerClient:
 
     async def pgear_estop(self) -> PgearCommandResponse:
         return await self._request("POST", "/session/pgear/estop", None, response_model=PgearCommandResponse)
+
+    async def pgear_estop_reset(self) -> PgearCommandResponse:
+        return await self._request(
+            "POST",
+            "/session/pgear/estop-reset",
+            None,
+            response_model=PgearCommandResponse,
+        )
+
+    async def pgear_full_cal(self) -> PgearCommandResponse:
+        return await self._request("POST", "/session/pgear/full-cal", None, response_model=PgearCommandResponse)
+
+    async def pgear_calibrate_baseline(
+        self, payload: SessionPgearCalibrateBaselinePayload
+    ) -> PgearCommandResponse:
+        return await self._request(
+            "POST",
+            "/session/pgear/calibrate-baseline",
+            payload,
+            response_model=PgearCommandResponse,
+        )

@@ -7,7 +7,7 @@ import threading
 from typing import Any
 
 import rclpy
-from gressus_msgs.srv import LoadPgearProfile
+from gressus_msgs.srv import CalibratePgearBaseline, LoadPgearProfile
 from rclpy.node import Node
 from std_srvs.srv import Trigger
 
@@ -93,6 +93,40 @@ class PgearRosClient:
 
     def estop(self) -> dict[str, Any]:
         return self._call_trigger("estop")
+
+    def estop_reset(self) -> dict[str, Any]:
+        return self._call_trigger("estop_reset")
+
+    def full_cal(self) -> dict[str, Any]:
+        return self._call_trigger("full_cal")
+
+    def calibrate_baseline(self, *, duration_s: float = 0.0, timeout_s: float = 120.0) -> dict[str, Any]:
+        service = self._service("calibrate_baseline")
+        with self._lock:
+            client = self._node.create_client(CalibratePgearBaseline, service)
+            try:
+                if not client.wait_for_service(timeout_sec=5.0):
+                    return {
+                        "ok": False,
+                        "success": False,
+                        "message": f"service unavailable: {service}",
+                    }
+                request = CalibratePgearBaseline.Request()
+                request.duration_s = float(duration_s)
+                future = client.call_async(request)
+                rclpy.spin_until_future_complete(self._node, future, timeout_sec=timeout_s)
+                if not future.done():
+                    return {"ok": False, "success": False, "message": f"timeout: {service}"}
+                result = future.result()
+                if result is None:
+                    return {"ok": False, "success": False, "message": f"call failed: {service}"}
+                return {
+                    "ok": True,
+                    "success": bool(result.success),
+                    "message": str(result.message),
+                }
+            finally:
+                self._node.destroy_client(client)
 
 
 _CLIENT: PgearRosClient | None = None

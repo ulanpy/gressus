@@ -96,12 +96,15 @@ POST /api/runtime/start  {"job":"feedback","espHost":"192.168.1.50", ...}
 
 | Service | Тип | Действие |
 |---------|-----|----------|
-| `estop` | `std_srvs/Trigger` | E-STOP (всегда) |
+| `estop` | `std_srvs/Trigger` | E-STOP |
+| `estop_reset` | `std_srvs/Trigger` | CLEAR ERR (после E-STOP) |
 | `arm` | `std_srvs/Trigger` | ARM |
 | `disarm` | `std_srvs/Trigger` | DISARM |
+| `full_cal` | `std_srvs/Trigger` | ODrive FULL CAL (**только DISARM**) |
 | `run` | `std_srvs/Trigger` | RUN gait |
 | `stop_gait` | `std_srvs/Trigger` | STOP gait |
-| `load_profile` | `gressus_msgs/LoadPgearProfile` | JSON профиля → устройство |
+| `load_profile` | `gressus_msgs/LoadPgearProfile` | JSON → устройство |
+| `calibrate_baseline` | `gressus_msgs/CalibratePgearBaseline` | ~30 s fit пустого exo (**ARM+RUN**) |
 
 Пример:
 
@@ -112,11 +115,45 @@ ros2 service call /pgear_device_node/run std_srvs/srv/Trigger
 ros2 service call /pgear_device_node/load_profile gressus_msgs/srv/LoadPgearProfile \
   "{profile_json: '{\"mode\":\"position\",\"cps\":0.36,\"amp_r\":0.5,\"amp_l\":0.5,\"assist\":0.5,\"aan\":true,\"coeffs\":[],\"rom\":{},\"enable\":{}}'}"
 
-ros2 topic echo /exoskeleton/telemetry --field connected,gait_phase,meas_torque
+ros2 topic echo /exoskeleton/telemetry --field connected
+ros2 topic echo /exoskeleton/telemetry --field gait_phase
+# or full message:
+ros2 topic echo /exoskeleton/telemetry --once
 ros2 service call /pgear_device_node/estop std_srvs/srv/Trigger
 ```
 
 `Trigger`: `success=false` + `failed (TCP link?)` — TCP ещё не открыт (нет UDP / неверный IP).
+
+### Инженерный SOP (всё через ROS, без bridge/GUI)
+
+```bash
+# 0. launch
+ros2 launch gressus_bringup pgear.launch.py
+
+# 1. почистка
+ros2 service call /pgear_device_node/stop_gait std_srvs/srv/Trigger "{}"
+ros2 service call /pgear_device_node/disarm std_srvs/srv/Trigger "{}"
+ros2 service call /pgear_device_node/estop_reset std_srvs/srv/Trigger "{}"   # если был E-STOP
+
+# 2. FULL CAL (разово, DISARM, моторы крутятся)
+ros2 service call /pgear_device_node/full_cal std_srvs/srv/Trigger "{}"
+
+# 3. load_profile — enable + ROM (+ coeffs после calibrate_baseline)
+ros2 service call /pgear_device_node/load_profile gressus_msgs/srv/LoadPgearProfile \
+  "{profile_json: '{\"mode\":\"position\",\"cps\":0.36,\"amp_r\":0.5,\"amp_l\":0.5,\"assist\":0.5,\"aan\":false,\"coeffs\":[],\"rom\":{\"0\":[-18,25],\"1\":[-6,31],\"2\":[-18,25],\"3\":[-6,31]},\"enable\":{\"0\":true,\"1\":true,\"2\":true,\"3\":true}}'}"
+
+# 4. baseline-калибровка пустого exo (~33 s блокирует терминал)
+ros2 service call /pgear_device_node/arm std_srvs/srv/Trigger "{}"
+ros2 service call /pgear_device_node/run std_srvs/srv/Trigger "{}"
+ros2 service call /pgear_device_node/calibrate_baseline gressus_msgs/srv/CalibratePgearBaseline "{duration_s: 0}"
+
+# 5. рабочий цикл
+ros2 service call /pgear_device_node/stop_gait std_srvs/srv/Trigger "{}"
+ros2 service call /pgear_device_node/arm std_srvs/srv/Trigger "{}"
+ros2 service call /pgear_device_node/run std_srvs/srv/Trigger "{}"
+```
+
+JSON baselines сохраняются в `third_party/pgear_tools/pi_gui/pgear_pi/calibration/baseline_*.json`.
 
 ### Порядок типичной сессии
 
@@ -170,7 +207,7 @@ Exo-профиль — настройки контроллера под ребё
 
 - **Один TCP-клиент** на ESP32. Не запускать одновременно GUI коллеги с прямым `esp32_link` и эту ноду.
 - Submodule bump — осознанно, после изменений протокола в `pgear_tools`.
-- Calibrate / characterize / `patient_torque` — **не реализованы** в этой ноде (следующий этап).
+- Calibrate / characterize patient — **baseline** через `calibrate_baseline`; patient passive sweep — следующий этап
 
 ---
 
