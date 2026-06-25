@@ -1,6 +1,5 @@
 export * from './insole'
 export * from './navigation'
-export * from './runtime'
 export * from './i18n'
 export * from './patient'
 export * from './patients'

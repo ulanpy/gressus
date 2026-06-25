@@ -536,7 +536,6 @@ function ProfileDialog({
   const [lastProfileLoading, setLastProfileLoading] = useState(false)
   const [params, setParams] = useState<ExoParams>(DEFAULT_EXO_PARAMS)
   const [extras, setExtras] = useState<Record<string, unknown>>({})
-  const [runBaseline, setRunBaseline] = useState(true)
 
   useEffect(() => {
     if (mockMode || !patient) {
@@ -570,11 +569,9 @@ function ProfileDialog({
     if (parsed) {
       setParams(parsed.params)
       setExtras(parsed.extras)
-      setRunBaseline(!parsed.hasCoeffs)
     } else {
       setParams(DEFAULT_EXO_PARAMS)
       setExtras({})
-      setRunBaseline(true)
     }
   }, [initialPatientId, initialProfile, lastProfile, patient?.id])
 
@@ -591,8 +588,7 @@ function ProfileDialog({
       amp_l: params.amp_l,
       assist: params.assist,
     }
-    // Keep previous baseline coeffs only if we are NOT re-running calibration.
-    if (!runBaseline && hasStoredCoeffs) {
+    if (hasStoredCoeffs) {
       profile.coeffs = extras.coeffs
     }
     return JSON.stringify(profile, null, 2)
@@ -611,7 +607,7 @@ function ProfileDialog({
         ? `Профиль (из сессии #${lastProfile.sessionNumber ?? '—'})`
         : 'Новый профиль',
       description: '',
-      baselineRequired: runBaseline,
+      baselineRequired: false,
       profileJson: buildProfileJson(),
     })
   }
@@ -665,11 +661,6 @@ function ProfileDialog({
               </label>
             ))}
           </div>
-
-          <label className="flex items-start gap-2 text-sm font-semibold text-slate-700">
-            
-            
-          </label>
 
           <details className="rounded-2xl bg-slate-50 p-3">
             <summary className="cursor-pointer text-xs font-extrabold text-slate-600">
@@ -846,7 +837,6 @@ export function ExoskeletonControl() {
   const [profileDialogMode, setProfileDialogMode] = useState<'edit' | 'start'>('start')
   const [activePatient, setActivePatient] = useState<Patient | null>(null)
   const [activeProfile, setActiveProfile] = useState<GaitProfile | null>(null)
-  const [baselineDirty, setBaselineDirty] = useState(false)
   const [progress, setProgress] = useState<ProgressStep[]>(initialProgress)
   const [sessionState, setSessionState] = useState<SessionState>('Idle')
   const [busy, setBusy] = useState(false)
@@ -902,7 +892,6 @@ export function ExoskeletonControl() {
     setMockMode(enabled)
     setActivePatient(null)
     setActiveProfile(null)
-    setBaselineDirty(false)
     setProgress(initialProgress)
     setSessionState('Idle')
     setBusy(false)
@@ -943,27 +932,7 @@ export function ExoskeletonControl() {
     setProfileDialogOpen(true)
   }
 
-  // Baseline calibration runs async on the device (30-130 s). Poll the latched
-  // status until it reaches a terminal state.
-  const waitForCalibration = async () => {
-    const deadline = Date.now() + 180_000
-    for (;;) {
-      await sleep(1000)
-      const status = await getCalibrationStatus()
-      updateStep(
-        'baseline',
-        'running',
-        `Calibrating baseline… ${Math.round((status.progress ?? 0) * 100)}%`,
-      )
-      if (status.state === 'done') return status
-      if (status.state === 'failed' || status.state === 'cancelled') {
-        throw new Error(status.message || `calibration ${status.state}`)
-      }
-      if (Date.now() > deadline) throw new Error('Baseline calibration timed out')
-    }
-  }
-
-  // Single "Start" = arm → load profile → validate → run gait → baseline if needed.
+  // Single "Start" = arm → load profile → validate → run gait.
   // "Stop" = stop-gait → disarm. Arm/disarm are internal and not exposed in the UI.
   const startSession = async (patient: Patient, profile: GaitProfile) => {
     setProfileDialogOpen(false)
@@ -974,7 +943,6 @@ export function ExoskeletonControl() {
     setProgress(initialProgress)
     setActivePatient(patient)
     setActiveProfile(profile)
-    setBaselineDirty(profile.baselineRequired)
     let currentStep: ProgressStepId = 'arm'
 
     try {
@@ -1017,18 +985,7 @@ export function ExoskeletonControl() {
         )
       }
 
-      if (profile.baselineRequired) {
-        currentStep = 'baseline'
-        if (mockMode) setSessionState('Calibrating')
-        updateStep('baseline', 'running', 'Calibrating baseline...')
-        await runPgearCommand('calibrateBaseline', { durationS: 0 })
-        if (!mockMode) await waitForCalibration()
-        updateStep('baseline', 'success', 'Baseline calibrated')
-        setSessionState('Running')
-      } else {
-        updateStep('baseline', 'success', 'Baseline already valid')
-      }
-      setBaselineDirty(false)
+      updateStep('baseline', 'success', 'Baseline skipped')
 
       updateStep('running', 'success', 'Session running')
     } catch (err) {
@@ -1054,7 +1011,6 @@ export function ExoskeletonControl() {
       updateStep('profile', 'success', 'Profile updated')
       setActivePatient(patient)
       setActiveProfile(profile)
-      setBaselineDirty(profile.baselineRequired)
       setSessionState((current) => {
         if (wasRunning) return 'Running'
         return current === 'Loading Profile' ? 'Ready' : current
@@ -1095,7 +1051,6 @@ export function ExoskeletonControl() {
       setSessionState('Idle')
       setActivePatient(null)
       setActiveProfile(null)
-      setBaselineDirty(false)
       if (mockMode) {
         setMockTelemetry((frame) =>
           createMockTelemetry({
@@ -1128,7 +1083,6 @@ export function ExoskeletonControl() {
       setSessionState('Idle')
       setActivePatient(null)
       setActiveProfile(null)
-      setBaselineDirty(false)
       setProgress(initialProgress)
       if (mockMode) {
         setMockTelemetry((frame) =>
@@ -1146,6 +1100,46 @@ export function ExoskeletonControl() {
       updateStep('configuration', 'error')
       setSessionState('Error')
       setLastError(err instanceof Error ? err.message : 'E-STOP reset failed')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const waitForCalibration = async () => {
+    const deadline = Date.now() + 180_000
+    for (;;) {
+      await sleep(1000)
+      const status = await getCalibrationStatus()
+      updateStep(
+        'baseline',
+        'running',
+        `Calibrating baseline… ${Math.round((status.progress ?? 0) * 100)}%`,
+      )
+      if (status.state === 'done') return
+      if (status.state === 'failed' || status.state === 'cancelled') {
+        throw new Error(status.message || `calibration ${status.state}`)
+      }
+      if (Date.now() > deadline) throw new Error('Baseline calibration timed out')
+    }
+  }
+
+  const calibrateBaseline = async () => {
+    setBusy(true)
+    setLastError(null)
+    setLastResponse(null)
+
+    try {
+      if (mockMode) setSessionState('Calibrating')
+      updateStep('baseline', 'running', 'Calibrating baseline...')
+      await runPgearCommand('calibrateBaseline', { durationS: 0 })
+      if (!mockMode) await waitForCalibration()
+      if (mockMode) await sleep(700)
+      updateStep('baseline', 'success', 'Baseline calibrated')
+      setSessionState((current) => (current === 'Calibrating' ? 'Running' : current))
+    } catch (err) {
+      updateStep('baseline', 'error')
+      setSessionState('Error')
+      setLastError(err instanceof Error ? err.message : 'Baseline calibration failed')
     } finally {
       setBusy(false)
     }
@@ -1310,11 +1304,6 @@ export function ExoskeletonControl() {
                       </span>
                     ) : null}
                   </button>
-                  {baselineDirty && activeProfile ? (
-                    <div className="mt-2 text-[11px] font-bold text-amber-700">
-                      Profile changed; baseline calibration is required on next start.
-                    </div>
-                  ) : null}
                 </div>
               </div>
             )}
@@ -1337,6 +1326,16 @@ export function ExoskeletonControl() {
               />
             </div>
 
+            <button
+              type="button"
+              className="mt-3 flex w-full items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-extrabold text-slate-900 shadow-[0_8px_18px_rgb(15_23_42/0.05)] transition-[border-color,background] hover:border-cyan-400 hover:bg-cyan-50 disabled:cursor-not-allowed disabled:opacity-50"
+              disabled={busy || workflowState === 'estop'}
+              onClick={() => void calibrateBaseline()}
+            >
+              <Icon name="refresh" className="h-5 w-5" />
+              Calibrate Baseline
+            </button>
+
             {/* <div className="mt-5 rounded-2xl bg-slate-50 p-4">
               <div className="text-[12px] font-extrabold uppercase text-slate-500">
                 Setup summary
@@ -1344,11 +1343,6 @@ export function ExoskeletonControl() {
               <div className="mt-1 text-[15px] font-extrabold text-slate-950">
                 {profileSubtitle}
               </div>
-              {baselineDirty ? (
-                <div className="mt-2 text-[12px] font-bold text-amber-700">
-                  Baseline calibration will run before gait starts.
-                </div>
-              ) : null}
             </div> */}
           </section>
 
