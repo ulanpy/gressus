@@ -667,16 +667,8 @@ function ProfileDialog({
           </div>
 
           <label className="flex items-start gap-2 text-sm font-semibold text-slate-700">
-            <input
-              type="checkbox"
-              className="mt-1"
-              checked={runBaseline}
-              onChange={(event) => setRunBaseline(event.target.checked)}
-            />
-            <span>
-              Запустить baseline-калибровку перед стартом
-              {hasStoredCoeffs ? ' (иначе использовать сохранённые коэффициенты)' : ''}
-            </span>
+            
+            
           </label>
 
           <details className="rounded-2xl bg-slate-50 p-3">
@@ -971,7 +963,7 @@ export function ExoskeletonControl() {
     }
   }
 
-  // Single "Start" = arm → load profile → validate → (baseline) → run gait.
+  // Single "Start" = arm → load profile → validate → run gait → baseline if needed.
   // "Stop" = stop-gait → disarm. Arm/disarm are internal and not exposed in the UI.
   const startSession = async (patient: Patient, profile: GaitProfile) => {
     setProfileDialogOpen(false)
@@ -1006,23 +998,10 @@ export function ExoskeletonControl() {
       if (mockMode) await sleep(300)
       updateStep('configuration', 'success', 'Configuration valid')
 
-      if (profile.baselineRequired) {
-        currentStep = 'baseline'
-        if (mockMode) setSessionState('Calibrating')
-        updateStep('baseline', 'running', 'Calibrating baseline...')
-        await runPgearCommand('calibrateBaseline', { durationS: 0 })
-        if (!mockMode) await waitForCalibration()
-        updateStep('baseline', 'success', 'Baseline calibrated')
-      } else {
-        updateStep('baseline', 'success', 'Baseline already valid')
-      }
-      setBaselineDirty(false)
-
       currentStep = 'gait'
       updateStep('gait', 'running', 'Starting gait...')
       await runPgearCommand('run', { patientId: patient.id, profileJson: profile.profileJson })
       updateStep('gait', 'success', 'Gait started')
-      updateStep('running', 'success', 'Session running')
       setSessionState('Running')
       if (mockMode) {
         setMockTelemetry((frame) =>
@@ -1037,6 +1016,21 @@ export function ExoskeletonControl() {
           }),
         )
       }
+
+      if (profile.baselineRequired) {
+        currentStep = 'baseline'
+        if (mockMode) setSessionState('Calibrating')
+        updateStep('baseline', 'running', 'Calibrating baseline...')
+        await runPgearCommand('calibrateBaseline', { durationS: 0 })
+        if (!mockMode) await waitForCalibration()
+        updateStep('baseline', 'success', 'Baseline calibrated')
+        setSessionState('Running')
+      } else {
+        updateStep('baseline', 'success', 'Baseline already valid')
+      }
+      setBaselineDirty(false)
+
+      updateStep('running', 'success', 'Session running')
     } catch (err) {
       updateStep(currentStep, 'error')
       setSessionState('Error')
@@ -1152,35 +1146,6 @@ export function ExoskeletonControl() {
       updateStep('configuration', 'error')
       setSessionState('Error')
       setLastError(err instanceof Error ? err.message : 'E-STOP reset failed')
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  // Safety-critical: always reachable while a session is active.
-  const triggerEstop = async () => {
-    setBusy(true)
-    setLastError(null)
-    setLastResponse(null)
-    try {
-      await runPgearCommand('estop')
-      setSessionState('E-STOP Active')
-      updateStep('configuration', 'error', 'E-STOP active')
-      if (mockMode) {
-        setMockTelemetry((frame) =>
-          createMockTelemetry({
-            ...frame,
-            state: 'E-STOP Active',
-            estop: true,
-            running: false,
-            error: 'Mock E-STOP active',
-            flags: 6,
-          }),
-        )
-      }
-    } catch (err) {
-      setSessionState('Error')
-      setLastError(err instanceof Error ? err.message : 'E-STOP failed')
     } finally {
       setBusy(false)
     }
