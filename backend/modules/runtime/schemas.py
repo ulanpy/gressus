@@ -8,24 +8,6 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field
 
 
-class StartExoRequest(BaseModel):
-    """Bring the exoskeleton controller UP via session_manager.
-
-    Runs ``ros2 launch gressus_bringup pgear.launch.py`` — i.e. ONLY
-    ``pgear_device_node`` (the exoskeleton controller: P.GEAR telemetry + control).
-    Insole / camera are a separate (projector) system, not the exoskeleton.
-    Stopping tears that launch down.
-    """
-
-    sessionId: UUID | None = None
-    patientId: UUID | None = None
-    espHost: str | None = None
-
-
-class StopExoRequest(BaseModel):
-    timeoutS: float = Field(3.0, ge=0.5, le=15.0)
-
-
 class LoadPgearProfileRequest(BaseModel):
     """P.GEAR exo profile JSON (API.md §7); applied via pgear_device_node load_profile service."""
 
@@ -78,29 +60,6 @@ class SessionPgearCalibrateBaselinePayload(BaseModel):
     @classmethod
     def from_api(cls, req: CalibratePgearBaselineRequest) -> SessionPgearCalibrateBaselinePayload:
         return cls(durationS=req.durationS)
-
-
-class SessionStartPayload(BaseModel):
-    """JSON body for ``POST /session/start`` on session_manager."""
-
-    job: Literal["exo"] = "exo"
-    sessionId: str | None = None
-    patientId: str | None = None
-    espHost: str | None = None
-
-    @classmethod
-    def from_api(cls, req: StartExoRequest) -> SessionStartPayload:
-        return cls.model_validate(req.model_dump(mode="json", exclude_none=True))
-
-
-class SessionStopPayload(BaseModel):
-    """JSON body for ``POST /session/stop`` on session_manager."""
-
-    timeoutS: float = Field(3.0, ge=0.5, le=15.0)
-
-    @classmethod
-    def from_api(cls, req: StopExoRequest) -> SessionStopPayload:
-        return cls.model_validate(req.model_dump(mode="json"))
 
 
 class SessionPgearLoadProfilePayload(BaseModel):
@@ -172,35 +131,6 @@ class SessionStatusResponse(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
     ok: bool
-    runtime: RuntimeSnapshot
-
-
-class StartedJobSnapshot(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-
-    name: str
-    pid: int
-    command: list[str]
-
-
-class ExoStartResponse(BaseModel):
-    """``POST /session/start`` success body."""
-
-    model_config = ConfigDict(extra="ignore")
-
-    ok: bool
-    started: StartedJobSnapshot
-    clinicalSession: ClinicalSessionSnapshot | None = None
-    runtime: RuntimeSnapshot
-
-
-class ExoStopResponse(BaseModel):
-    """``POST /session/stop`` response body."""
-
-    model_config = ConfigDict(extra="ignore")
-
-    ok: bool
-    stopped: bool
     runtime: RuntimeSnapshot
 
 

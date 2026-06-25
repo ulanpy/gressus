@@ -37,10 +37,7 @@ async def create_session(
     payload: SessionCreate,
     service: Annotated[SessionService, Depends(get_session_service)],
 ) -> SessionRead:
-    """Open a session (``status=active``, auto ``session_number``).
-
-    Use ``session_id`` + ``patient_id`` in ``POST /api/runtime/exo/start``.
-    """
+    """Open a session (``status=active``, auto ``session_number``)."""
     session_obj = await service.create(patient_id, payload)
     return SessionRead.model_validate(session_obj)
 

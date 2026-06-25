@@ -1,9 +1,12 @@
-"""HTTP session manager: bridge backend clinical sessions to ROS launch jobs.
+"""HTTP session manager: bridge backend clinical sessions to ROS services.
 
 Plain Python HTTP server (``ros2 run gressus_session session_manager``).
 
-- ``POST /session/start|stop`` — spawn ``ros2 launch`` subprocesses.
 - ``POST /session/pgear/*`` — call ``pgear_device_node`` services via rclpy (not CLI).
+- ``POST /session/rosbag/*`` — optional rosbag recording for gait sessions.
+
+Start ``pgear_device_node`` manually, e.g.
+``ros2 launch gressus_bringup pgear.launch.py``.
 """
 
 from __future__ import annotations
@@ -23,9 +26,7 @@ from gressus_session.pgear_ros_client import get_pgear_client
 from gressus_session.process_manager import LaunchProcessManager
 from gressus_session.session_context import ClinicalSessionContext
 
-_MANAGER = LaunchProcessManager()
 _ROSBAG = LaunchProcessManager()
-_CLINICAL_CONTEXT: ClinicalSessionContext | None = None
 
 
 def _rosbag_target_dir(ctx: ClinicalSessionContext) -> str:
@@ -82,37 +83,12 @@ def _read_json(handler: BaseHTTPRequestHandler) -> dict[str, Any]:
     return data
 
 
-def _exo_launch_args(payload: dict[str, Any]) -> list[str]:
-    esp_host = payload.get('espHost', payload.get('esp_host', ''))
-    args: list[str] = []
-    if esp_host is not None and str(esp_host).strip():
-        args.append(f"esp_host:={esp_host}")
-    return args
-
-
-def _launch_command(payload: dict[str, Any]) -> tuple[str, list[str]]:
-    """Bring the exoskeleton controller up via session manager.
-
-    Launches ONLY ``pgear.launch.py`` (``pgear_device_node`` — the exoskeleton
-    controller). Insole / camera / projector nodes are a separate system and are
-    NOT part of the exoskeleton; launch those directly (CLI) when needed.
-    """
-    return "exo", [
-        'ros2',
-        'launch',
-        'gressus_bringup',
-        'pgear.launch.py',
-        *_exo_launch_args(payload),
-    ]
-
-
 def _runtime_snapshot() -> dict[str, Any]:
-    snap = _MANAGER.snapshot()
-    if _CLINICAL_CONTEXT is not None:
-        clinical = _CLINICAL_CONTEXT.to_snapshot()
-        if clinical is not None:
-            snap["clinicalSession"] = clinical
-    return snap
+    return {
+        "state": "idle",
+        "activeJob": None,
+        "lastExit": None,
+    }
 
 
 class SessionHandler(BaseHTTPRequestHandler):
@@ -148,12 +124,6 @@ class SessionHandler(BaseHTTPRequestHandler):
             _json_response(self, HTTPStatus.BAD_REQUEST, {"ok": False, "error": str(exc)})
             return
 
-        if path == "/session/start":
-            self._handle_start(payload)
-            return
-        if path == "/session/stop":
-            self._handle_stop(payload)
-            return
         if path == "/session/rosbag/start":
             self._handle_rosbag_start(payload)
             return
@@ -212,74 +182,6 @@ class SessionHandler(BaseHTTPRequestHandler):
         status = HTTPStatus.OK if result.get("ok") else HTTPStatus.SERVICE_UNAVAILABLE
         _json_response(self, status, result)
 
-    def _handle_start(self, payload: dict[str, Any]) -> None:
-        global _CLINICAL_CONTEXT
-        try:
-            job, command = _launch_command(payload)
-            clinical = ClinicalSessionContext.from_payload(payload)
-            launch_env = {
-                "QT_QPA_PLATFORM": os.environ.get("QT_QPA_PLATFORM", "xcb"),
-                **clinical.to_env(),
-            }
-            sys.stderr.write(
-                f"[session_manager] start payload={payload}\n"
-                f"[session_manager] start command={' '.join(command)}\n"
-                f"[session_manager] clinical env={clinical.to_env()}\n"
-            )
-            started = _MANAGER.start(
-                name=job,
-                command=command,
-                env=launch_env,
-            )
-            _CLINICAL_CONTEXT = clinical if clinical.to_snapshot() else None
-        except RuntimeError as exc:
-            _json_response(
-                self,
-                HTTPStatus.CONFLICT,
-                {"ok": False, "error": str(exc), "runtime": _runtime_snapshot()},
-            )
-            return
-
-        if not _MANAGER.wait_briefly(0.3):
-            _CLINICAL_CONTEXT = None
-            _json_response(
-                self,
-                HTTPStatus.INTERNAL_SERVER_ERROR,
-                {
-                    "ok": False,
-                    "error": f"{job} exited immediately",
-                    "runtime": _runtime_snapshot(),
-                },
-            )
-            return
-
-        _json_response(
-            self,
-            HTTPStatus.OK,
-            {
-                "ok": True,
-                "started": {
-                    "name": started.name,
-                    "pid": started.pid,
-                    "command": list(started.command),
-                },
-                "clinicalSession": clinical.to_snapshot(),
-                "runtime": _runtime_snapshot(),
-            },
-        )
-
-    def _handle_stop(self, payload: dict[str, Any]) -> None:
-        global _CLINICAL_CONTEXT
-        timeout_s = float(payload.get("timeoutS", 3.0))
-        _ROSBAG.stop(timeout_s=timeout_s)  # never leave a recording behind
-        stopped = _MANAGER.stop(timeout_s=timeout_s)
-        _CLINICAL_CONTEXT = None
-        _json_response(
-            self,
-            HTTPStatus.OK,
-            {"ok": True, "stopped": stopped, "runtime": _runtime_snapshot()},
-        )
-
     def _handle_rosbag_start(self, payload: dict[str, Any]) -> None:
         ctx = ClinicalSessionContext.from_payload(payload)
         if not ctx.session_id:
@@ -335,7 +237,6 @@ def main(args: list[str] | None = None) -> None:
     finally:
         server.shutdown()
         _ROSBAG.stop(timeout_s=2.0)
-        _MANAGER.stop(timeout_s=2.0)
 
 
 if __name__ == "__main__":

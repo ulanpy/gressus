@@ -10,16 +10,12 @@ from pydantic import BaseModel, ValidationError
 from backend.core.configs.config import Config
 from backend.modules.runtime.schemas import (
     CalibrationStatusResponse,
-    ExoStartResponse,
-    ExoStopResponse,
     PgearCommandResponse,
     RosbagResponse,
     SessionPgearLoadProfilePayload,
     SessionPgearCalibrateBaselinePayload,
     SessionRosbagStartPayload,
-    SessionStartPayload,
     SessionStatusResponse,
-    SessionStopPayload,
 )
 
 T = TypeVar("T", bound=BaseModel)
@@ -92,22 +88,6 @@ class SessionManagerClient:
 
     async def get_status(self) -> SessionStatusResponse:
         return await self._request("GET", "/session/status", None, response_model=SessionStatusResponse)
-
-    async def start_exo(self, payload: SessionStartPayload) -> ExoStartResponse:
-        return await self._request(
-            "POST",
-            "/session/start",
-            payload,
-            response_model=ExoStartResponse,
-        )
-
-    async def stop_exo(self, payload: SessionStopPayload) -> ExoStopResponse:
-        return await self._request(
-            "POST",
-            "/session/stop",
-            payload,
-            response_model=ExoStopResponse,
-        )
 
     async def pgear_load_profile(self, payload: SessionPgearLoadProfilePayload) -> PgearCommandResponse:
         return await self._request(

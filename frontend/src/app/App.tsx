@@ -7,7 +7,6 @@ import { I18nContext, useI18n } from '../i18n/context'
 import { translations } from '../i18n/translations'
 import { useGeometry } from '../hooks/useGeometry'
 import { useInsoleFrame } from '../hooks/useInsoleFrame'
-import { useRuntimeControls } from '../hooks/useRuntimeControls'
 import { usePatientSessionWorkflow } from '../hooks/usePatientSessionWorkflow'
 import { useFootDashboard } from '../hooks/useFootDashboard'
 import { useCemrrProgress } from '../hooks/useCemrrProgress'
@@ -30,14 +29,12 @@ function DashboardShell({ language, setLanguage }: DashboardShellProps) {
   const [therapistSection, setTherapistSection] = useState<TherapistSection>('live')
   const [source, setSource] = useState<SourceMode>('mock')
   const [showSensors, setShowSensors] = useState(true)
-  const runtime = useRuntimeControls()
   const workflow = usePatientSessionWorkflow()
   const cemrr = useCemrrProgress()
-  const isStackRunning = runtime.state.state === 'running'
   const livePanelVisible =
     activeView === 'therapist' && therapistSection === 'live'
-  const liveGateOpen = livePanelVisible && (source === 'mock' || isStackRunning)
-  const liveInactive = source === 'live' && !isStackRunning
+  const liveGateOpen = livePanelVisible
+  const liveInactive = false
   const { geometry, setStatus, status } = useGeometry(INSOLE_SIZE)
   const { frame } = useInsoleFrame(source, INSOLE_SIZE, setStatus, liveGateOpen)
   const dashboard = useFootDashboard(geometry, frame)

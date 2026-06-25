@@ -1,4 +1,4 @@
-"""Runtime control — ROS stack lifecycle and P.GEAR exoskeleton commands."""
+"""Runtime control — P.GEAR exoskeleton commands (device must be launched manually)."""
 
 from __future__ import annotations
 
@@ -10,14 +10,10 @@ from backend.common.dependencies import get_runtime_service
 from backend.modules.runtime.schemas import (
     CalibratePgearBaselineRequest,
     CalibrationStatusResponse,
-    ExoStartResponse,
-    ExoStopResponse,
     LoadPgearProfileRequest,
     PgearCommandResponse,
     PgearRunRequest,
     RuntimeSnapshot,
-    StartExoRequest,
-    StopExoRequest,
 )
 from backend.modules.runtime.service import RuntimeService
 
@@ -30,30 +26,6 @@ async def runtime_status(
 ) -> RuntimeSnapshot:
     """Poll whether a ROS stack is running (Control panel, ~1.5 s interval)."""
     return await service.snapshot()
-
-
-@router.post("/exo/start", response_model=ExoStartResponse)
-async def exo_start(
-    payload: StartExoRequest,
-    service: Annotated[RuntimeService, Depends(get_runtime_service)],
-) -> ExoStartResponse:
-    """Bring the exoskeleton controller UP.
-
-    Runs ``ros2 launch gressus_bringup pgear.launch.py`` via session_manager —
-    i.e. ONLY ``pgear_device_node`` (the exoskeleton controller). Until this is up,
-    the ``/pgear/*`` commands have no node to talk to. Insole / camera are a
-    separate system and are not started here.
-    """
-    return await service.start_exo(payload)
-
-
-@router.post("/exo/stop", response_model=ExoStopResponse)
-async def exo_stop(
-    payload: StopExoRequest,
-    service: Annotated[RuntimeService, Depends(get_runtime_service)],
-) -> ExoStopResponse:
-    """Bring the exoskeleton stack DOWN (kills the launch). ``timeoutS`` — grace period."""
-    return await service.stop_exo(payload)
 
 
 @router.post("/pgear/load-profile", response_model=PgearCommandResponse)

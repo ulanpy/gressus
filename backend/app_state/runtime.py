@@ -6,8 +6,7 @@ import httpx
 from fastapi import FastAPI
 
 from backend.core.configs.config import Config
-from backend.modules.runtime.client import SessionManagerClient, SessionManagerError
-from backend.modules.runtime.schemas import SessionStopPayload
+from backend.modules.runtime.client import SessionManagerClient
 
 
 def setup_runtime_manager(app: FastAPI, cfg: Config) -> None:
@@ -22,10 +21,6 @@ def setup_runtime_manager(app: FastAPI, cfg: Config) -> None:
 async def cleanup_runtime_manager(app: FastAPI) -> None:
     session_manager: SessionManagerClient | None = getattr(app.state, "session_manager", None)
     if session_manager is not None:
-        try:
-            await session_manager.stop_exo(SessionStopPayload(timeoutS=2.0))
-        except SessionManagerError:
-            pass
         await session_manager.aclose()
     app.state.session_manager = None
     app.state.runtime_ready = None

@@ -1,7 +1,6 @@
 """Runtime use cases.
 
 One per-request service that ties together:
-- ROS stack lifecycle (start/stop the clinical ``feedback`` launch),
 - P.GEAR device commands (proxied to ``pgear_device_node`` via session_manager),
 - the clinical gait-session coupling: ``run`` opens a DB session, ``stop_gait`` /
   ``disarm`` close it, and ``calibrate_baseline`` merges kind-0 coeffs into it.
@@ -28,17 +27,11 @@ from backend.modules.patients.repository import PatientRepository
 from backend.modules.runtime.client import SessionManagerClient, SessionManagerError
 from backend.modules.runtime.schemas import (
     CalibrationStatusResponse,
-    ExoStartResponse,
-    ExoStopResponse,
     PgearCommandResponse,
     RuntimeSnapshot,
     SessionPgearCalibrateBaselinePayload,
     SessionPgearLoadProfilePayload,
     SessionRosbagStartPayload,
-    SessionStartPayload,
-    SessionStopPayload,
-    StartExoRequest,
-    StopExoRequest,
 )
 from backend.modules.sessions.enums import SessionStatus
 from backend.modules.sessions.models import Session
@@ -83,21 +76,9 @@ class RuntimeService:
         except SessionManagerError as exc:
             raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
 
-    # ------- Exoskeleton stack lifecycle (raise/lower the ROS launch) ---
-
     async def snapshot(self) -> RuntimeSnapshot:
         body = await self._call(self._session_manager.get_status)
         return body.runtime
-
-    async def start_exo(self, cfg: StartExoRequest) -> ExoStartResponse:
-        """Bring the exo controller up (launches only pgear_device_node)."""
-        payload = SessionStartPayload.from_api(cfg)
-        return await self._call(lambda: self._session_manager.start_exo(payload))
-
-    async def stop_exo(self, cfg: StopExoRequest) -> ExoStopResponse:
-        """Tear the exo controller launch down."""
-        payload = SessionStopPayload.from_api(cfg)
-        return await self._call(lambda: self._session_manager.stop_exo(payload))
 
     # ------- P.GEAR commands without DB side effects -------------------
 
