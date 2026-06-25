@@ -508,29 +508,29 @@ function PrimaryAction({
   )
 }
 
-function workflowStateLabel(state: WorkflowState) {
-  if (state === 'estop') return 'E-STOP'
-  if (state === 'error') return 'Error'
-  if (state === 'running') return 'Running'
-  if (state === 'ready') return 'Ready'
-  return 'Not Started'
-}
-
 function ProfileDialog({
+  confirmLabel = 'Подтвердить и загрузить',
+  initialPatientId,
+  initialProfile,
   loading,
   mockMode,
   onClose,
   onConfirm,
   patients,
+  title = 'Начать сессию',
 }: {
+  confirmLabel?: string
+  initialPatientId?: string | null
+  initialProfile?: GaitProfile | null
   loading: boolean
   mockMode: boolean
   onClose: () => void
   onConfirm: (patient: Patient, profile: GaitProfile) => void
   patients: Patient[]
+  title?: string
 }) {
   const availablePatients = mockMode ? mockPatients : patients.length ? patients : fallbackPatients
-  const [patientId, setPatientId] = useState(availablePatients[0]?.id ?? '')
+  const [patientId, setPatientId] = useState(initialPatientId ?? availablePatients[0]?.id ?? '')
   const patient = availablePatients.find((item) => item.id === patientId) ?? availablePatients[0]
   const [lastProfile, setLastProfile] = useState<LatestExoProfile | null>(null)
   const [lastProfileLoading, setLastProfileLoading] = useState(false)
@@ -562,7 +562,11 @@ function ProfileDialog({
 
   // Prefill the editable params from the patient's last session (or defaults).
   useEffect(() => {
-    const parsed = lastProfile ? parseStoredProfile(lastProfile.profileJson) : null
+    const parsedInitial =
+      initialProfile && patient?.id === initialPatientId
+        ? parseStoredProfile(initialProfile.profileJson)
+        : null
+    const parsed = parsedInitial ?? (lastProfile ? parseStoredProfile(lastProfile.profileJson) : null)
     if (parsed) {
       setParams(parsed.params)
       setExtras(parsed.extras)
@@ -572,7 +576,7 @@ function ProfileDialog({
       setExtras({})
       setRunBaseline(true)
     }
-  }, [lastProfile])
+  }, [initialPatientId, initialProfile, lastProfile, patient?.id])
 
   const hasStoredCoeffs = Array.isArray(extras.coeffs) && extras.coeffs.length > 0
 
@@ -601,7 +605,9 @@ function ProfileDialog({
     if (!patient) return
     onConfirm(patient, {
       id: 'exo-profile',
-      name: lastProfile
+      name: initialProfile
+        ? 'Обновлённый профиль'
+        : lastProfile
         ? `Профиль (из сессии #${lastProfile.sessionNumber ?? '—'})`
         : 'Новый профиль',
       description: '',
@@ -613,7 +619,7 @@ function ProfileDialog({
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/45 p-5 backdrop-blur-[2px]">
       <section className="max-h-[88vh] w-full max-w-[620px] overflow-y-auto rounded-3xl border border-slate-200 bg-white p-6 shadow-[0_28px_90px_rgb(15_23_42/0.22)]">
-        <h2 className="m-0 text-[22px] font-extrabold text-slate-950">Начать сессию</h2>
+        <h2 className="m-0 text-[22px] font-extrabold text-slate-950">{title}</h2>
         <p className="mt-2 mb-5 text-sm font-semibold text-slate-500">
           Выберите пациента и параметры экзо-профиля. Профиль будет загружен на контроллер
           при старте.
@@ -697,7 +703,7 @@ function ProfileDialog({
             disabled={loading || lastProfileLoading}
             onClick={handleConfirm}
           >
-            {loading ? 'Загрузка…' : 'Подтвердить и загрузить'}
+            {loading ? 'Загрузка…' : confirmLabel}
           </button>
         </div>
       </section>
@@ -708,6 +714,7 @@ function ProfileDialog({
 function SimplifiedTelemetry({
   activeProfileName,
   mockMode,
+  onEditProfile,
   progress,
   sessionState,
   telemetry,
@@ -715,6 +722,7 @@ function SimplifiedTelemetry({
 }: {
   activeProfileName: string | null
   mockMode: boolean
+  onEditProfile?: () => void
   progress: ProgressStep[]
   sessionState: SessionState
   telemetry: ExoskeletonTelemetryFrame | null
@@ -741,9 +749,9 @@ function SimplifiedTelemetry({
           <h1 className="m-0 text-[22px] font-extrabold tracking-[-0.02em] text-slate-950">
             Live Telemetry
           </h1>
-          <p className="mt-1 mb-0 text-sm font-semibold text-slate-500">
+          {/* <p className="mt-1 mb-0 text-sm font-semibold text-slate-500">
             Clinical view with technical detail hidden.
-          </p>
+          </p> */}
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <span
@@ -811,9 +819,22 @@ function SimplifiedTelemetry({
 
       <div className="mt-4 grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-4 max-[760px]:grid-cols-1">
         <InfoCard label="Active Profile">
-          <div className="text-[20px] font-extrabold text-slate-950">
-            {activeProfileName ?? 'No profile loaded'}
-          </div>
+          {onEditProfile ? (
+            <button
+              type="button"
+              className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-left text-[20px] font-extrabold text-slate-950 transition-[border-color,background] hover:border-cyan-400 hover:bg-cyan-50"
+              onClick={onEditProfile}
+            >
+              <span className="block">{activeProfileName}</span>
+              <span className="mt-1 block text-[11px] font-bold text-cyan-700">
+                Click to edit and reload profile
+              </span>
+            </button>
+          ) : (
+            <div className="text-[20px] font-extrabold text-slate-950">
+              {activeProfileName ?? 'No profile loaded'}
+            </div>
+          )}
         </InfoCard>
         <InfoCard label="Error Message">
           <div className={cn('text-[16px] font-extrabold', error ? 'text-red-600' : 'text-slate-500')}>
@@ -830,6 +851,7 @@ export function ExoskeletonControl() {
   const [patients, setPatients] = useState<Patient[]>([])
   const [patientsLoading, setPatientsLoading] = useState(false)
   const [profileDialogOpen, setProfileDialogOpen] = useState(false)
+  const [profileDialogMode, setProfileDialogMode] = useState<'edit' | 'start'>('start')
   const [activePatient, setActivePatient] = useState<Patient | null>(null)
   const [activeProfile, setActiveProfile] = useState<GaitProfile | null>(null)
   const [baselineDirty, setBaselineDirty] = useState(false)
@@ -895,6 +917,7 @@ export function ExoskeletonControl() {
     setLastError(null)
     setLastResponse(null)
     setProfileDialogOpen(false)
+    setProfileDialogMode('start')
     setMockTelemetry(createMockTelemetry())
   }
 
@@ -915,6 +938,17 @@ export function ExoskeletonControl() {
 
   const updateStep = (id: ProgressStepId, status: StepStatus, detail?: string) => {
     setProgress((current) => setStep(current, id, status, detail))
+  }
+
+  const openStartDialog = () => {
+    setProfileDialogMode('start')
+    setProfileDialogOpen(true)
+  }
+
+  const openEditProfileDialog = () => {
+    if (!activePatient || !activeProfile || busy || workflowState === 'estop') return
+    setProfileDialogMode('edit')
+    setProfileDialogOpen(true)
   }
 
   // Baseline calibration runs async on the device (30-130 s). Poll the latched
@@ -1007,6 +1041,47 @@ export function ExoskeletonControl() {
       updateStep(currentStep, 'error')
       setSessionState('Error')
       setLastError(err instanceof Error ? err.message : 'Session start failed')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const updateActiveProfile = async (patient: Patient, profile: GaitProfile) => {
+    setProfileDialogOpen(false)
+    setBusy(true)
+    setLastError(null)
+    setLastResponse(null)
+    const wasRunning = sessionState === 'Running'
+
+    try {
+      if (mockMode && !wasRunning) setSessionState('Loading Profile')
+      updateStep('profile', 'running', 'Updating profile...')
+      await runPgearCommand('loadProfile', { profileJson: profile.profileJson })
+      updateStep('profile', 'success', 'Profile updated')
+      setActivePatient(patient)
+      setActiveProfile(profile)
+      setBaselineDirty(profile.baselineRequired)
+      setSessionState((current) => {
+        if (wasRunning) return 'Running'
+        return current === 'Loading Profile' ? 'Ready' : current
+      })
+      if (mockMode) {
+        setMockTelemetry((frame) =>
+          createMockTelemetry({
+            ...frame,
+            state: sessionState,
+            ampR: profile.profileJson.includes('amp_r') ? frame.ampR : 0.5,
+            ampL: profile.profileJson.includes('amp_l') ? frame.ampL : 0.5,
+            assistR: 0.5,
+            assistL: 0.5,
+            error: null,
+          }),
+        )
+      }
+    } catch (err) {
+      updateStep('profile', 'error')
+      setSessionState('Error')
+      setLastError(err instanceof Error ? err.message : 'Profile update failed')
     } finally {
       setBusy(false)
     }
@@ -1111,9 +1186,6 @@ export function ExoskeletonControl() {
     }
   }
 
-  const profileSubtitle = activePatient && activeProfile
-    ? `${activePatient.display_name} · ${activeProfile.name}`
-    : 'No profile loaded'
   const workflowState: WorkflowState = telemetry?.estop
     ? 'estop'
     : lastError || sessionState === 'Error'
@@ -1139,7 +1211,7 @@ export function ExoskeletonControl() {
               retryTitle === 'Resolve Error'
                 ? 'Check device connection, then start the session again.'
                 : 'Start the session again.',
-            onClick: () => setProfileDialogOpen(true),
+            onClick: openStartDialog,
             variant: 'primary' as const,
           }
         : workflowState === 'running'
@@ -1154,7 +1226,7 @@ export function ExoskeletonControl() {
               icon: 'play' as IconName,
               title: 'Start Session',
               subtitle: 'Select patient and profile; arm, calibrate and run automatically.',
-              onClick: () => setProfileDialogOpen(true),
+              onClick: openStartDialog,
               variant: 'primary' as const,
             }
 
@@ -1170,11 +1242,11 @@ export function ExoskeletonControl() {
           >
             {mockMode ? 'MOCK MODE' : 'REAL MODE'}
           </span>
-          <span className="text-sm font-semibold text-slate-500">
+          {/* <span className="text-sm font-semibold text-slate-500">
             {mockMode
               ? 'All exoskeleton controls and telemetry are simulated in this browser.'
               : 'Using backend API and live exoskeleton telemetry.'}
-          </span>
+          </span> */}
         </div>
         <div className="inline-flex rounded-full border border-slate-200 bg-slate-100 p-1">
           <button
@@ -1208,11 +1280,11 @@ export function ExoskeletonControl() {
                 <h1 className="m-0 text-[22px] font-extrabold tracking-[-0.02em] text-slate-950">
                   Session Workflow
                 </h1>
-                <p className="mt-2 mb-0 text-sm font-semibold leading-6 text-slate-500">
+                {/* <p className="mt-2 mb-0 text-sm font-semibold leading-6 text-slate-500">
                   One action is shown for the current system state.
-                </p>
+                </p> */}
               </div>
-              <span
+              {/* <span
                 className={cn(
                   'rounded-full px-3 py-2 text-xs font-extrabold',
                   workflowState === 'initial' && 'bg-slate-100 text-slate-600',
@@ -1222,7 +1294,7 @@ export function ExoskeletonControl() {
                 )}
               >
                 {workflowStateLabel(workflowState)}
-              </span>
+              </span> */}
             </div>
 
             {workflowState === 'estop' ? (
@@ -1260,9 +1332,24 @@ export function ExoskeletonControl() {
                   <div className="text-[12px] font-extrabold uppercase text-slate-500">
                     Active profile
                   </div>
-                  <div className="mt-1 text-[15px] font-extrabold text-slate-950">
-                    {activeProfile?.name ?? 'No profile loaded'}
-                  </div>
+                  <button
+                    type="button"
+                    className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-left text-[15px] font-extrabold text-slate-950 shadow-[0_6px_16px_rgb(15_23_42/0.04)] transition-[border-color,background] hover:border-cyan-400 hover:bg-cyan-50 disabled:cursor-not-allowed disabled:opacity-50"
+                    disabled={!activeProfile || busy}
+                    onClick={openEditProfileDialog}
+                  >
+                    <span className="block">{activeProfile?.name ?? 'No profile loaded'}</span>
+                    {activeProfile ? (
+                      <span className="mt-1 block text-[11px] font-bold text-cyan-700">
+                        Click to edit and reload profile
+                      </span>
+                    ) : null}
+                  </button>
+                  {baselineDirty && activeProfile ? (
+                    <div className="mt-2 text-[11px] font-bold text-amber-700">
+                      Profile changed; baseline calibration is required on next start.
+                    </div>
+                  ) : null}
                 </div>
               </div>
             )}
@@ -1285,7 +1372,7 @@ export function ExoskeletonControl() {
               />
             </div>
 
-            <div className="mt-5 rounded-2xl bg-slate-50 p-4">
+            {/* <div className="mt-5 rounded-2xl bg-slate-50 p-4">
               <div className="text-[12px] font-extrabold uppercase text-slate-500">
                 Setup summary
               </div>
@@ -1297,7 +1384,7 @@ export function ExoskeletonControl() {
                   Baseline calibration will run before gait starts.
                 </div>
               ) : null}
-            </div>
+            </div> */}
           </section>
 
           <section className="rounded-3xl border border-red-200 bg-white p-5 shadow-[0_18px_50px_rgb(15_23_42/0.05)]">
@@ -1322,6 +1409,7 @@ export function ExoskeletonControl() {
           <SimplifiedTelemetry
             activeProfileName={activeProfile?.name ?? null}
             mockMode={mockMode}
+            onEditProfile={activeProfile && !busy ? openEditProfileDialog : undefined}
             progress={progress}
             sessionState={sessionState}
             telemetry={telemetry}
@@ -1353,11 +1441,19 @@ export function ExoskeletonControl() {
 
       {profileDialogOpen ? (
         <ProfileDialog
+          confirmLabel={profileDialogMode === 'edit' ? 'Обновить профиль' : 'Подтвердить и загрузить'}
+          initialPatientId={profileDialogMode === 'edit' ? activePatient?.id : null}
+          initialProfile={profileDialogMode === 'edit' ? activeProfile : null}
           loading={patientsLoading || busy}
           mockMode={mockMode}
           patients={patients}
           onClose={() => setProfileDialogOpen(false)}
-          onConfirm={(patient, profile) => void startSession(patient, profile)}
+          onConfirm={(patient, profile) =>
+            void (profileDialogMode === 'edit'
+              ? updateActiveProfile(patient, profile)
+              : startSession(patient, profile))
+          }
+          title={profileDialogMode === 'edit' ? 'Редактировать профиль' : 'Начать сессию'}
         />
       ) : null}
     </div>
