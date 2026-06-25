@@ -13,6 +13,7 @@ import json
 import os
 import sys
 import threading
+import time
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
@@ -23,7 +24,27 @@ from gressus_session.process_manager import LaunchProcessManager
 from gressus_session.session_context import ClinicalSessionContext
 
 _MANAGER = LaunchProcessManager()
+_ROSBAG = LaunchProcessManager()
 _CLINICAL_CONTEXT: ClinicalSessionContext | None = None
+
+
+def _rosbag_target_dir(ctx: ClinicalSessionContext) -> str:
+    """Where to write the bag: ``<data_dir>/rosbag`` (unique if it already exists)."""
+    base = ctx.data_dir or os.path.join(
+        os.environ.get("GRESSUS_ROSBAG_ROOT", "/data/sessions"),
+        ctx.patient_id or "unknown",
+        ctx.session_id or "session",
+    )
+    out = os.path.join(base, "rosbag")
+    if os.path.exists(out):
+        out = f"{out}_{int(time.time())}"
+    return out
+
+
+def _rosbag_command(out_dir: str) -> list[str]:
+    topics = os.environ.get("GRESSUS_ROSBAG_TOPICS", "").split()
+    record_args = topics if topics else ["-a"]
+    return ["ros2", "bag", "record", "-o", out_dir, *record_args]
 
 _PGEAR_ROUTES: dict[str, str] = {
     "/session/pgear/load-profile": "load_profile",
@@ -35,6 +56,7 @@ _PGEAR_ROUTES: dict[str, str] = {
     "/session/pgear/estop-reset": "estop_reset",
     "/session/pgear/full-cal": "full_cal",
     "/session/pgear/calibrate-baseline": "calibrate_baseline",
+    "/session/pgear/cancel-calibrate": "cancel_calibrate",
 }
 
 
@@ -60,76 +82,27 @@ def _read_json(handler: BaseHTTPRequestHandler) -> dict[str, Any]:
     return data
 
 
-def _boolish(value: Any) -> bool:
-    if isinstance(value, bool):
-        return value
-    if isinstance(value, str):
-        return value.lower() in {"1", "true", "yes", "on"}
-    return bool(value)
-
-
-def _pick_launch_file(payload: dict[str, Any]) -> str:
-    if _boolish(payload.get('demo', False)):
-        return 'game.launch.py'
-    if _boolish(payload.get('noInsole', False)):
-        return 'game_camera.launch.py'
-    return 'session.launch.py'
-
-
-def _feedback_launch_args(payload: dict[str, Any]) -> list[str]:
+def _exo_launch_args(payload: dict[str, Any]) -> list[str]:
     esp_host = payload.get('espHost', payload.get('esp_host', ''))
-    args = [
-        f"insole_thresh_kpa:={payload.get('insoleThresholdKpa', 8.0)}",
-    ]
+    args: list[str] = []
     if esp_host is not None and str(esp_host).strip():
         args.append(f"esp_host:={esp_host}")
     return args
 
 
-def _game_launch_args(payload: dict[str, Any]) -> list[str]:
-    demo = _boolish(payload.get('demo', False))
-    no_insole = _boolish(payload.get('noInsole', False)) or demo
-    launch_args = [
-        f"output_rotation:={payload.get('outputRotation', 270)}",
-        f"insole_thresh_kpa:={payload.get('insoleThresholdKpa', 8.0)}",
-        f"speed:={payload.get('speed', 0.35)}",
-        f"step_time_s:={payload.get('stepTimeS', 2.5)}",
-        f"demo:={str(demo).lower()}",
-        f"no_insole:={str(no_insole).lower()}",
-    ]
-    display = payload.get('display')
-    if display is not None:
-        launch_args.append(f'display:={display}')
-    return launch_args
-
-
 def _launch_command(payload: dict[str, Any]) -> tuple[str, list[str]]:
-    job = str(payload.get('job', 'game'))
-    if job == 'calibrate_apriltag':
-        return job, [
-            'ros2',
-            'launch',
-            'gressus_bringup',
-            'calibrate.launch.py',
-            f"output_rotation:={payload.get('outputRotation', 270)}",
-        ]
+    """Bring the exoskeleton controller up via session manager.
 
-    if job == 'feedback':
-        return job, [
-            'ros2',
-            'launch',
-            'gressus_bringup',
-            'feedback.launch.py',
-            *_feedback_launch_args(payload),
-        ]
-
-    launch_file = _pick_launch_file(payload)
-    return job, [
+    Launches ONLY ``pgear.launch.py`` (``pgear_device_node`` — the exoskeleton
+    controller). Insole / camera / projector nodes are a separate system and are
+    NOT part of the exoskeleton; launch those directly (CLI) when needed.
+    """
+    return "exo", [
         'ros2',
         'launch',
         'gressus_bringup',
-        launch_file,
-        *_game_launch_args(payload),
+        'pgear.launch.py',
+        *_exo_launch_args(payload),
     ]
 
 
@@ -153,6 +126,18 @@ class SessionHandler(BaseHTTPRequestHandler):
         if path == "/session/status":
             _json_response(self, HTTPStatus.OK, {"ok": True, "runtime": _runtime_snapshot()})
             return
+        if path == "/session/pgear/calibration-status":
+            try:
+                result = get_pgear_client().calibration_status()
+            except Exception as exc:
+                _json_response(
+                    self,
+                    HTTPStatus.INTERNAL_SERVER_ERROR,
+                    {"ok": False, "error": str(exc)},
+                )
+                return
+            _json_response(self, HTTPStatus.OK, result)
+            return
         _json_response(self, HTTPStatus.NOT_FOUND, {"ok": False, "error": "not found"})
 
     def do_POST(self) -> None:
@@ -168,6 +153,12 @@ class SessionHandler(BaseHTTPRequestHandler):
             return
         if path == "/session/stop":
             self._handle_stop(payload)
+            return
+        if path == "/session/rosbag/start":
+            self._handle_rosbag_start(payload)
+            return
+        if path == "/session/rosbag/stop":
+            self._handle_rosbag_stop(payload)
             return
         pgear_action = _PGEAR_ROUTES.get(path)
         if pgear_action is not None:
@@ -205,6 +196,8 @@ class SessionHandler(BaseHTTPRequestHandler):
             elif action == "calibrate_baseline":
                 duration_s = float(payload.get("durationS", payload.get("duration_s", 0)) or 0)
                 result = client.calibrate_baseline(duration_s=duration_s)
+            elif action == "cancel_calibrate":
+                result = client.cancel_calibrate()
             else:
                 _json_response(self, HTTPStatus.NOT_FOUND, {"ok": False, "error": "unknown action"})
                 return
@@ -278,6 +271,7 @@ class SessionHandler(BaseHTTPRequestHandler):
     def _handle_stop(self, payload: dict[str, Any]) -> None:
         global _CLINICAL_CONTEXT
         timeout_s = float(payload.get("timeoutS", 3.0))
+        _ROSBAG.stop(timeout_s=timeout_s)  # never leave a recording behind
         stopped = _MANAGER.stop(timeout_s=timeout_s)
         _CLINICAL_CONTEXT = None
         _json_response(
@@ -285,6 +279,41 @@ class SessionHandler(BaseHTTPRequestHandler):
             HTTPStatus.OK,
             {"ok": True, "stopped": stopped, "runtime": _runtime_snapshot()},
         )
+
+    def _handle_rosbag_start(self, payload: dict[str, Any]) -> None:
+        ctx = ClinicalSessionContext.from_payload(payload)
+        if not ctx.session_id:
+            _json_response(
+                self, HTTPStatus.BAD_REQUEST, {"ok": False, "error": "sessionId required"}
+            )
+            return
+        out_dir = _rosbag_target_dir(ctx)
+        try:
+            os.makedirs(os.path.dirname(out_dir), exist_ok=True)
+            started = _ROSBAG.start(name=f"rosbag:{ctx.session_id}", command=_rosbag_command(out_dir))
+        except RuntimeError as exc:
+            # A recording is already running (single active bag).
+            _json_response(self, HTTPStatus.CONFLICT, {"ok": False, "error": str(exc)})
+            return
+        except OSError as exc:
+            _json_response(
+                self, HTTPStatus.INTERNAL_SERVER_ERROR, {"ok": False, "error": str(exc)}
+            )
+            return
+
+        if not _ROSBAG.wait_briefly(0.4):
+            _json_response(
+                self,
+                HTTPStatus.INTERNAL_SERVER_ERROR,
+                {"ok": False, "error": "ros2 bag record exited immediately", "dir": out_dir},
+            )
+            return
+        _json_response(self, HTTPStatus.OK, {"ok": True, "dir": out_dir, "pid": started.pid})
+
+    def _handle_rosbag_stop(self, payload: dict[str, Any]) -> None:
+        timeout_s = float(payload.get("timeoutS", 5.0))
+        stopped = _ROSBAG.stop(timeout_s=timeout_s)  # SIGINT → bag closes cleanly
+        _json_response(self, HTTPStatus.OK, {"ok": True, "stopped": stopped})
 
 
 def main(args: list[str] | None = None) -> None:
@@ -305,6 +334,7 @@ def main(args: list[str] | None = None) -> None:
         pass
     finally:
         server.shutdown()
+        _ROSBAG.stop(timeout_s=2.0)
         _MANAGER.stop(timeout_s=2.0)
 
 

@@ -2,45 +2,66 @@
 
 from __future__ import annotations
 
-from typing import Literal
+from typing import Any, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from backend.core.configs.config import config
 
+class StartExoRequest(BaseModel):
+    """Bring the exoskeleton controller UP via session_manager.
 
-class StartStackRequest(BaseModel):
-    """Launch a ROS stack via session_manager (clinical feedback or legacy projector game)."""
+    Runs ``ros2 launch gressus_bringup pgear.launch.py`` — i.e. ONLY
+    ``pgear_device_node`` (the exoskeleton controller: P.GEAR telemetry + control).
+    Insole / camera are a separate (projector) system, not the exoskeleton.
+    Stopping tears that launch down.
+    """
 
-    job: Literal["game", "calibrate_apriltag", "feedback"]
     sessionId: UUID | None = None
     patientId: UUID | None = None
     espHost: str | None = None
-    display: int | None = None
-    outputRotation: Literal[0, 90, 180, 270] = 270
-    insoleThresholdKpa: float = Field(config.INSOLE_THRESHOLD_KPA, ge=0.0)
-    noInsole: bool = False
-    demo: bool = False
-    speed: float = Field(0.35, ge=0.05, le=1.5)
-    stepTimeS: float = Field(2.5, ge=0.2, le=2.8)
 
 
-# Backward-compatible alias for existing frontend routes.
-StartRuntimeRequest = StartStackRequest
-
-
-class StopStackRequest(BaseModel):
+class StopExoRequest(BaseModel):
     timeoutS: float = Field(3.0, ge=0.5, le=15.0)
-
-
-StopRuntimeRequest = StopStackRequest
 
 
 class LoadPgearProfileRequest(BaseModel):
     """P.GEAR exo profile JSON (API.md §7); applied via pgear_device_node load_profile service."""
 
     profileJson: str = Field(min_length=2)
+
+
+class ExoProfile(BaseModel):
+    """Exo profile stored on a session: gait params + kind-0 coeffs (keyed by cps).
+
+    Loose-typed (``extra="allow"``) so it tracks the P.GEAR ``load_profile`` JSON
+    without breaking when the firmware coeff model changes. ``coeffs`` rows are
+    kind 0 only: ``[joint, 0, [a, b, c, d, e]]``.
+    """
+
+    model_config = ConfigDict(extra="allow")
+
+    mode: str | None = None
+    cps: float | None = None
+    amp_r: float | None = None
+    amp_l: float | None = None
+    assist: float | None = None
+    aan: bool | None = None
+    rom: dict[str, list[float]] | None = None
+    enable: dict[str, bool] | None = None
+    coeffs: list[list[Any]] | None = None
+    meta: dict[str, Any] | None = None
+
+
+class PgearRunRequest(BaseModel):
+    """Start assisted gait and open a DB session for the patient.
+
+    ``profileJson`` (if given) is the exo profile to record on the new session.
+    """
+
+    patientId: UUID
+    profileJson: str | None = Field(default=None, min_length=2)
 
 
 class CalibratePgearBaselineRequest(BaseModel):
@@ -62,20 +83,13 @@ class SessionPgearCalibrateBaselinePayload(BaseModel):
 class SessionStartPayload(BaseModel):
     """JSON body for ``POST /session/start`` on session_manager."""
 
-    job: Literal["game", "calibrate_apriltag", "feedback"]
+    job: Literal["exo"] = "exo"
     sessionId: str | None = None
     patientId: str | None = None
     espHost: str | None = None
-    display: int | None = None
-    outputRotation: Literal[0, 90, 180, 270] = 270
-    insoleThresholdKpa: float = Field(config.INSOLE_THRESHOLD_KPA, ge=0.0)
-    noInsole: bool = False
-    demo: bool = False
-    speed: float = Field(0.35, ge=0.05, le=1.5)
-    stepTimeS: float = Field(2.5, ge=0.2, le=2.8)
 
     @classmethod
-    def from_api(cls, req: StartStackRequest) -> SessionStartPayload:
+    def from_api(cls, req: StartExoRequest) -> SessionStartPayload:
         return cls.model_validate(req.model_dump(mode="json", exclude_none=True))
 
 
@@ -85,7 +99,7 @@ class SessionStopPayload(BaseModel):
     timeoutS: float = Field(3.0, ge=0.5, le=15.0)
 
     @classmethod
-    def from_api(cls, req: StopStackRequest) -> SessionStopPayload:
+    def from_api(cls, req: StopExoRequest) -> SessionStopPayload:
         return cls.model_validate(req.model_dump(mode="json"))
 
 
@@ -93,6 +107,25 @@ class SessionPgearLoadProfilePayload(BaseModel):
     """JSON body for ``POST /session/pgear/load-profile`` on session_manager."""
 
     profileJson: str = Field(min_length=2)
+
+
+class SessionRosbagStartPayload(BaseModel):
+    """JSON body for ``POST /session/rosbag/start`` on session_manager."""
+
+    sessionId: str
+    patientId: str | None = None
+
+
+class RosbagResponse(BaseModel):
+    """``POST /session/rosbag/{start,stop}`` response (best-effort recording)."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    ok: bool = False
+    dir: str | None = None
+    pid: int | None = None
+    stopped: bool | None = None
+    error: str | None = None
 
 
 class ClinicalSessionSnapshot(BaseModel):
@@ -150,7 +183,7 @@ class StartedJobSnapshot(BaseModel):
     command: list[str]
 
 
-class StackStartResponse(BaseModel):
+class ExoStartResponse(BaseModel):
     """``POST /session/start`` success body."""
 
     model_config = ConfigDict(extra="ignore")
@@ -161,7 +194,7 @@ class StackStartResponse(BaseModel):
     runtime: RuntimeSnapshot
 
 
-class StackStopResponse(BaseModel):
+class ExoStopResponse(BaseModel):
     """``POST /session/stop`` response body."""
 
     model_config = ConfigDict(extra="ignore")
@@ -172,10 +205,37 @@ class StackStopResponse(BaseModel):
 
 
 class PgearCommandResponse(BaseModel):
-    """P.GEAR device command result (``POST /session/pgear/*``)."""
+    """P.GEAR device command result (``POST /session/pgear/*``).
+
+    ``sessionId`` is set when a command opens/closes a DB session (run/stop).
+    ``coeffs`` carries the kind-0 baseline fit JSON when calibration returns it.
+    """
 
     model_config = ConfigDict(extra="ignore")
 
     ok: bool
     success: bool
     message: str
+    sessionId: UUID | None = None
+    coeffs: str | None = None
+
+
+class CalibrationStatusResponse(BaseModel):
+    """Latest async baseline-calibration status (latched ROS topic, polled).
+
+    ``state`` is one of ``idle | running | done | failed | cancelled``. When
+    ``state == "done"`` the kind-0 fit is in ``coeffs`` and ``sessionId`` points
+    to the open gait session the coeffs were merged into.
+    """
+
+    model_config = ConfigDict(extra="ignore")
+
+    ok: bool = True
+    state: Literal["idle", "running", "done", "failed", "cancelled"] = "idle"
+    message: str = ""
+    elapsedS: float = 0.0
+    remainingS: float = 0.0
+    progress: float = 0.0
+    runId: int | None = None
+    coeffs: str | None = None
+    sessionId: UUID | None = None

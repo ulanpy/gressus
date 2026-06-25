@@ -13,8 +13,6 @@ import {
   type PatientWorkspaceView,
 } from '../components/patients/PatientViewMenu'
 import { SessionHistoryList } from '../components/sessions/SessionHistoryList'
-import { SessionStartModal } from '../components/sessions/SessionStartModal'
-import { IconButton, PlayIcon, StopIcon } from '../components/ui/IconButton'
 import { cn } from '../lib/cn'
 import { container, panel } from '../styles/ui'
 
@@ -28,7 +26,6 @@ function getPhase(workflow: PatientSessionWorkflow): ControlPhase {
 
 function ControlContextBar({ workflow }: { workflow: PatientSessionWorkflow }) {
   const { t } = useI18n()
-  const [startOpen, setStartOpen] = useState(false)
   const [workspaceView, setWorkspaceView] = useState<PatientWorkspaceView>('profile')
 
   useEffect(() => {
@@ -37,80 +34,47 @@ function ControlContextBar({ workflow }: { workflow: PatientSessionWorkflow }) {
 
   if (!workflow.selectedPatient) return null
 
-  const handleStartSession = async (data: Parameters<PatientSessionWorkflow['startSession']>[0]) => {
-    await workflow.startSession(data)
-  }
-
   return (
-    <>
-      <div className={cn(panel, 'relative z-0 w-full rounded-2xl px-5 py-4')}>
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <h2 className="m-0 min-w-0 truncate text-xl font-bold tracking-[-0.02em] text-text-strong">
-            {workflow.selectedPatient.display_name}
-          </h2>
+    <div className={cn(panel, 'relative z-0 w-full rounded-2xl px-5 py-4')}>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h2 className="m-0 min-w-0 truncate text-xl font-bold tracking-[-0.02em] text-text-strong">
+          {workflow.selectedPatient.display_name}
+        </h2>
 
-          <div className="flex flex-wrap items-center gap-2">
-            <PatientProfileActions workflow={workflow}>
-              {!workflow.activeSession ? (
-                <IconButton
-                  label={t.workflow.startSession}
-                  variant="primary"
-                  onClick={() => setStartOpen(true)}
-                  disabled={workflow.pendingAction}
-                >
-                  <PlayIcon />
-                </IconButton>
-              ) : (
-                <IconButton
-                  label={t.workflow.endSession}
-                  variant="danger"
-                  onClick={() => void workflow.endSession('completed')}
-                  disabled={workflow.pendingAction}
-                >
-                  <StopIcon />
-                </IconButton>
-              )}
-            </PatientProfileActions>
-          </div>
-        </div>
-
-        {workflow.activeSession && (
-          <p className="m-0 mt-3 text-sm font-semibold text-brand">
-            {t.workflow.sessionNumber(workflow.activeSession.session_number ?? 0)} ·{' '}
-            {t.workflow.statusActive}
-          </p>
-        )}
-
-        <PatientViewMenu
-          className="mt-3"
-          value={workspaceView}
-          onChange={setWorkspaceView}
-          disabled={workflow.pendingAction}
-        />
-
-        <div className="w-full">
-          {workspaceView === 'profile' && <PatientCard patient={workflow.selectedPatient} />}
-
-          {workspaceView === 'sessions' && (
-            <SessionHistoryList
-              sessions={workflow.sessions}
-              activeSessionId={workflow.activeSession?.id ?? null}
-            />
-          )}
-
-          {workspaceView === 'assessments' && (
-            <AssessmentSection workflow={workflow} embedded />
-          )}
+        <div className="flex flex-wrap items-center gap-2">
+          <PatientProfileActions workflow={workflow} />
         </div>
       </div>
 
-      <SessionStartModal
-        open={startOpen}
-        pending={workflow.pendingAction}
-        onClose={() => setStartOpen(false)}
-        onStart={handleStartSession}
+      {workflow.activeSession && (
+        <p className="m-0 mt-3 text-sm font-semibold text-brand">
+          {t.workflow.sessionNumber(workflow.activeSession.session_number ?? 0)} ·{' '}
+          {t.workflow.statusActive}
+        </p>
+      )}
+
+      <PatientViewMenu
+        className="mt-3"
+        value={workspaceView}
+        onChange={setWorkspaceView}
+        disabled={workflow.pendingAction}
       />
-    </>
+
+      <div className="w-full">
+        {workspaceView === 'profile' && <PatientCard patient={workflow.selectedPatient} />}
+
+        {workspaceView === 'sessions' && (
+          <SessionHistoryList
+            sessions={workflow.sessions}
+            activeSessionId={workflow.activeSession?.id ?? null}
+          />
+        )}
+
+        {workspaceView === 'assessments' && (
+          <AssessmentSection workflow={workflow} embedded />
+        )}
+      </div>
+    </div>
   )
 }
 

@@ -1,4 +1,4 @@
-export type RuntimeJobName = 'game' | 'calibrate_apriltag'
+export type RuntimeJobName = 'exo'
 
 export type RuntimeActiveJob = {
   name: RuntimeJobName
@@ -15,19 +15,4 @@ export type RuntimePayload = {
     code: number | null
     finishedAt: number
   } | null
-}
-
-export type ClinicalRuntimeContext = {
-  sessionId: string
-  patientId: string
-}
-
-export type GameLaunchParams = {
-  display: number | null
-  outputRotation: 0 | 90 | 180 | 270
-  insoleThresholdKpa: number
-  noInsole: boolean
-  demo: boolean
-  speed: number
-  stepTimeS: number
 }

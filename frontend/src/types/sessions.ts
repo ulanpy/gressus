@@ -1,37 +1,27 @@
 export type SessionStatus = 'active' | 'completed' | 'failed' | 'aborted'
 
-/** Normalized session (API `session_id` mapped to `id`). */
+/** Normalized session (API `session_id` mapped to `id`). Mirrors backend `SessionRead`. */
 export type TherapySession = {
   id: string
   patient_id: string
   session_number: number | null
   session_date: string | null
-  session_type: string | null
   status: SessionStatus
-  passive_calibration_done: boolean
-  baseline_force_right: number | null
-  baseline_force_left: number | null
-  sampling_rate_hz: number | null
+  exo_profile: Record<string, unknown> | null
+  started_at: string | null
+  ended_at: string | null
   created_at: string
   updated_at: string
 }
 
 export type SessionCreateBody = {
   session_date?: string | null
-  session_type?: string | null
-  passive_calibration_done?: boolean
-  baseline_force_right?: number | null
-  baseline_force_left?: number | null
-  sampling_rate_hz?: number | null
+  exo_profile?: Record<string, unknown> | null
 }
 
 export type SessionUpdate = {
   session_date?: string | null
-  session_type?: string | null
-  passive_calibration_done?: boolean
-  baseline_force_right?: number | null
-  baseline_force_left?: number | null
-  sampling_rate_hz?: number | null
+  exo_profile?: Record<string, unknown> | null
 }
 
 /** Raw API response shape. */

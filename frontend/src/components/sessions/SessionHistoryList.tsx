@@ -52,12 +52,8 @@ export function SessionHistoryList({ sessions, activeSessionId }: SessionHistory
           </div>
           <div className={sessionCardMeta}>
             {session.session_date && <span>{session.session_date}</span>}
-            {session.session_type && <span>{session.session_type}</span>}
             <span>{formatDateTime(session.created_at, language)}</span>
           </div>
-          {session.passive_calibration_done && (
-            <p className="m-0 mt-1 text-xs text-muted">{t.workflow.passiveCalibrationDone}</p>
-          )}
         </li>
       ))}
     </ul>

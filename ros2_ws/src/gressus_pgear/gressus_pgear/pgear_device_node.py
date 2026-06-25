@@ -4,14 +4,16 @@ from __future__ import annotations
 
 import json
 import threading
+import time
 
 import rclpy
 from rclpy.callback_groups import ReentrantCallbackGroup
 from rclpy.executors import MultiThreadedExecutor
 from rclpy.node import Node
+from rclpy.qos import QoSDurabilityPolicy, QoSHistoryPolicy, QoSProfile
 from std_srvs.srv import Trigger
 
-from gressus_msgs.msg import PgearTelemetry
+from gressus_msgs.msg import PgearCalibrationStatus, PgearTelemetry
 from gressus_msgs.srv import CalibratePgearBaseline, LoadPgearProfile
 from gressus_pgear.baseline_calibration import run_baseline_calibration
 from gressus_pgear.esp32_adapter import Esp32Adapter
@@ -51,12 +53,27 @@ class PgearDeviceNode(Node):
         self._last_cps = 0.36
         self._cal_lock = threading.Lock()
         self._cal_running = False
+        self._cal_cancel = False
+        self._cal_run_id = 0
+        self._cal_thread: threading.Thread | None = None
         self._adapter = Esp32Adapter(esp_host=esp_host)
         self._adapter.start()
         self._telemetry_hub = TelemetryHub()
 
         self._pub = self.create_publisher(PgearTelemetry, topic, 10)
         self.create_timer(1.0 / max(hz, 1.0), self._publish)
+
+        # Latched status so a late subscriber (session_manager) always gets the
+        # latest calibration state.
+        latched_qos = QoSProfile(
+            depth=1,
+            history=QoSHistoryPolicy.KEEP_LAST,
+            durability=QoSDurabilityPolicy.TRANSIENT_LOCAL,
+        )
+        self._cal_status_pub = self.create_publisher(
+            PgearCalibrationStatus, "/exoskeleton/calibration_status", latched_qos
+        )
+        self._publish_cal_status(state="idle", message="no calibration run yet")
 
         self._ws_server: PgearWsServer | None = None
         if serve_ws:
@@ -83,6 +100,9 @@ class PgearDeviceNode(Node):
             "~/calibrate_baseline",
             self._handle_calibrate_baseline,
             callback_group=srv_group,
+        )
+        self.create_service(
+            Trigger, "~/cancel_calibrate", self._handle_cancel_calibrate, callback_group=srv_group
         )
 
         host_label = esp_host or "auto"
@@ -194,39 +214,121 @@ class PgearDeviceNode(Node):
         self.get_logger().info(response.message)
         return response
 
+    def _publish_cal_status(
+        self,
+        *,
+        state: str,
+        message: str = "",
+        elapsed_s: float = 0.0,
+        remaining_s: float = 0.0,
+        progress: float = 0.0,
+        coeffs_json: str = "",
+    ) -> None:
+        msg = PgearCalibrationStatus()
+        msg.state = state
+        msg.message = message
+        msg.elapsed_s = float(elapsed_s)
+        msg.remaining_s = float(remaining_s)
+        msg.progress = float(progress)
+        msg.run_id = int(self._cal_run_id)
+        msg.coeffs_json = coeffs_json
+        self._cal_status_pub.publish(msg)
+
     def _handle_calibrate_baseline(
         self,
         request: CalibratePgearBaseline.Request,
         response: CalibratePgearBaseline.Response,
     ) -> CalibratePgearBaseline.Response:
+        """Start calibration in the background and return immediately.
+
+        Progress and the final result (with coeffs) are published on the latched
+        ``/exoskeleton/calibration_status`` topic — calibration runs 30-130 s, so
+        it cannot block a single request/response.
+        """
         with self._cal_lock:
             if self._cal_running:
                 response.success = False
                 response.message = "calibrate_baseline: already running"
                 return response
             self._cal_running = True
+            self._cal_cancel = False
+            self._cal_run_id += 1
 
         duration_s = float(request.duration_s)
-        self.get_logger().info(
-            f"calibrate_baseline: started (~{duration_s or 30.0:.0f}s, keep ARM+RUN)"
+        self._publish_cal_status(
+            state="running",
+            message="calibration started — keep ARM+RUN",
+            remaining_s=duration_s or 30.0,
         )
+        self._cal_thread = threading.Thread(
+            target=self._run_calibration, args=(duration_s,), name="pgear-cal", daemon=True
+        )
+        self._cal_thread.start()
+        self.get_logger().info(
+            f"calibrate_baseline: started run #{self._cal_run_id} (~{duration_s or 30.0:.0f}s)"
+        )
+        response.success = True
+        response.message = f"started (run_id={self._cal_run_id})"
+        return response
+
+    def _run_calibration(self, duration_s: float) -> None:
+        last_pub = 0.0
+
+        def progress_cb(elapsed: float, remaining: float) -> None:
+            nonlocal last_pub
+            now = time.monotonic()
+            if now - last_pub < 0.5:
+                return
+            last_pub = now
+            total = elapsed + remaining
+            progress = (elapsed / total) if total > 0 else 0.0
+            self._publish_cal_status(
+                state="running",
+                message="calibrating",
+                elapsed_s=elapsed,
+                remaining_s=remaining,
+                progress=min(1.0, max(0.0, progress)),
+            )
+
         try:
-            ok, message = run_baseline_calibration(
+            ok, message, payload = run_baseline_calibration(
                 self._adapter,
                 duration_s=duration_s,
                 stale_after_s=self._stale_after_s,
                 cps=self._last_cps,
+                progress_cb=progress_cb,
+                should_cancel=lambda: self._cal_cancel,
             )
-        finally:
-            with self._cal_lock:
-                self._cal_running = False
+        except Exception as exc:  # never let the worker die silently
+            ok, message, payload = False, f"calibration crashed: {exc}", None
 
-        response.success = ok
-        response.message = message
+        if message == "cancelled":
+            state = "cancelled"
+        elif ok:
+            state = "done"
+        else:
+            state = "failed"
+        coeffs_json = json.dumps(payload) if (ok and payload) else ""
+        self._publish_cal_status(
+            state=state, message=message, progress=1.0 if ok else 0.0, coeffs_json=coeffs_json
+        )
         if ok:
             self.get_logger().info(f"calibrate_baseline: {message}")
         else:
             self.get_logger().warn(f"calibrate_baseline: {message}")
+        with self._cal_lock:
+            self._cal_running = False
+            self._cal_cancel = False
+
+    def _handle_cancel_calibrate(
+        self, _request: Trigger.Request, response: Trigger.Response
+    ) -> Trigger.Response:
+        with self._cal_lock:
+            running = self._cal_running
+            if running:
+                self._cal_cancel = True
+        response.success = True
+        response.message = "cancel requested" if running else "no calibration running"
         return response
 
     def destroy_node(self) -> bool:

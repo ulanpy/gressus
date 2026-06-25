@@ -33,12 +33,11 @@ function DashboardShell({ language, setLanguage }: DashboardShellProps) {
   const runtime = useRuntimeControls()
   const workflow = usePatientSessionWorkflow()
   const cemrr = useCemrrProgress()
-  const isGameRunning =
-    runtime.state.state === 'running' && runtime.state.activeJob?.name === 'game'
+  const isStackRunning = runtime.state.state === 'running'
   const livePanelVisible =
     activeView === 'therapist' && therapistSection === 'live'
-  const liveGateOpen = livePanelVisible && (source === 'mock' || isGameRunning)
-  const liveInactive = source === 'live' && !isGameRunning
+  const liveGateOpen = livePanelVisible && (source === 'mock' || isStackRunning)
+  const liveInactive = source === 'live' && !isStackRunning
   const { geometry, setStatus, status } = useGeometry(INSOLE_SIZE)
   const { frame } = useInsoleFrame(source, INSOLE_SIZE, setStatus, liveGateOpen)
   const dashboard = useFootDashboard(geometry, frame)
@@ -81,17 +80,7 @@ function DashboardShell({ language, setLanguage }: DashboardShellProps) {
         />
       )}
 
-      {activeView === 'control' && (
-        <ControlPage
-          workflow={workflow}
-          runtime={runtime.state}
-          runtimeActionError={runtime.actionError}
-          runtimePending={runtime.pending}
-          startCalibration={runtime.startCalibration}
-          startGame={runtime.startGame}
-          stopRuntime={runtime.stopRuntime}
-        />
-      )}
+      {activeView === 'control' && <ControlPage workflow={workflow} />}
 
       {activeView === 'exoskeleton' && <ExoskeletonControl />}
     </main>

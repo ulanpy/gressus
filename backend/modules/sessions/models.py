@@ -3,23 +3,17 @@
 from __future__ import annotations
 
 import uuid
-from datetime import date
-from decimal import Decimal
+from datetime import date, datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Boolean, Date, Enum as SAEnum, ForeignKey, Integer, Numeric, Text
-from datetime import datetime
-
 from sqlalchemy import (
-    CheckConstraint,
+    Date,
     DateTime,
+    Enum as SAEnum,
     ForeignKey,
-    Index,
     Integer,
-    Text,
-    UniqueConstraint,
 )
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from backend.core.database.base import Base, TimestampMixin
@@ -45,7 +39,6 @@ class Session(Base, TimestampMixin):
         index=True,
     )
     session_date: Mapped[date | None] = mapped_column(Date)
-    session_type: Mapped[str | None] = mapped_column(Text)
     session_number: Mapped[int | None] = mapped_column(Integer)
     status: Mapped[SessionStatus] = mapped_column(
         SAEnum(
@@ -58,11 +51,13 @@ class Session(Base, TimestampMixin):
         default=SessionStatus.ACTIVE,
         server_default=SessionStatus.ACTIVE.value,
     )
-    passive_calibration_done: Mapped[bool] = mapped_column(
-        Boolean, nullable=False, default=False
-    )
-    baseline_force_right: Mapped[Decimal | None] = mapped_column(Numeric(10, 2))
-    baseline_force_left: Mapped[Decimal | None] = mapped_column(Numeric(10, 2))
-    sampling_rate_hz: Mapped[Decimal | None] = mapped_column(Numeric)
+
+    # Exoskeleton profile applied for this session: gait params + kind-0 coeffs
+    # (keyed by cps) + meta. Shape mirrors the P.GEAR ``load_profile`` JSON.
+    exo_profile: Mapped[dict | None] = mapped_column(JSONB)
+
+    # Gait timing for the run tied to this session (rosbag window later).
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     patient: Mapped["Patient"] = relationship(back_populates="sessions")

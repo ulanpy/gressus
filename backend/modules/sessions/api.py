@@ -39,7 +39,7 @@ async def create_session(
 ) -> SessionRead:
     """Open a session (``status=active``, auto ``session_number``).
 
-    Use ``session_id`` + ``patient_id`` in ``POST /api/runtime/stack/start``.
+    Use ``session_id`` + ``patient_id`` in ``POST /api/runtime/exo/start``.
     """
     session_obj = await service.create(patient_id, payload)
     return SessionRead.model_validate(session_obj)

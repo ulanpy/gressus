@@ -9,13 +9,15 @@ from fastapi import APIRouter, Depends
 from backend.common.dependencies import get_runtime_service
 from backend.modules.runtime.schemas import (
     CalibratePgearBaselineRequest,
+    CalibrationStatusResponse,
+    ExoStartResponse,
+    ExoStopResponse,
     LoadPgearProfileRequest,
     PgearCommandResponse,
+    PgearRunRequest,
     RuntimeSnapshot,
-    StackStartResponse,
-    StackStopResponse,
-    StartStackRequest,
-    StopStackRequest,
+    StartExoRequest,
+    StopExoRequest,
 )
 from backend.modules.runtime.service import RuntimeService
 
@@ -30,44 +32,28 @@ async def runtime_status(
     return await service.snapshot()
 
 
-@router.post("/stack/start", response_model=StackStartResponse)
-async def stack_start(
-    payload: StartStackRequest,
+@router.post("/exo/start", response_model=ExoStartResponse)
+async def exo_start(
+    payload: StartExoRequest,
     service: Annotated[RuntimeService, Depends(get_runtime_service)],
-) -> StackStartResponse:
-    """Launch a ROS stack.
+) -> ExoStartResponse:
+    """Bring the exoskeleton controller UP.
 
-    ``job``: ``feedback`` (clinical), ``game`` (projector tiles), or ``calibrate_apriltag``.
-    Pass ``sessionId`` + ``patientId`` to tie the run to a DB session and ROS data dir.
+    Runs ``ros2 launch gressus_bringup pgear.launch.py`` via session_manager —
+    i.e. ONLY ``pgear_device_node`` (the exoskeleton controller). Until this is up,
+    the ``/pgear/*`` commands have no node to talk to. Insole / camera are a
+    separate system and are not started here.
     """
-    return await service.start_stack(payload)
+    return await service.start_exo(payload)
 
 
-@router.post("/stack/stop", response_model=StackStopResponse)
-async def stack_stop(
-    payload: StopStackRequest,
+@router.post("/exo/stop", response_model=ExoStopResponse)
+async def exo_stop(
+    payload: StopExoRequest,
     service: Annotated[RuntimeService, Depends(get_runtime_service)],
-) -> StackStopResponse:
-    """Stop the active launch job. ``timeoutS`` — grace period before force kill."""
-    return await service.stop_stack(payload)
-
-
-@router.post("/start", response_model=StackStartResponse)
-async def runtime_start_legacy(
-    payload: StartStackRequest,
-    service: Annotated[RuntimeService, Depends(get_runtime_service)],
-) -> StackStartResponse:
-    """Same as ``POST /stack/start`` — kept for existing Control UI."""
-    return await service.start_stack(payload)
-
-
-@router.post("/stop", response_model=StackStopResponse)
-async def runtime_stop_legacy(
-    payload: StopStackRequest,
-    service: Annotated[RuntimeService, Depends(get_runtime_service)],
-) -> StackStopResponse:
-    """Same as ``POST /stack/stop`` — kept for existing Control UI."""
-    return await service.stop_stack(payload)
+) -> ExoStopResponse:
+    """Bring the exoskeleton stack DOWN (kills the launch). ``timeoutS`` — grace period."""
+    return await service.stop_exo(payload)
 
 
 @router.post("/pgear/load-profile", response_model=PgearCommandResponse)
@@ -91,23 +77,27 @@ async def pgear_arm(
 async def pgear_disarm(
     service: Annotated[RuntimeService, Depends(get_runtime_service)],
 ) -> PgearCommandResponse:
-    """Disable motors, safe idle."""
+    """Disable motors, safe idle. Closes the open gait session if any."""
     return await service.pgear_disarm()
 
 
 @router.post("/pgear/run", response_model=PgearCommandResponse)
 async def pgear_run(
+    payload: PgearRunRequest,
     service: Annotated[RuntimeService, Depends(get_runtime_service)],
 ) -> PgearCommandResponse:
-    """Start assisted gait."""
-    return await service.pgear_run()
+    """Start assisted gait and open a DB session for ``patientId``.
+
+    Optional ``profileJson`` is recorded on the new session as ``exo_profile``.
+    """
+    return await service.pgear_run(payload.patientId, payload.profileJson)
 
 
 @router.post("/pgear/stop-gait", response_model=PgearCommandResponse)
 async def pgear_stop_gait(
     service: Annotated[RuntimeService, Depends(get_runtime_service)],
 ) -> PgearCommandResponse:
-    """Stop gait, stay armed."""
+    """Stop gait, stay armed. Closes the open gait session if any."""
     return await service.pgear_stop_gait()
 
 
@@ -140,5 +130,29 @@ async def pgear_calibrate_baseline(
     payload: CalibratePgearBaselineRequest,
     service: Annotated[RuntimeService, Depends(get_runtime_service)],
 ) -> PgearCommandResponse:
-    """Fit empty-exo iq baselines (~30 s). Call after ``arm`` + ``run`` (gait_phase=2)."""
+    """Kick off the empty-exo baseline fit (~30 s). Returns immediately (``started``).
+
+    Calibration runs async on the device — poll ``GET /pgear/calibration-status``
+    for progress and the final kind-0 coeffs. Call after ``arm`` + ``run`` (gait_phase=2).
+    """
     return await service.pgear_calibrate_baseline(payload.durationS)
+
+
+@router.get("/pgear/calibration-status", response_model=CalibrationStatusResponse)
+async def pgear_calibration_status(
+    service: Annotated[RuntimeService, Depends(get_runtime_service)],
+) -> CalibrationStatusResponse:
+    """Poll async baseline calibration (~1 s interval).
+
+    On ``state=="done"`` the kind-0 coeffs are merged into the open gait session
+    and ``sessionId`` is returned.
+    """
+    return await service.calibration_status()
+
+
+@router.post("/pgear/cancel-calibrate", response_model=PgearCommandResponse)
+async def pgear_cancel_calibrate(
+    service: Annotated[RuntimeService, Depends(get_runtime_service)],
+) -> PgearCommandResponse:
+    """Request cancellation of an in-progress baseline calibration."""
+    return await service.pgear_cancel_calibrate()

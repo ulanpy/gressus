@@ -1,7 +1,9 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { useExoskeletonTelemetry } from '../hooks/useExoskeletonTelemetry'
 import { listPatients } from '../lib/api/patients'
+import { getLatestExoProfile, type LatestExoProfile } from '../lib/api/sessions'
 import {
+  getCalibrationStatus,
   postPgearCommand,
   type PgearCommandKey,
   type PgearCommandResponse,
@@ -47,12 +49,53 @@ type GaitProfile = {
   baselineRequired: boolean
 }
 
-type AdvancedControl = {
-  command: PgearCommandKey
-  title: string
-  subtitle: string
-  icon: IconName
-  danger?: boolean
+/** Editable exo-profile parameters shown before starting a session. */
+type ExoParams = {
+  cps: number
+  amp_r: number
+  amp_l: number
+  assist: number
+}
+
+const DEFAULT_EXO_PARAMS: ExoParams = { cps: 0.36, amp_r: 0.5, amp_l: 0.5, assist: 0.5 }
+
+const EXO_PARAM_FIELDS: { key: keyof ExoParams; label: string; step: number }[] = [
+  { key: 'cps', label: 'CPS (скорость)', step: 0.01 },
+  { key: 'assist', label: 'Assist', step: 0.05 },
+  { key: 'amp_r', label: 'Amplitude R', step: 0.05 },
+  { key: 'amp_l', label: 'Amplitude L', step: 0.05 },
+]
+
+function toNumber(value: unknown, fallback: number): number {
+  const n = typeof value === 'number' ? value : Number(value)
+  return Number.isFinite(n) ? n : fallback
+}
+
+/** Parse a stored exo_profile JSON into editable params + carried-over extras. */
+function parseStoredProfile(profileJson: string): {
+  params: ExoParams
+  extras: Record<string, unknown>
+  hasCoeffs: boolean
+} | null {
+  try {
+    const parsed = JSON.parse(profileJson) as Record<string, unknown>
+    const inner =
+      parsed.profile && typeof parsed.profile === 'object'
+        ? (parsed.profile as Record<string, unknown>)
+        : parsed
+    return {
+      params: {
+        cps: toNumber(inner.cps, DEFAULT_EXO_PARAMS.cps),
+        amp_r: toNumber(inner.amp_r, DEFAULT_EXO_PARAMS.amp_r),
+        amp_l: toNumber(inner.amp_l, DEFAULT_EXO_PARAMS.amp_l),
+        assist: toNumber(inner.assist, DEFAULT_EXO_PARAMS.assist),
+      },
+      extras: inner,
+      hasCoeffs: Array.isArray(inner.coeffs) && inner.coeffs.length > 0,
+    }
+  } catch {
+    return null
+  }
 }
 
 type IconName =
@@ -110,40 +153,6 @@ const mockPatients: Patient[] = ['Patient A', 'Patient B', 'Patient C'].map((nam
   archived_at: null,
 }))
 
-const mockAdvancedControls: AdvancedControl[] = [
-  {
-    command: 'disarm',
-    title: 'Disarm',
-    subtitle: 'Disable motors and go idle',
-    icon: 'unlock',
-  },
-  {
-    command: 'stopGait',
-    title: 'Stop Gait',
-    subtitle: 'Stop assisted gait',
-    icon: 'stop',
-  },
-  {
-    command: 'estop',
-    title: 'E-STOP',
-    subtitle: 'Emergency stop immediately',
-    icon: 'alert',
-    danger: true,
-  },
-  {
-    command: 'estopReset',
-    title: 'E-STOP Reset',
-    subtitle: 'Reset emergency stop state',
-    icon: 'refresh',
-  },
-  {
-    command: 'fullCal',
-    title: 'Full Calibration',
-    subtitle: 'Full calibration of motors/encoders',
-    icon: 'gear',
-  },
-]
-
 const initialProgress: ProgressStep[] = [
   { id: 'arm', label: 'Arm complete', status: 'idle' },
   { id: 'profile', label: 'Profile loaded', status: 'idle' },
@@ -153,94 +162,6 @@ const initialProgress: ProgressStep[] = [
   { id: 'running', label: 'Session running', status: 'idle' },
   { id: 'stopped', label: 'Session stopped', status: 'idle' },
 ]
-
-function profilesForPatient(patient: Patient | null, mockMode = false): GaitProfile[] {
-  const patientName = patient?.display_name ?? 'Demo Patient'
-  if (mockMode) {
-    return [
-      {
-        id: 'mock-standard',
-        name: 'Standard Gait Training',
-        description: 'Balanced assistance for routine visual testing.',
-        baselineRequired: false,
-        profileJson: JSON.stringify({ patient_name: patientName, profile: 'mock_standard' }, null, 2),
-      },
-      {
-        id: 'mock-slow',
-        name: 'Slow Assisted Gait',
-        description: 'Slower mock setup that requires baseline calibration.',
-        baselineRequired: true,
-        profileJson: JSON.stringify({ patient_name: patientName, profile: 'mock_slow_assist' }, null, 2),
-      },
-      {
-        id: 'mock-high-assist',
-        name: 'High Assistance Mode',
-        description: 'High-assist mock profile for gauge and state testing.',
-        baselineRequired: true,
-        profileJson: JSON.stringify({ patient_name: patientName, profile: 'mock_high_assist' }, null, 2),
-      },
-    ]
-  }
-  return [
-    {
-      id: 'standard',
-      name: 'Standard Assist',
-      description: 'Balanced bilateral assistance for routine gait training.',
-      baselineRequired: false,
-      profileJson: JSON.stringify(
-        {
-          patient_id: patient?.id ?? 'demo-patient',
-          patient_name: patientName,
-          profile: 'standard_assist',
-          assist_r: 0.5,
-          assist_l: 0.5,
-          amp_r: 0.5,
-          amp_l: 0.5,
-        },
-        null,
-        2,
-      ),
-    },
-    {
-      id: 'right-support',
-      name: 'Right Support',
-      description: 'Higher right-side assistance; baseline calibration recommended.',
-      baselineRequired: true,
-      profileJson: JSON.stringify(
-        {
-          patient_id: patient?.id ?? 'demo-patient',
-          patient_name: patientName,
-          profile: 'right_support',
-          assist_r: 0.65,
-          assist_l: 0.45,
-          amp_r: 0.55,
-          amp_l: 0.45,
-        },
-        null,
-        2,
-      ),
-    },
-    {
-      id: 'low-amplitude',
-      name: 'Low Amplitude',
-      description: 'Reduced amplitude profile for early warm-up or cautious starts.',
-      baselineRequired: true,
-      profileJson: JSON.stringify(
-        {
-          patient_id: patient?.id ?? 'demo-patient',
-          patient_name: patientName,
-          profile: 'low_amplitude',
-          assist_r: 0.45,
-          assist_l: 0.45,
-          amp_r: 0.35,
-          amp_l: 0.35,
-        },
-        null,
-        2,
-      ),
-    },
-  ]
-}
 
 function sleep(ms: number) {
   return new Promise((resolve) => window.setTimeout(resolve, ms))
@@ -595,42 +516,6 @@ function workflowStateLabel(state: WorkflowState) {
   return 'Not Started'
 }
 
-function MockAdvancedControlCard({
-  control,
-  disabled,
-  mockMode,
-  onClick,
-  pending,
-}: {
-  control: AdvancedControl
-  disabled: boolean
-  mockMode: boolean
-  onClick: () => void
-  pending: boolean
-}) {
-  return (
-    <button
-      type="button"
-      className={cn(
-        'grid min-h-[104px] content-center justify-items-center gap-2 rounded-xl border bg-white px-2.5 py-3 text-center shadow-[0_12px_28px_rgb(15_23_42/0.04)] transition-transform hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-50',
-        mockMode ? 'border-amber-200' : 'border-slate-200',
-        control.danger && 'border-red-600 bg-red-600 text-white',
-      )}
-      disabled={disabled}
-      onClick={onClick}
-    >
-      <Icon
-        name={control.icon}
-        className={cn('h-7 w-7', control.danger ? 'text-white' : 'text-slate-900')}
-      />
-      <strong className="text-[12px] leading-4">{control.title}</strong>
-      <span className={cn('max-w-[96px] text-[10px] font-semibold leading-4', control.danger ? 'text-white/90' : 'text-slate-500')}>
-        {pending ? 'Sending...' : control.subtitle}
-      </span>
-    </button>
-  )
-}
-
 function ProfileDialog({
   loading,
   mockMode,
@@ -647,25 +532,96 @@ function ProfileDialog({
   const availablePatients = mockMode ? mockPatients : patients.length ? patients : fallbackPatients
   const [patientId, setPatientId] = useState(availablePatients[0]?.id ?? '')
   const patient = availablePatients.find((item) => item.id === patientId) ?? availablePatients[0]
-  const profiles = useMemo(() => profilesForPatient(patient, mockMode), [patient, mockMode])
-  const [profileId, setProfileId] = useState(profiles[0]?.id ?? '')
-  const profile = profiles.find((item) => item.id === profileId) ?? profiles[0]
+  const [lastProfile, setLastProfile] = useState<LatestExoProfile | null>(null)
+  const [lastProfileLoading, setLastProfileLoading] = useState(false)
+  const [params, setParams] = useState<ExoParams>(DEFAULT_EXO_PARAMS)
+  const [extras, setExtras] = useState<Record<string, unknown>>({})
+  const [runBaseline, setRunBaseline] = useState(true)
 
   useEffect(() => {
-    setProfileId(profiles[0]?.id ?? '')
-  }, [profiles])
+    if (mockMode || !patient) {
+      setLastProfile(null)
+      return
+    }
+    let cancelled = false
+    setLastProfileLoading(true)
+    getLatestExoProfile(patient.id)
+      .then((found) => {
+        if (!cancelled) setLastProfile(found)
+      })
+      .catch(() => {
+        if (!cancelled) setLastProfile(null)
+      })
+      .finally(() => {
+        if (!cancelled) setLastProfileLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [patient?.id, mockMode])
+
+  // Prefill the editable params from the patient's last session (or defaults).
+  useEffect(() => {
+    const parsed = lastProfile ? parseStoredProfile(lastProfile.profileJson) : null
+    if (parsed) {
+      setParams(parsed.params)
+      setExtras(parsed.extras)
+      setRunBaseline(!parsed.hasCoeffs)
+    } else {
+      setParams(DEFAULT_EXO_PARAMS)
+      setExtras({})
+      setRunBaseline(true)
+    }
+  }, [lastProfile])
+
+  const hasStoredCoeffs = Array.isArray(extras.coeffs) && extras.coeffs.length > 0
+
+  const buildProfileJson = (): string => {
+    const { coeffs: _coeffs, meta: _meta, ...carry } = extras
+    const profile: Record<string, unknown> = {
+      ...carry,
+      patient_id: patient?.id,
+      patient_name: patient?.display_name,
+      cps: params.cps,
+      amp_r: params.amp_r,
+      amp_l: params.amp_l,
+      assist: params.assist,
+    }
+    // Keep previous baseline coeffs only if we are NOT re-running calibration.
+    if (!runBaseline && hasStoredCoeffs) {
+      profile.coeffs = extras.coeffs
+    }
+    return JSON.stringify(profile, null, 2)
+  }
+
+  const setParam = (key: keyof ExoParams) => (event: { target: { value: string } }) =>
+    setParams((prev) => ({ ...prev, [key]: toNumber(event.target.value, prev[key]) }))
+
+  const handleConfirm = () => {
+    if (!patient) return
+    onConfirm(patient, {
+      id: 'exo-profile',
+      name: lastProfile
+        ? `Профиль (из сессии #${lastProfile.sessionNumber ?? '—'})`
+        : 'Новый профиль',
+      description: '',
+      baselineRequired: runBaseline,
+      profileJson: buildProfileJson(),
+    })
+  }
 
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/45 p-5 backdrop-blur-[2px]">
-      <section className="w-full max-w-[620px] rounded-3xl border border-slate-200 bg-white p-6 shadow-[0_28px_90px_rgb(15_23_42/0.22)]">
-        <h2 className="m-0 text-[22px] font-extrabold text-slate-950">Start Session</h2>
+      <section className="max-h-[88vh] w-full max-w-[620px] overflow-y-auto rounded-3xl border border-slate-200 bg-white p-6 shadow-[0_28px_90px_rgb(15_23_42/0.22)]">
+        <h2 className="m-0 text-[22px] font-extrabold text-slate-950">Начать сессию</h2>
         <p className="mt-2 mb-5 text-sm font-semibold text-slate-500">
-          Select the patient and gait profile. The system will arm and load automatically.
+          Выберите пациента и параметры экзо-профиля. Профиль будет загружен на контроллер
+          при старте.
         </p>
 
         <div className="grid gap-4">
           <label className="grid gap-2">
-            <span className="text-sm font-extrabold text-slate-700">Patient</span>
+            <span className="text-sm font-extrabold text-slate-700">Пациент</span>
             <select
               className="ui-select"
               value={patientId}
@@ -679,30 +635,52 @@ function ProfileDialog({
             </select>
           </label>
 
-          <label className="grid gap-2">
-            <span className="text-sm font-extrabold text-slate-700">Gait profile</span>
-            <select
-              className="ui-select"
-              value={profileId}
-              onChange={(event) => setProfileId(event.target.value)}
-            >
-              {profiles.map((item) => (
-                <option key={item.id} value={item.id}>
-                  {item.name}
-                </option>
-              ))}
-            </select>
+          <div className="rounded-2xl bg-slate-50 p-3 text-sm font-semibold leading-6 text-slate-600">
+            {lastProfileLoading
+              ? 'Загрузка профиля прошлой сессии…'
+              : lastProfile
+                ? `Параметры предзаполнены из сессии #${lastProfile.sessionNumber ?? '—'}${
+                    lastProfile.sessionDate ? ` (${lastProfile.sessionDate})` : ''
+                  }.${hasStoredCoeffs ? ' Baseline-коэффициенты сохранены.' : ''}`
+                : 'Прошлых профилей нет — значения по умолчанию.'}
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            {EXO_PARAM_FIELDS.map((field) => (
+              <label key={field.key} className="grid gap-1">
+                <span className="text-xs font-extrabold text-slate-600">{field.label}</span>
+                <input
+                  type="number"
+                  step={field.step}
+                  className="rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-900"
+                  value={params[field.key]}
+                  onChange={setParam(field.key)}
+                />
+              </label>
+            ))}
+          </div>
+
+          <label className="flex items-start gap-2 text-sm font-semibold text-slate-700">
+            <input
+              type="checkbox"
+              className="mt-1"
+              checked={runBaseline}
+              onChange={(event) => setRunBaseline(event.target.checked)}
+            />
+            <span>
+              Запустить baseline-калибровку перед стартом
+              {hasStoredCoeffs ? ' (иначе использовать сохранённые коэффициенты)' : ''}
+            </span>
           </label>
 
-          <div className="rounded-2xl bg-slate-50 p-4 text-sm font-semibold leading-6 text-slate-600">
-            <strong className="block text-slate-950">{profile.name}</strong>
-            {profile.description}
-            {profile.baselineRequired ? (
-              <span className="mt-2 block text-amber-700">
-                Baseline calibration will run before the next session.
-              </span>
-            ) : null}
-          </div>
+          <details className="rounded-2xl bg-slate-50 p-3">
+            <summary className="cursor-pointer text-xs font-extrabold text-slate-600">
+              Exo profile JSON
+            </summary>
+            <pre className="mt-2 max-h-48 overflow-auto text-xs leading-5 text-slate-700">
+              {buildProfileJson()}
+            </pre>
+          </details>
         </div>
 
         <div className="mt-6 flex justify-end gap-3">
@@ -711,15 +689,15 @@ function ProfileDialog({
             className="rounded-full border border-slate-200 bg-white px-5 py-3 text-sm font-extrabold text-slate-700"
             onClick={onClose}
           >
-            Cancel
+            Отмена
           </button>
           <button
             type="button"
             className="rounded-full border border-slate-950 bg-slate-950 px-5 py-3 text-sm font-extrabold text-white disabled:opacity-45"
-            disabled={loading}
-            onClick={() => onConfirm(patient, profile)}
+            disabled={loading || lastProfileLoading}
+            onClick={handleConfirm}
           >
-            {loading ? 'Loading...' : 'Confirm and Load'}
+            {loading ? 'Загрузка…' : 'Подтвердить и загрузить'}
           </button>
         </div>
       </section>
@@ -858,10 +836,8 @@ export function ExoskeletonControl() {
   const [progress, setProgress] = useState<ProgressStep[]>(initialProgress)
   const [sessionState, setSessionState] = useState<SessionState>('Idle')
   const [busy, setBusy] = useState(false)
-  const [lastResponse, setLastResponse] = useState<PgearCommandResponse | null>(null)
+  const [, setLastResponse] = useState<PgearCommandResponse | null>(null)
   const [lastError, setLastError] = useState<string | null>(null)
-  const [lastWorkflowAction, setLastWorkflowAction] = useState<'run' | 'start'>('start')
-  const [pendingAdvanced, setPendingAdvanced] = useState<PgearCommandKey | null>(null)
   const [mockTelemetry, setMockTelemetry] = useState<ExoskeletonTelemetryFrame>(() => createMockTelemetry())
   const { frame: realTelemetry, status: realWsStatus } = useExoskeletonTelemetry(!mockMode)
   const telemetry = mockMode ? mockTelemetry : realTelemetry
@@ -918,8 +894,6 @@ export function ExoskeletonControl() {
     setBusy(false)
     setLastError(null)
     setLastResponse(null)
-    setLastWorkflowAction('start')
-    setPendingAdvanced(null)
     setProfileDialogOpen(false)
     setMockTelemetry(createMockTelemetry())
   }
@@ -943,15 +917,39 @@ export function ExoskeletonControl() {
     setProgress((current) => setStep(current, id, status, detail))
   }
 
-  const loadSelectedProfile = async (patient: Patient, profile: GaitProfile) => {
+  // Baseline calibration runs async on the device (30-130 s). Poll the latched
+  // status until it reaches a terminal state.
+  const waitForCalibration = async () => {
+    const deadline = Date.now() + 180_000
+    for (;;) {
+      await sleep(1000)
+      const status = await getCalibrationStatus()
+      updateStep(
+        'baseline',
+        'running',
+        `Calibrating baseline… ${Math.round((status.progress ?? 0) * 100)}%`,
+      )
+      if (status.state === 'done') return status
+      if (status.state === 'failed' || status.state === 'cancelled') {
+        throw new Error(status.message || `calibration ${status.state}`)
+      }
+      if (Date.now() > deadline) throw new Error('Baseline calibration timed out')
+    }
+  }
+
+  // Single "Start" = arm → load profile → validate → (baseline) → run gait.
+  // "Stop" = stop-gait → disarm. Arm/disarm are internal and not exposed in the UI.
+  const startSession = async (patient: Patient, profile: GaitProfile) => {
     setProfileDialogOpen(false)
     setBusy(true)
     setLastError(null)
     setLastResponse(null)
     setSessionState('Idle')
     setProgress(initialProgress)
+    setActivePatient(patient)
+    setActiveProfile(profile)
+    setBaselineDirty(profile.baselineRequired)
     let currentStep: ProgressStepId = 'arm'
-    setLastWorkflowAction('start')
 
     try {
       currentStep = 'arm'
@@ -974,71 +972,21 @@ export function ExoskeletonControl() {
       if (mockMode) await sleep(300)
       updateStep('configuration', 'success', 'Configuration valid')
 
-      setActivePatient(patient)
-      setActiveProfile(profile)
-      setBaselineDirty(profile.baselineRequired)
-      setSessionState('Ready')
-      if (mockMode) {
-        setMockTelemetry((frame) =>
-          createMockTelemetry({
-            ...frame,
-            state: 'Ready',
-            profileSlot: 0,
-            connected: true,
-            error: null,
-          }),
-        )
-      }
-    } catch (err) {
-      updateStep(currentStep, 'error')
-      setSessionState('Error')
-      setLastError(err instanceof Error ? err.message : 'Profile load failed')
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  const runSession = async () => {
-    setBusy(true)
-    setLastError(null)
-    setLastResponse(null)
-    let currentStep: ProgressStepId = 'configuration'
-    setLastWorkflowAction('run')
-    setProgress((current) =>
-      current.map((step) =>
-        ['configuration', 'baseline', 'gait', 'running', 'stopped'].includes(step.id)
-          ? { ...step, status: 'idle', detail: undefined }
-          : step,
-      ),
-    )
-
-    try {
-      if (!activeProfile) {
-        throw new Error('Load a patient profile before running the session.')
-      }
-
-      currentStep = 'configuration'
-      updateStep('configuration', 'running', 'Checking configuration...')
-      if (telemetry?.connected === false) {
-        throw new Error('Device is not connected.')
-      }
-      if (mockMode) await sleep(250)
-      updateStep('configuration', 'success', 'Configuration ready')
-
-      if (baselineDirty) {
+      if (profile.baselineRequired) {
         currentStep = 'baseline'
         if (mockMode) setSessionState('Calibrating')
         updateStep('baseline', 'running', 'Calibrating baseline...')
         await runPgearCommand('calibrateBaseline', { durationS: 0 })
+        if (!mockMode) await waitForCalibration()
         updateStep('baseline', 'success', 'Baseline calibrated')
-        setBaselineDirty(false)
       } else {
         updateStep('baseline', 'success', 'Baseline already valid')
       }
+      setBaselineDirty(false)
 
       currentStep = 'gait'
       updateStep('gait', 'running', 'Starting gait...')
-      await runPgearCommand('run')
+      await runPgearCommand('run', { patientId: patient.id, profileJson: profile.profileJson })
       updateStep('gait', 'success', 'Gait started')
       updateStep('running', 'success', 'Session running')
       setSessionState('Running')
@@ -1050,6 +998,7 @@ export function ExoskeletonControl() {
             running: true,
             gaitPhase: 2,
             gaitPhaseName: 'GAIT',
+            connected: true,
             error: null,
           }),
         )
@@ -1072,13 +1021,17 @@ export function ExoskeletonControl() {
       if (mockMode) setSessionState('Stopping')
       updateStep('stopped', 'running', 'Stopping session...')
       await runPgearCommand('stopGait')
+      await runPgearCommand('disarm')
       updateStep('stopped', 'success', 'Session stopped')
-      setSessionState(activeProfile ? 'Ready' : 'Idle')
+      setSessionState('Idle')
+      setActivePatient(null)
+      setActiveProfile(null)
+      setBaselineDirty(false)
       if (mockMode) {
         setMockTelemetry((frame) =>
           createMockTelemetry({
             ...frame,
-            state: activeProfile ? 'Ready' : 'Idle',
+            state: 'Idle',
             running: false,
             gaitPhase: 0,
             gaitPhaseName: 'IDLE',
@@ -1103,12 +1056,16 @@ export function ExoskeletonControl() {
       updateStep('configuration', 'running', 'Resetting E-STOP...')
       await runPgearCommand('estopReset')
       updateStep('configuration', 'success', 'E-STOP reset')
-      setSessionState(activeProfile ? 'Ready' : 'Idle')
+      setSessionState('Idle')
+      setActivePatient(null)
+      setActiveProfile(null)
+      setBaselineDirty(false)
+      setProgress(initialProgress)
       if (mockMode) {
         setMockTelemetry((frame) =>
           createMockTelemetry({
             ...frame,
-            state: activeProfile ? 'Ready' : 'Idle',
+            state: 'Idle',
             estop: false,
             running: false,
             error: null,
@@ -1125,15 +1082,16 @@ export function ExoskeletonControl() {
     }
   }
 
-  const runMockAdvancedControl = async (command: PgearCommandKey) => {
-    if (!mockMode) return
-    setPendingAdvanced(command)
+  // Safety-critical: always reachable while a session is active.
+  const triggerEstop = async () => {
+    setBusy(true)
     setLastError(null)
     setLastResponse(null)
-
     try {
-      if (command === 'estop') {
-        setSessionState('E-STOP Active')
+      await runPgearCommand('estop')
+      setSessionState('E-STOP Active')
+      updateStep('configuration', 'error', 'E-STOP active')
+      if (mockMode) {
         setMockTelemetry((frame) =>
           createMockTelemetry({
             ...frame,
@@ -1144,91 +1102,12 @@ export function ExoskeletonControl() {
             flags: 6,
           }),
         )
-        updateStep('configuration', 'error', 'E-STOP active')
-        return
-      }
-
-      if (command === 'estopReset') {
-        await resetEstop()
-        return
-      }
-
-      if (command === 'stopGait') {
-        if (sessionState === 'Running') {
-          await stopSession()
-        }
-        return
-      }
-
-      if (command === 'disarm') {
-        setSessionState('Idle')
-        setActivePatient(null)
-        setActiveProfile(null)
-        setBaselineDirty(false)
-        setProgress(initialProgress)
-        setMockTelemetry(createMockTelemetry({ state: 'Idle' }))
-        return
-      }
-
-      if (command === 'fullCal') {
-        setBusy(true)
-        setSessionState('Calibrating')
-        updateStep('baseline', 'running', 'Full calibration...')
-        await sleep(700)
-        updateStep('baseline', 'success', 'Full calibration complete')
-        setSessionState(activeProfile ? 'Ready' : 'Idle')
-        setBusy(false)
-      }
-    } finally {
-      setPendingAdvanced(null)
-    }
-  }
-
-  const runRealAdvancedControl = async (command: PgearCommandKey) => {
-    if (mockMode) return
-    setPendingAdvanced(command)
-    setLastError(null)
-    setLastResponse(null)
-
-    try {
-      if (command === 'stopGait') {
-        await stopSession()
-        return
-      }
-      if (command === 'estopReset') {
-        await resetEstop()
-        return
-      }
-      if (command === 'fullCal') {
-        setBusy(true)
-        setSessionState('Calibrating')
-        updateStep('baseline', 'running', 'Full calibration...')
-        await runPgearCommand('fullCal')
-        updateStep('baseline', 'success', 'Full calibration complete')
-        setSessionState(activeProfile ? 'Ready' : 'Idle')
-        setBusy(false)
-        return
-      }
-      if (command === 'disarm') {
-        await runPgearCommand('disarm')
-        setSessionState('Idle')
-        setActivePatient(null)
-        setActiveProfile(null)
-        setBaselineDirty(false)
-        setProgress(initialProgress)
-        return
-      }
-      if (command === 'estop') {
-        await runPgearCommand('estop')
-        setSessionState('E-STOP Active')
-        updateStep('configuration', 'error', 'E-STOP active')
       }
     } catch (err) {
       setSessionState('Error')
-      setLastError(err instanceof Error ? err.message : 'Advanced command failed')
+      setLastError(err instanceof Error ? err.message : 'E-STOP failed')
     } finally {
       setBusy(false)
-      setPendingAdvanced(null)
     }
   }
 
@@ -1241,9 +1120,7 @@ export function ExoskeletonControl() {
       ? 'error'
       : sessionState === 'Running' || telemetry?.running
         ? 'running'
-        : activeProfile
-          ? 'ready'
-          : 'initial'
+        : 'initial'
   const retryTitle = lastError?.toLowerCase().includes('connected') ? 'Resolve Error' : 'Retry'
   const primaryAction =
     workflowState === 'estop'
@@ -1260,40 +1137,26 @@ export function ExoskeletonControl() {
             title: retryTitle,
             subtitle:
               retryTitle === 'Resolve Error'
-                ? 'Check device connection, then retry the interrupted step.'
-                : 'Repeat the interrupted workflow step.',
-            onClick: () => {
-              if (lastWorkflowAction === 'run' && activeProfile) {
-                void runSession()
-              } else {
-                setProfileDialogOpen(true)
-              }
-            },
+                ? 'Check device connection, then start the session again.'
+                : 'Start the session again.',
+            onClick: () => setProfileDialogOpen(true),
             variant: 'primary' as const,
           }
         : workflowState === 'running'
           ? {
               icon: 'stop' as IconName,
               title: 'Stop Session',
-              subtitle: 'Stop assisted gait and return to ready state.',
+              subtitle: 'Stop assisted gait and disarm the exoskeleton.',
               onClick: stopSession,
               variant: 'danger' as const,
             }
-          : workflowState === 'ready'
-            ? {
-                icon: 'play' as IconName,
-                title: 'Run Session',
-                subtitle: 'Prepare automatically and start assisted gait.',
-                onClick: runSession,
-                variant: 'primary' as const,
-              }
-            : {
-                icon: 'upload' as IconName,
-                title: 'Start Session',
-                subtitle: 'Select patient and profile; setup runs automatically.',
-                onClick: () => setProfileDialogOpen(true),
-                variant: 'primary' as const,
-              }
+          : {
+              icon: 'play' as IconName,
+              title: 'Start Session',
+              subtitle: 'Select patient and profile; arm, calibrate and run automatically.',
+              onClick: () => setProfileDialogOpen(true),
+              variant: 'primary' as const,
+            }
 
   return (
     <div className="mx-auto grid w-full max-w-[1540px] gap-5 text-[#17213b]">
@@ -1353,7 +1216,6 @@ export function ExoskeletonControl() {
                 className={cn(
                   'rounded-full px-3 py-2 text-xs font-extrabold',
                   workflowState === 'initial' && 'bg-slate-100 text-slate-600',
-                  workflowState === 'ready' && 'bg-emerald-100 text-emerald-700',
                   workflowState === 'running' && 'bg-blue-100 text-blue-700',
                   workflowState === 'error' && 'bg-red-100 text-red-700',
                   workflowState === 'estop' && 'bg-red-600 text-white',
@@ -1384,7 +1246,7 @@ export function ExoskeletonControl() {
               </div>
             ) : null}
 
-            {(workflowState === 'ready' || workflowState === 'running' || workflowState === 'error') && (
+            {(workflowState === 'running' || workflowState === 'error') && (
               <div className="mt-5 grid gap-3 rounded-2xl bg-slate-50 p-4">
                 <div>
                   <div className="text-[12px] font-extrabold uppercase text-slate-500">
@@ -1438,61 +1300,21 @@ export function ExoskeletonControl() {
             </div>
           </section>
 
-          <section
-            className={cn(
-              'rounded-3xl border p-5 shadow-[0_18px_50px_rgb(15_23_42/0.05)]',
-              mockMode ? 'border-amber-200 bg-amber-50/60' : 'border-slate-200 bg-white',
-            )}
-          >
-              <h2
-                className={cn(
-                  'm-0 text-[14px] font-extrabold',
-                  mockMode ? 'text-amber-950' : 'text-slate-950',
-                )}
-              >
-                Advanced Controls
-              </h2>
-              <div className="mt-4 grid grid-cols-3 gap-3">
-                {mockAdvancedControls.slice(0, 3).map((control) => (
-                  <MockAdvancedControlCard
-                    key={control.command}
-                    control={control}
-                    mockMode={mockMode}
-                    pending={pendingAdvanced === control.command}
-                    disabled={
-                      busy ||
-                      (Boolean(pendingAdvanced) && pendingAdvanced !== control.command) ||
-                      (workflowState === 'estop' && control.command !== 'estopReset')
-                    }
-                    onClick={() =>
-                      void (mockMode
-                        ? runMockAdvancedControl(control.command)
-                        : runRealAdvancedControl(control.command))
-                    }
-                  />
-                ))}
-              </div>
-              <div className="mt-3 grid grid-cols-2 gap-3">
-                {mockAdvancedControls.slice(3).map((control) => (
-                  <MockAdvancedControlCard
-                    key={control.command}
-                    control={control}
-                    mockMode={mockMode}
-                    pending={pendingAdvanced === control.command}
-                    disabled={
-                      busy ||
-                      (Boolean(pendingAdvanced) && pendingAdvanced !== control.command) ||
-                      (workflowState === 'estop' && control.command !== 'estopReset')
-                    }
-                    onClick={() =>
-                      void (mockMode
-                        ? runMockAdvancedControl(control.command)
-                        : runRealAdvancedControl(control.command))
-                    }
-                  />
-                ))}
-              </div>
-            </section>
+          <section className="rounded-3xl border border-red-200 bg-white p-5 shadow-[0_18px_50px_rgb(15_23_42/0.05)]">
+            <h2 className="m-0 text-[14px] font-extrabold text-slate-950">Safety</h2>
+            <p className="mt-1 mb-0 text-[12px] font-semibold leading-5 text-slate-500">
+              Immediately cut assistance. Reset is required afterwards to start again.
+            </p>
+            <button
+              type="button"
+              className="mt-4 grid w-full place-items-center gap-1 rounded-2xl border-2 border-red-600 bg-red-600 px-4 py-5 text-white shadow-[0_12px_28px_rgb(220_38_38/0.25)] transition-transform hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-50"
+              disabled={busy || workflowState === 'estop'}
+              onClick={() => void triggerEstop()}
+            >
+              <Icon name="alert" className="h-8 w-8" />
+              <strong className="text-[18px] tracking-[0.08em]">E-STOP</strong>
+            </button>
+          </section>
 
         </aside>
 
@@ -1506,7 +1328,7 @@ export function ExoskeletonControl() {
             wsStatus={wsStatus}
           />
 
-          <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-[0_18px_50px_rgb(15_23_42/0.05)]">
+          {/* <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-[0_18px_50px_rgb(15_23_42/0.05)]">
             <h2 className="m-0 text-[18px] font-extrabold text-slate-950">Session Status</h2>
             <div className="mt-4 grid grid-cols-3 gap-4 max-[760px]:grid-cols-1">
               <InfoCard label="Device Connection">
@@ -1525,7 +1347,7 @@ export function ExoskeletonControl() {
                 </div>
               </InfoCard>
             </div>
-          </section>
+          </section> */}
         </div>
       </div>
 
@@ -1535,7 +1357,7 @@ export function ExoskeletonControl() {
           mockMode={mockMode}
           patients={patients}
           onClose={() => setProfileDialogOpen(false)}
-          onConfirm={(patient, profile) => void loadSelectedProfile(patient, profile)}
+          onConfirm={(patient, profile) => void startSession(patient, profile)}
         />
       ) : null}
     </div>

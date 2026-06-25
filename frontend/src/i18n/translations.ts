@@ -3,7 +3,7 @@ import type { Language } from '../types/i18n'
 export const translations = {
   ru: {
     langName: 'Русский',
-    tabs: { therapist: 'Терапевт', patient: 'Пациент', control: 'Управление', exoskeleton: 'Экзоскелет' },
+    tabs: { therapist: 'Терапевт', patient: 'Пациент', control: 'Пациенты', exoskeleton: 'Экзоскелет' },
     therapist: {
       eyebrow: 'Реабилитация · Биомеханика стопы',
       title: 'Биомеханика походки в реальном времени',
@@ -404,7 +404,7 @@ export const translations = {
   },
   en: {
     langName: 'English',
-    tabs: { therapist: 'Therapist', patient: 'Patient', control: 'Control', exoskeleton: 'Exoskeleton' },
+    tabs: { therapist: 'Therapist', patient: 'Patient', control: 'Patients', exoskeleton: 'Exoskeleton' },
     therapist: {
       eyebrow: 'Rehabilitation · Foot biomechanics',
       title: 'Gait biomechanics in real time',
@@ -805,7 +805,7 @@ export const translations = {
   },
   kk: {
     langName: 'Қазақша',
-    tabs: { therapist: 'Терапевт', patient: 'Пациент', control: 'Басқару', exoskeleton: 'Экзоскелет' },
+    tabs: { therapist: 'Терапевт', patient: 'Пациент', control: 'Пациенттер', exoskeleton: 'Экзоскелет' },
     therapist: {
       eyebrow: 'Оңалту · Табан биомеханикасы',
       title: 'Нақты уақыттағы жүріс биомеханикасы',

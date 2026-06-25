@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from fastapi import Request
+from typing import Annotated
+
+from fastapi import Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.core.configs.config import Config
@@ -19,5 +21,8 @@ async def get_db_session() -> AsyncSession:
         yield session
 
 
-def get_runtime_service(request: Request) -> RuntimeService:
-    return request.app.state.runtime_service
+def get_runtime_service(
+    request: Request,
+    db: Annotated[AsyncSession, Depends(get_db_session)],
+) -> RuntimeService:
+    return RuntimeService(db=db, session_manager=request.app.state.session_manager)

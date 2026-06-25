@@ -4,12 +4,17 @@ from __future__ import annotations
 
 import os
 import threading
+import time
 from typing import Any
 
 import rclpy
+from gressus_msgs.msg import PgearCalibrationStatus
 from gressus_msgs.srv import CalibratePgearBaseline, LoadPgearProfile
 from rclpy.node import Node
+from rclpy.qos import QoSDurabilityPolicy, QoSHistoryPolicy, QoSProfile
 from std_srvs.srv import Trigger
+
+_CAL_STATUS_TOPIC = "/exoskeleton/calibration_status"
 
 
 class PgearRosClient:
@@ -100,7 +105,46 @@ class PgearRosClient:
     def full_cal(self) -> dict[str, Any]:
         return self._call_trigger("full_cal")
 
-    def calibrate_baseline(self, *, duration_s: float = 0.0, timeout_s: float = 120.0) -> dict[str, Any]:
+    def cancel_calibrate(self) -> dict[str, Any]:
+        return self._call_trigger("cancel_calibrate")
+
+    def calibration_status(self, *, timeout_s: float = 1.5) -> dict[str, Any]:
+        """Read the latest latched calibration status (transient_local topic)."""
+        qos = QoSProfile(
+            depth=1,
+            history=QoSHistoryPolicy.KEEP_LAST,
+            durability=QoSDurabilityPolicy.TRANSIENT_LOCAL,
+        )
+        holder: dict[str, PgearCalibrationStatus] = {}
+        with self._lock:
+            sub = self._node.create_subscription(
+                PgearCalibrationStatus,
+                _CAL_STATUS_TOPIC,
+                lambda m: holder.__setitem__("msg", m),
+                qos,
+            )
+            try:
+                deadline = time.time() + timeout_s
+                while "msg" not in holder and time.time() < deadline:
+                    rclpy.spin_once(self._node, timeout_sec=0.1)
+            finally:
+                self._node.destroy_subscription(sub)
+
+        msg = holder.get("msg")
+        if msg is None:
+            return {"ok": True, "state": "idle", "message": "no status yet"}
+        return {
+            "ok": True,
+            "state": str(msg.state),
+            "message": str(msg.message),
+            "elapsedS": float(msg.elapsed_s),
+            "remainingS": float(msg.remaining_s),
+            "progress": float(msg.progress),
+            "runId": int(msg.run_id),
+            "coeffs": str(msg.coeffs_json) or None,
+        }
+
+    def calibrate_baseline(self, *, duration_s: float = 0.0, timeout_s: float = 15.0) -> dict[str, Any]:
         service = self._service("calibrate_baseline")
         with self._lock:
             client = self._node.create_client(CalibratePgearBaseline, service)
