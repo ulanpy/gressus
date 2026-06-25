@@ -1387,7 +1387,7 @@ export function ExoskeletonControl() {
             </div> */}
           </section>
 
-          <section className="rounded-3xl border border-red-200 bg-white p-5 shadow-[0_18px_50px_rgb(15_23_42/0.05)]">
+          {/* <section className="rounded-3xl border border-red-200 bg-white p-5 shadow-[0_18px_50px_rgb(15_23_42/0.05)]">
             <h2 className="m-0 text-[14px] font-extrabold text-slate-950">Safety</h2>
             <p className="mt-1 mb-0 text-[12px] font-semibold leading-5 text-slate-500">
               Immediately cut assistance. Reset is required afterwards to start again.
@@ -1401,7 +1401,7 @@ export function ExoskeletonControl() {
               <Icon name="alert" className="h-8 w-8" />
               <strong className="text-[18px] tracking-[0.08em]">E-STOP</strong>
             </button>
-          </section>
+          </section> */}
 
         </aside>
 
