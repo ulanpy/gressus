@@ -56,6 +56,9 @@ class PgearDeviceNode(Node):
         self._cal_cancel = False
         self._cal_run_id = 0
         self._cal_thread: threading.Thread | None = None
+        self._esp_host_param = esp_host
+        self._logged_esp_host: str | None = esp_host
+        self._tcp_was_connected = False
         self._adapter = Esp32Adapter(esp_host=esp_host)
         self._adapter.start()
         self._telemetry_hub = TelemetryHub()
@@ -121,7 +124,27 @@ class PgearDeviceNode(Node):
         self._pub.publish(msg)
         self._telemetry_hub.update_disconnected(error=error)
 
+    def _log_link_state(self) -> None:
+        host = self._adapter.device_host()
+        if host and host != self._logged_esp_host:
+            if self._esp_host_param is None:
+                self.get_logger().info(
+                    f"ESP32 auto-discovered at {host} (UDP telemetry, TCP :47001)"
+                )
+            else:
+                self.get_logger().info(f"ESP32 host resolved: {host}")
+            self._logged_esp_host = host
+
+        tcp_up = self._adapter.tcp_connected()
+        if tcp_up and not self._tcp_was_connected:
+            label = host or self._logged_esp_host or self._esp_host_param or "?"
+            self.get_logger().info(f"ESP32 TCP command link up -> {label}:47001")
+        elif not tcp_up and self._tcp_was_connected:
+            self.get_logger().warn("ESP32 TCP command link down — keepalive will retry")
+        self._tcp_was_connected = tcp_up
+
     def _publish(self) -> None:
+        self._log_link_state()
         stamp = self.get_clock().now().to_msg()
         telemetry, age_s, connected, error = self._adapter.latest_snapshot(self._stale_after_s)
 
