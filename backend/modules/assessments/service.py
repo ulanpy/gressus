@@ -8,22 +8,9 @@ from uuid import UUID
 from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.modules.assessments.models import (
-    Assessment,
-    AssessmentBody,
-    AssessmentObservations,
-    AssessmentSpatialGait,
-    AssessmentWalkingTests,
-)
+from backend.modules.assessments.models import Assessment
 from backend.modules.assessments.repository import AssessmentRepository
-from backend.modules.assessments.schemas import (
-    AssessmentCreate,
-    AssessmentUpdate,
-    BodyData,
-    ObservationsData,
-    SpatialGaitData,
-    WalkingTestsData,
-)
+from backend.modules.assessments.schemas import AssessmentCreate, AssessmentUpdate
 from backend.modules.patients.repository import PatientRepository
 
 
@@ -60,21 +47,9 @@ class AssessmentService:
             assessment_number=next_number,
             assessment_date=payload.assessment_date,
             assessment_type=payload.assessment_type,
+            assessor=payload.assessor,
+            form_data=payload.form_data,
         )
-        if payload.body is not None:
-            assessment.body = AssessmentBody(**payload.body.model_dump())
-        if payload.spatial_gait is not None:
-            assessment.spatial_gait = AssessmentSpatialGait(
-                **payload.spatial_gait.model_dump()
-            )
-        if payload.walking_tests is not None:
-            assessment.walking_tests = AssessmentWalkingTests(
-                **payload.walking_tests.model_dump()
-            )
-        if payload.observations is not None:
-            assessment.observations = AssessmentObservations(
-                **payload.observations.model_dump()
-            )
         return await self._repo.add(assessment)
 
     async def update(
@@ -85,51 +60,3 @@ class AssessmentService:
             setattr(assessment, field, value)
         await self._repo.flush()
         return assessment
-
-    async def set_body(
-        self, patient_id: UUID, assessment_id: UUID, data: BodyData
-    ) -> Assessment:
-        assessment = await self.get_or_404(patient_id, assessment_id)
-        if assessment.body is None:
-            assessment.body = AssessmentBody(**data.model_dump())
-        else:
-            for field, value in data.model_dump().items():
-                setattr(assessment.body, field, value)
-        await self._repo.flush()
-        return await self.get_or_404(patient_id, assessment_id)
-
-    async def set_spatial_gait(
-        self, patient_id: UUID, assessment_id: UUID, data: SpatialGaitData
-    ) -> Assessment:
-        assessment = await self.get_or_404(patient_id, assessment_id)
-        if assessment.spatial_gait is None:
-            assessment.spatial_gait = AssessmentSpatialGait(**data.model_dump())
-        else:
-            for field, value in data.model_dump().items():
-                setattr(assessment.spatial_gait, field, value)
-        await self._repo.flush()
-        return await self.get_or_404(patient_id, assessment_id)
-
-    async def set_walking_tests(
-        self, patient_id: UUID, assessment_id: UUID, data: WalkingTestsData
-    ) -> Assessment:
-        assessment = await self.get_or_404(patient_id, assessment_id)
-        if assessment.walking_tests is None:
-            assessment.walking_tests = AssessmentWalkingTests(**data.model_dump())
-        else:
-            for field, value in data.model_dump().items():
-                setattr(assessment.walking_tests, field, value)
-        await self._repo.flush()
-        return await self.get_or_404(patient_id, assessment_id)
-
-    async def set_observations(
-        self, patient_id: UUID, assessment_id: UUID, data: ObservationsData
-    ) -> Assessment:
-        assessment = await self.get_or_404(patient_id, assessment_id)
-        if assessment.observations is None:
-            assessment.observations = AssessmentObservations(**data.model_dump())
-        else:
-            for field, value in data.model_dump().items():
-                setattr(assessment.observations, field, value)
-        await self._repo.flush()
-        return await self.get_or_404(patient_id, assessment_id)
