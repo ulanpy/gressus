@@ -3,35 +3,20 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-
 from uuid import UUID
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
 
 from backend.modules.assessments.models import Assessment
 
 
 class AssessmentRepository:
-    @staticmethod
-    def _detail_loaders():
-        return (
-            selectinload(Assessment.body),
-            selectinload(Assessment.spatial_gait),
-            selectinload(Assessment.walking_tests),
-            selectinload(Assessment.observations),
-        )
-
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
 
     async def get(self, assessment_id: UUID) -> Assessment | None:
-        stmt = (
-            select(Assessment)
-            .where(Assessment.id == assessment_id)
-            .options(*self._detail_loaders())
-        )
+        stmt = select(Assessment).where(Assessment.id == assessment_id)
         result = await self._session.execute(stmt)
         return result.scalars().first()
 
@@ -41,7 +26,6 @@ class AssessmentRepository:
         stmt = (
             select(Assessment)
             .where(Assessment.patient_id == patient_id)
-            .options(*self._detail_loaders())
             .order_by(Assessment.assessment_number, Assessment.id)
             .limit(limit)
             .offset(offset)
@@ -59,10 +43,6 @@ class AssessmentRepository:
     async def add(self, assessment: Assessment) -> Assessment:
         self._session.add(assessment)
         await self._session.flush()
-        # Reload with detail relationships populated for the response.
-        await self._session.refresh(
-            assessment, ["body", "spatial_gait", "walking_tests", "observations"]
-        )
         return assessment
 
     async def flush(self) -> None:
