@@ -59,6 +59,66 @@ type ExoParams = {
 
 const DEFAULT_EXO_PARAMS: ExoParams = { cps: 0.36, amp_r: 0.5, amp_l: 0.5, assist: 0.5 }
 
+type RomMap = Record<string, [number, number]>
+type EnableMap = Record<string, boolean>
+type ExoMode = 'position' | 'torque'
+
+// Structural fields the P.GEAR device expects in load_profile (API.md §7 /
+// profile_loader.apply_profile). Joints: 0=R-hip, 1=R-knee, 2=L-hip, 3=L-knee.
+// Anything absent here is simply never sent to the ESP, so the device keeps its
+// firmware defaults — that is why earlier profiles only carried cps/amp/assist.
+const DEFAULT_EXO_MODE: ExoMode = 'position'
+const DEFAULT_EXO_AAN = false
+const DEFAULT_EXO_ROM: RomMap = {
+  '0': [-18, 25],
+  '1': [-6, 31],
+  '2': [-18, 25],
+  '3': [-6, 31],
+}
+const DEFAULT_EXO_ENABLE: EnableMap = { '0': true, '1': true, '2': true, '3': true }
+
+const EXO_JOINTS: { idx: string; label: string }[] = [
+  { idx: '0', label: 'R-Hip' },
+  { idx: '1', label: 'R-Knee' },
+  { idx: '2', label: 'L-Hip' },
+  { idx: '3', label: 'L-Knee' },
+]
+
+/** Structural profile fields (mode/aan/rom/enable) parsed from a stored profile. */
+type ExoStructural = {
+  mode: ExoMode
+  aan: boolean
+  rom: RomMap
+  enable: EnableMap
+}
+
+const DEFAULT_EXO_STRUCTURAL: ExoStructural = {
+  mode: DEFAULT_EXO_MODE,
+  aan: DEFAULT_EXO_AAN,
+  rom: DEFAULT_EXO_ROM,
+  enable: DEFAULT_EXO_ENABLE,
+}
+
+function parseStructural(src: Record<string, unknown>): ExoStructural {
+  const srcRom = (src.rom ?? {}) as Record<string, unknown>
+  const srcEnable = (src.enable ?? {}) as Record<string, unknown>
+  const rom: RomMap = {}
+  const enable: EnableMap = {}
+  for (const { idx } of EXO_JOINTS) {
+    const r = srcRom[idx]
+    const dflt = DEFAULT_EXO_ROM[idx]
+    rom[idx] = Array.isArray(r) ? [toNumber(r[0], dflt[0]), toNumber(r[1], dflt[1])] : dflt
+    const e = srcEnable[idx]
+    enable[idx] = typeof e === 'boolean' ? e : DEFAULT_EXO_ENABLE[idx]
+  }
+  return {
+    mode: src.mode === 'torque' ? 'torque' : DEFAULT_EXO_MODE,
+    aan: typeof src.aan === 'boolean' ? src.aan : DEFAULT_EXO_AAN,
+    rom,
+    enable,
+  }
+}
+
 const EXO_PARAM_FIELDS: { key: keyof ExoParams; label: string; step: number }[] = [
   { key: 'cps', label: 'CPS (скорость)', step: 0.01 },
   { key: 'assist', label: 'Assist', step: 0.05 },
@@ -536,6 +596,7 @@ function ProfileDialog({
   const [lastProfileLoading, setLastProfileLoading] = useState(false)
   const [params, setParams] = useState<ExoParams>(DEFAULT_EXO_PARAMS)
   const [extras, setExtras] = useState<Record<string, unknown>>({})
+  const [structural, setStructural] = useState<ExoStructural>(DEFAULT_EXO_STRUCTURAL)
 
   useEffect(() => {
     if (mockMode || !patient) {
@@ -569,18 +630,27 @@ function ProfileDialog({
     if (parsed) {
       setParams(parsed.params)
       setExtras(parsed.extras)
+      setStructural(parseStructural(parsed.extras))
     } else {
       setParams(DEFAULT_EXO_PARAMS)
       setExtras({})
+      setStructural(DEFAULT_EXO_STRUCTURAL)
     }
   }, [initialPatientId, initialProfile, lastProfile, patient?.id])
 
   const hasStoredCoeffs = Array.isArray(extras.coeffs) && extras.coeffs.length > 0
 
   const buildProfileJson = (): string => {
-    const { coeffs: _coeffs, meta: _meta, ...carry } = extras
+    const { coeffs: _coeffs, meta: _meta, rom: _rom, enable: _enable, mode: _mode, aan: _aan, ...carry } =
+      extras
+    // Carry over any unknown fields, then write the edited structural + scalar
+    // params so the device always gets mode/rom/enable/aan.
     const profile: Record<string, unknown> = {
       ...carry,
+      mode: structural.mode,
+      aan: structural.aan,
+      rom: structural.rom,
+      enable: structural.enable,
       patient_id: patient?.id,
       patient_name: patient?.display_name,
       cps: params.cps,
@@ -588,14 +658,27 @@ function ProfileDialog({
       amp_l: params.amp_l,
       assist: params.assist,
     }
-    if (hasStoredCoeffs) {
-      profile.coeffs = extras.coeffs
-    }
+    profile.coeffs = hasStoredCoeffs ? extras.coeffs : []
     return JSON.stringify(profile, null, 2)
   }
 
   const setParam = (key: keyof ExoParams) => (event: { target: { value: string } }) =>
     setParams((prev) => ({ ...prev, [key]: toNumber(event.target.value, prev[key]) }))
+
+  const setRomBound =
+    (idx: string, which: 0 | 1) => (event: { target: { value: string } }) =>
+      setStructural((prev) => {
+        const cur = prev.rom[idx] ?? DEFAULT_EXO_ROM[idx]
+        const value = toNumber(event.target.value, cur[which])
+        const next: [number, number] = which === 0 ? [value, cur[1]] : [cur[0], value]
+        return { ...prev, rom: { ...prev.rom, [idx]: next } }
+      })
+
+  const toggleEnable = (idx: string) => (event: { target: { checked: boolean } }) =>
+    setStructural((prev) => ({
+      ...prev,
+      enable: { ...prev.enable, [idx]: event.target.checked },
+    }))
 
   const handleConfirm = () => {
     if (!patient) return
@@ -660,6 +743,69 @@ function ProfileDialog({
                 />
               </label>
             ))}
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <label className="grid gap-1">
+              <span className="text-xs font-extrabold text-slate-600">Режим (mode)</span>
+              <select
+                className="ui-select"
+                value={structural.mode}
+                onChange={(event) =>
+                  setStructural((prev) => ({ ...prev, mode: event.target.value as ExoMode }))
+                }
+              >
+                <option value="position">position</option>
+                <option value="torque">torque</option>
+              </select>
+            </label>
+            <label className="flex items-end gap-2 pb-2 text-sm font-semibold text-slate-700">
+              <input
+                type="checkbox"
+                checked={structural.aan}
+                onChange={(event) =>
+                  setStructural((prev) => ({ ...prev, aan: event.target.checked }))
+                }
+              />
+              <span>AAN (assist-as-needed)</span>
+            </label>
+          </div>
+
+          <div className="grid gap-2 rounded-2xl bg-slate-50 p-3">
+            <span className="text-xs font-extrabold text-slate-600">
+              Суставы: ROM (°) и enable
+            </span>
+            <div className="grid gap-2">
+              {EXO_JOINTS.map(({ idx, label }) => (
+                <div key={idx} className="grid grid-cols-[88px_1fr_1fr_auto] items-center gap-2">
+                  <span className="text-xs font-extrabold text-slate-700">{label}</span>
+                  <input
+                    type="number"
+                    step={1}
+                    aria-label={`${label} ROM min`}
+                    className="rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-900"
+                    value={structural.rom[idx]?.[0] ?? DEFAULT_EXO_ROM[idx][0]}
+                    onChange={setRomBound(idx, 0)}
+                  />
+                  <input
+                    type="number"
+                    step={1}
+                    aria-label={`${label} ROM max`}
+                    className="rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-900"
+                    value={structural.rom[idx]?.[1] ?? DEFAULT_EXO_ROM[idx][1]}
+                    onChange={setRomBound(idx, 1)}
+                  />
+                  <label className="flex items-center gap-1 text-xs font-semibold text-slate-700">
+                    <input
+                      type="checkbox"
+                      checked={structural.enable[idx] ?? true}
+                      onChange={toggleEnable(idx)}
+                    />
+                    on
+                  </label>
+                </div>
+              ))}
+            </div>
           </div>
 
           <details className="rounded-2xl bg-slate-50 p-3">

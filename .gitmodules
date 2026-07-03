@@ -2,3 +2,7 @@
 	path = third_party/pgear_tools
 	url = https://github.com/Keikibayev/pgear_tools.git
 	branch = feature/patient-profiles-cp-support
+[submodule "third_party/pgear_v8_firmware"]
+	path = third_party/pgear_v8_firmware
+	url = https://github.com/Keikibayev/pgear_v8_firmware.git
+	branch = feature/torque-assist-ops

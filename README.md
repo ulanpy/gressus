@@ -4,7 +4,7 @@
 <tr>
 <td width="58%" valign="top">
 
-**Gressus** (Latin *step*, *progress*) is the clinical feedback module of **P-GEAR** — a gait exoskeleton-assisted rehabilitation system for children with cerebral palsy.
+**Gressus** (Latin *step*, *progress*) is is the core software platform delivered alongside the **P.GEAR** exoskeleton. It serves as the unified interface that bridges exoskeleton control, patient management, and therapy analytics.
 
 The operator runs clinical sessions from a web client. The backend stores patients and session records. A ROS runtime on the same machine controls the P.GEAR exoskeleton, runs sensor stacks, and writes session data to disk.
 
