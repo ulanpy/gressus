@@ -1,13 +1,4 @@
-"""HTTP session manager: bridge backend clinical sessions to ROS services.
-
-Plain Python HTTP server (``ros2 run gressus_session session_manager``).
-
-- ``POST /session/pgear/*`` — call ``pgear_device_node`` services via rclpy (not CLI).
-- ``POST /session/rosbag/*`` — optional rosbag recording for gait sessions.
-
-Start ``pgear_device_node`` manually, e.g.
-``ros2 launch gressus_bringup pgear.launch.py``.
-"""
+"""HTTP session manager: rosbag recording and runtime status."""
 
 from __future__ import annotations
 
@@ -22,7 +13,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
 from urllib.parse import urlparse
 
-from gressus_session.pgear_ros_client import get_pgear_client
+from gressus_session.pgear_ros_client import get_pgear_probe
 from gressus_session.rosbag_recorder import RosbagRecorder
 from gressus_session.runtime_status import build_runtime_snapshot, probe_pgear_status
 from gressus_session.session_context import ClinicalSessionContext
@@ -41,20 +32,6 @@ def _rosbag_target_dir(ctx: ClinicalSessionContext) -> str:
     if os.path.exists(out):
         out = f"{out}_{int(time.time())}"
     return out
-
-
-_PGEAR_ROUTES: dict[str, str] = {
-    "/session/pgear/load-profile": "load_profile",
-    "/session/pgear/arm": "arm",
-    "/session/pgear/disarm": "disarm",
-    "/session/pgear/run": "run",
-    "/session/pgear/stop-gait": "stop_gait",
-    "/session/pgear/estop": "estop",
-    "/session/pgear/estop-reset": "estop_reset",
-    "/session/pgear/full-cal": "full_cal",
-    "/session/pgear/calibrate-baseline": "calibrate_baseline",
-    "/session/pgear/cancel-calibrate": "cancel_calibrate",
-}
 
 
 def _json_response(handler: BaseHTTPRequestHandler, status: int, payload: dict[str, Any]) -> None:
@@ -81,7 +58,7 @@ def _read_json(handler: BaseHTTPRequestHandler) -> dict[str, Any]:
 
 def _runtime_snapshot() -> dict[str, Any]:
     rosbag = _ROSBAG.snapshot()
-    pgear = probe_pgear_status(get_pgear_client())
+    pgear = probe_pgear_status(get_pgear_probe())
     return build_runtime_snapshot(rosbag=rosbag, pgear=pgear)
 
 
@@ -95,18 +72,6 @@ class SessionHandler(BaseHTTPRequestHandler):
         path = urlparse(self.path).path
         if path == "/session/status":
             _json_response(self, HTTPStatus.OK, {"ok": True, "runtime": _runtime_snapshot()})
-            return
-        if path == "/session/pgear/calibration-status":
-            try:
-                result = get_pgear_client().calibration_status()
-            except Exception as exc:
-                _json_response(
-                    self,
-                    HTTPStatus.INTERNAL_SERVER_ERROR,
-                    {"ok": False, "error": str(exc)},
-                )
-                return
-            _json_response(self, HTTPStatus.OK, result)
             return
         _json_response(self, HTTPStatus.NOT_FOUND, {"ok": False, "error": "not found"})
 
@@ -124,57 +89,7 @@ class SessionHandler(BaseHTTPRequestHandler):
         if path == "/session/rosbag/stop":
             self._handle_rosbag_stop(payload)
             return
-        pgear_action = _PGEAR_ROUTES.get(path)
-        if pgear_action is not None:
-            self._handle_pgear(pgear_action, payload)
-            return
         _json_response(self, HTTPStatus.NOT_FOUND, {"ok": False, "error": "not found"})
-
-    def _handle_pgear(self, action: str, payload: dict[str, Any]) -> None:
-        try:
-            client = get_pgear_client()
-            if action == "load_profile":
-                profile_json = str(payload.get("profileJson", "")).strip()
-                if not profile_json:
-                    _json_response(
-                        self,
-                        HTTPStatus.BAD_REQUEST,
-                        {"ok": False, "error": "profileJson required"},
-                    )
-                    return
-                result = client.load_profile(profile_json)
-            elif action == "arm":
-                result = client.arm()
-            elif action == "disarm":
-                result = client.disarm()
-            elif action == "run":
-                result = client.run()
-            elif action == "stop_gait":
-                result = client.stop_gait()
-            elif action == "estop":
-                result = client.estop()
-            elif action == "estop_reset":
-                result = client.estop_reset()
-            elif action == "full_cal":
-                result = client.full_cal()
-            elif action == "calibrate_baseline":
-                duration_s = float(payload.get("durationS", payload.get("duration_s", 0)) or 0)
-                result = client.calibrate_baseline(duration_s=duration_s)
-            elif action == "cancel_calibrate":
-                result = client.cancel_calibrate()
-            else:
-                _json_response(self, HTTPStatus.NOT_FOUND, {"ok": False, "error": "unknown action"})
-                return
-        except Exception as exc:
-            _json_response(
-                self,
-                HTTPStatus.INTERNAL_SERVER_ERROR,
-                {"ok": False, "success": False, "message": str(exc)},
-            )
-            return
-
-        status = HTTPStatus.OK if result.get("ok") else HTTPStatus.SERVICE_UNAVAILABLE
-        _json_response(self, status, result)
 
     def _handle_rosbag_start(self, payload: dict[str, Any]) -> None:
         ctx = ClinicalSessionContext.from_payload(payload)
@@ -188,7 +103,6 @@ class SessionHandler(BaseHTTPRequestHandler):
             os.makedirs(os.path.dirname(out_dir), exist_ok=True)
             started = _ROSBAG.start(out_dir=out_dir, session_id=ctx.session_id)
         except RuntimeError as exc:
-            # A recording is already running (single active bag).
             _json_response(self, HTTPStatus.CONFLICT, {"ok": False, "error": str(exc)})
             return
         except OSError as exc:
@@ -208,7 +122,7 @@ class SessionHandler(BaseHTTPRequestHandler):
 
     def _handle_rosbag_stop(self, payload: dict[str, Any]) -> None:
         timeout_s = float(payload.get("timeoutS", 5.0))
-        stopped = _ROSBAG.stop(timeout_s=timeout_s)  # SIGINT → bag closes cleanly
+        stopped = _ROSBAG.stop(timeout_s=timeout_s)
         _json_response(self, HTTPStatus.OK, {"ok": True, "stopped": stopped})
 
 

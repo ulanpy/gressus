@@ -15,7 +15,7 @@ setup(
     zip_safe=True,
     maintainer='Ulan Sharipov',
     maintainer_email='ulan.sharipov@nu.edu.kz',
-    description='P.GEAR exoskeleton device node (Esp32Link via pgear_tools)',
+    description='P.GEAR UDP telemetry ROS node (LogPacket broadcast receiver)',
     license='Apache-2.0',
     extras_require={
         'test': [

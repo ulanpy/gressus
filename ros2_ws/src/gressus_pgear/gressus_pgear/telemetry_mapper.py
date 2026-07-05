@@ -1,11 +1,10 @@
-"""Map pgear_pi Esp32Link Telemetry to gressus_msgs/PgearTelemetry."""
+"""Map decoded LogPacket telemetry to gressus_msgs/PgearTelemetry."""
 
 from __future__ import annotations
 
-from pgear_pi.transport.esp32_link import Telemetry
-
 from gressus_msgs.msg import PgearTelemetry
 from gressus_pgear.ros_msg import empty_msg
+from gressus_pgear.udp_protocol import Telemetry
 
 
 def _tuple4(values: tuple[float, ...] | None) -> list[float]:
@@ -22,7 +21,6 @@ def telemetry_to_msg(
     stamp,
     *,
     frame_id: str = "exoskeleton",
-    tcp_connected: bool,
     telem_age_s: float,
     stale_after_s: float,
 ) -> PgearTelemetry:
@@ -75,9 +73,6 @@ def telemetry_to_msg(
     msg.hb_error_byte = int(telemetry.hb_error)
     msg.packet_crc = 0
 
-    msg.connected = tcp_connected or fresh
-    if not tcp_connected:
-        msg.error = "telemetry only (TCP command link not open yet)"
-    else:
-        msg.error = ""
+    msg.connected = True
+    msg.error = ""
     return msg

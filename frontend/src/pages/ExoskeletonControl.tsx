@@ -2,12 +2,7 @@ import { useEffect, useState, type ReactNode } from 'react'
 import { useExoskeletonTelemetry } from '../hooks/useExoskeletonTelemetry'
 import { listPatients } from '../lib/api/patients'
 import { getLatestExoProfile, type LatestExoProfile } from '../lib/api/sessions'
-import {
-  getCalibrationStatus,
-  postPgearCommand,
-  type PgearCommandKey,
-  type PgearCommandResponse,
-} from '../lib/api/pgear'
+import { startRecordingSession, stopRecordingSession, type SessionActionResponse } from '../lib/api/runtime'
 import { cn } from '../lib/cn'
 import type { ExoskeletonTelemetryFrame } from '../types/exoskeleton'
 import type { Patient } from '../types/patients'
@@ -986,7 +981,7 @@ export function ExoskeletonControl() {
   const [progress, setProgress] = useState<ProgressStep[]>(initialProgress)
   const [sessionState, setSessionState] = useState<SessionState>('Idle')
   const [busy, setBusy] = useState(false)
-  const [, setLastResponse] = useState<PgearCommandResponse | null>(null)
+  const [, setLastResponse] = useState<SessionActionResponse | null>(null)
   const [lastError, setLastError] = useState<string | null>(null)
   const [mockTelemetry, setMockTelemetry] = useState<ExoskeletonTelemetryFrame>(() => createMockTelemetry())
   const { frame: realTelemetry, status: realWsStatus } = useExoskeletonTelemetry(!mockMode)
@@ -1048,16 +1043,22 @@ export function ExoskeletonControl() {
     setMockTelemetry(createMockTelemetry())
   }
 
-  const runPgearCommand = async (command: PgearCommandKey, body?: unknown) => {
+  const runSessionAction = async (
+    action: 'start' | 'stop',
+    body?: { patientId: string; profileJson?: string },
+  ) => {
     if (mockMode) {
       await sleep(350)
-      const payload = { ok: true, success: true, message: `Mock ${command} complete` }
+      const payload = { ok: true, success: true, message: `Mock ${action} complete` }
       setLastResponse(payload)
       return payload
     }
-    const payload = await postPgearCommand(command, body)
+    const payload =
+      action === 'start'
+        ? await startRecordingSession(body!)
+        : await stopRecordingSession()
     if (!payload.success) {
-      throw new Error(payload.message || 'Command failed')
+      throw new Error(payload.message || 'Request failed')
     }
     setLastResponse(payload)
     return payload
@@ -1078,9 +1079,7 @@ export function ExoskeletonControl() {
     setProfileDialogOpen(true)
   }
 
-  // Logging-only mode: "Start" opens a Gressus session + rosbag recording.
-  // P.GEAR control commands stay implemented behind the API, but are not sent
-  // from the operator flow until the firmware/API is stable.
+  // Logging-only: start/stop opens a Gressus session and rosbag recording.
   const startSession = async (patient: Patient, profile: GaitProfile) => {
     setProfileDialogOpen(false)
     setBusy(true)
@@ -1103,7 +1102,10 @@ export function ExoskeletonControl() {
 
       currentStep = 'gait'
       updateStep('gait', 'running', 'Starting session recording...')
-      await runPgearCommand('run', { patientId: patient.id, profileJson: profile.profileJson })
+      await runSessionAction('start', {
+        patientId: patient.id,
+        profileJson: profile.profileJson,
+      })
       updateStep('gait', 'success', 'Recording started')
       setSessionState('Running')
       if (mockMode) {
@@ -1140,9 +1142,6 @@ export function ExoskeletonControl() {
     const wasRunning = sessionState === 'Running'
 
     try {
-      if (mockMode && !wasRunning) setSessionState('Loading Profile')
-      updateStep('profile', 'running', 'Updating profile...')
-      await runPgearCommand('loadProfile', { profileJson: profile.profileJson })
       updateStep('profile', 'success', 'Profile updated')
       setActivePatient(patient)
       setActiveProfile(profile)
@@ -1180,7 +1179,7 @@ export function ExoskeletonControl() {
     try {
       if (mockMode) setSessionState('Stopping')
       updateStep('stopped', 'running', 'Stopping session...')
-      await runPgearCommand('stopGait')
+      await runSessionAction('stop')
       updateStep('stopped', 'success', 'Session stopped')
       setSessionState('Idle')
       setActivePatient(null)
@@ -1205,77 +1204,23 @@ export function ExoskeletonControl() {
     }
   }
 
-  const resetEstop = async () => {
-    setBusy(true)
+  const acknowledgeEstop = () => {
     setLastError(null)
-    setLastResponse(null)
-
-    try {
-      updateStep('configuration', 'running', 'Resetting E-STOP...')
-      await runPgearCommand('estopReset')
-      updateStep('configuration', 'success', 'E-STOP reset')
-      setSessionState('Idle')
-      setActivePatient(null)
-      setActiveProfile(null)
-      setProgress(initialProgress)
-      if (mockMode) {
-        setMockTelemetry((frame) =>
-          createMockTelemetry({
-            ...frame,
-            state: 'Idle',
-            estop: false,
-            running: false,
-            error: null,
-            flags: 4,
-          }),
-        )
-      }
-    } catch (err) {
-      updateStep('configuration', 'error')
-      setSessionState('Error')
-      setLastError(err instanceof Error ? err.message : 'E-STOP reset failed')
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  const waitForCalibration = async () => {
-    const deadline = Date.now() + 180_000
-    for (;;) {
-      await sleep(1000)
-      const status = await getCalibrationStatus()
-      updateStep(
-        'baseline',
-        'running',
-        `Calibrating baseline… ${Math.round((status.progress ?? 0) * 100)}%`,
+    setSessionState('Idle')
+    setActivePatient(null)
+    setActiveProfile(null)
+    setProgress(initialProgress)
+    if (mockMode) {
+      setMockTelemetry((frame) =>
+        createMockTelemetry({
+          ...frame,
+          state: 'Idle',
+          estop: false,
+          running: false,
+          error: null,
+          flags: 4,
+        }),
       )
-      if (status.state === 'done') return
-      if (status.state === 'failed' || status.state === 'cancelled') {
-        throw new Error(status.message || `calibration ${status.state}`)
-      }
-      if (Date.now() > deadline) throw new Error('Baseline calibration timed out')
-    }
-  }
-
-  const calibrateBaseline = async () => {
-    setBusy(true)
-    setLastError(null)
-    setLastResponse(null)
-
-    try {
-      if (mockMode) setSessionState('Calibrating')
-      updateStep('baseline', 'running', 'Calibrating baseline...')
-      await runPgearCommand('calibrateBaseline', { durationS: 0 })
-      if (!mockMode) await waitForCalibration()
-      if (mockMode) await sleep(700)
-      updateStep('baseline', 'success', 'Baseline calibrated')
-      setSessionState((current) => (current === 'Calibrating' ? 'Running' : current))
-    } catch (err) {
-      updateStep('baseline', 'error')
-      setSessionState('Error')
-      setLastError(err instanceof Error ? err.message : 'Baseline calibration failed')
-    } finally {
-      setBusy(false)
     }
   }
 
@@ -1293,7 +1238,7 @@ export function ExoskeletonControl() {
           icon: 'refresh' as IconName,
           title: 'Reset E-STOP',
           subtitle: 'Clear the emergency stop before continuing.',
-          onClick: resetEstop,
+          onClick: acknowledgeEstop,
           variant: 'danger' as const,
         }
       : workflowState === 'error'
@@ -1459,16 +1404,6 @@ export function ExoskeletonControl() {
                 onClick={() => void primaryAction.onClick()}
               />
             </div>
-
-            <button
-              type="button"
-              className="mt-3 flex w-full items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-extrabold text-slate-900 shadow-[0_8px_18px_rgb(15_23_42/0.05)] transition-[border-color,background] hover:border-cyan-400 hover:bg-cyan-50 disabled:cursor-not-allowed disabled:opacity-50"
-              disabled={busy || workflowState === 'estop'}
-              onClick={() => void calibrateBaseline()}
-            >
-              <Icon name="refresh" className="h-5 w-5" />
-              Calibrate Baseline
-            </button>
 
             {/* <div className="mt-5 rounded-2xl bg-slate-50 p-4">
               <div className="text-[12px] font-extrabold uppercase text-slate-500">

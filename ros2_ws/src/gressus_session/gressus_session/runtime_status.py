@@ -28,9 +28,9 @@ def build_runtime_snapshot(*, rosbag: dict[str, Any], pgear: dict[str, Any] | No
     }
 
 
-def probe_pgear_status(client: Any) -> dict[str, Any]:
-    """Call ``device_status`` on the pgear client; never raise."""
+def probe_pgear_status(probe: Any) -> dict[str, Any]:
+    """Call ``device_status`` on the telemetry probe; never raise."""
     try:
-        return client.device_status()
+        return probe.device_status()
     except Exception as exc:  # noqa: BLE001 — status endpoint must stay available
         return _default_pgear_status(error=str(exc))

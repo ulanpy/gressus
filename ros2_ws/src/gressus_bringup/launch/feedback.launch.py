@@ -11,7 +11,7 @@ def generate_launch_description() -> LaunchDescription:
     bringup_dir = os.path.join(get_package_share_directory('gressus_bringup'), 'launch')
 
     return LaunchDescription([
-        DeclareLaunchArgument('esp_host', default_value=''),
+        DeclareLaunchArgument('udp_port', default_value='47000'),
         DeclareLaunchArgument('insole_thresh_kpa', default_value='8.0'),
         IncludeLaunchDescription(
             PythonLaunchDescriptionSource(os.path.join(bringup_dir, 'insole.launch.py')),
@@ -25,7 +25,7 @@ def generate_launch_description() -> LaunchDescription:
         IncludeLaunchDescription(
             PythonLaunchDescriptionSource(os.path.join(bringup_dir, 'pgear.launch.py')),
             launch_arguments={
-                'esp_host': LaunchConfiguration('esp_host'),
+                'udp_port': LaunchConfiguration('udp_port'),
             }.items(),
         ),
     ])

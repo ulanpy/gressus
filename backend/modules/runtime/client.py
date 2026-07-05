@@ -9,11 +9,7 @@ from pydantic import BaseModel, ValidationError
 
 from backend.core.configs.config import Config
 from backend.modules.runtime.schemas import (
-    CalibrationStatusResponse,
-    PgearCommandResponse,
     RosbagResponse,
-    SessionPgearLoadProfilePayload,
-    SessionPgearCalibrateBaselinePayload,
     SessionRosbagStartPayload,
     SessionStatusResponse,
 )
@@ -31,7 +27,7 @@ class SessionManagerError(Exception):
 
 
 class SessionManagerClient:
-    """Low-level async HTTP adapter for session_manager wire protocol."""
+    """Async HTTP adapter for session_manager (status + rosbag)."""
 
     def __init__(self, *, config: Config, client: httpx.AsyncClient) -> None:
         self._config = config
@@ -88,71 +84,6 @@ class SessionManagerClient:
 
     async def get_status(self) -> SessionStatusResponse:
         return await self._request("GET", "/session/status", None, response_model=SessionStatusResponse)
-
-    async def pgear_load_profile(self, payload: SessionPgearLoadProfilePayload) -> PgearCommandResponse:
-        return await self._request(
-            "POST",
-            "/session/pgear/load-profile",
-            payload,
-            response_model=PgearCommandResponse,
-        )
-
-    async def pgear_arm(self) -> PgearCommandResponse:
-        return await self._request("POST", "/session/pgear/arm", None, response_model=PgearCommandResponse)
-
-    async def pgear_disarm(self) -> PgearCommandResponse:
-        return await self._request("POST", "/session/pgear/disarm", None, response_model=PgearCommandResponse)
-
-    async def pgear_run(self) -> PgearCommandResponse:
-        return await self._request("POST", "/session/pgear/run", None, response_model=PgearCommandResponse)
-
-    async def pgear_stop_gait(self) -> PgearCommandResponse:
-        return await self._request(
-            "POST",
-            "/session/pgear/stop-gait",
-            None,
-            response_model=PgearCommandResponse,
-        )
-
-    async def pgear_estop(self) -> PgearCommandResponse:
-        return await self._request("POST", "/session/pgear/estop", None, response_model=PgearCommandResponse)
-
-    async def pgear_estop_reset(self) -> PgearCommandResponse:
-        return await self._request(
-            "POST",
-            "/session/pgear/estop-reset",
-            None,
-            response_model=PgearCommandResponse,
-        )
-
-    async def pgear_full_cal(self) -> PgearCommandResponse:
-        return await self._request("POST", "/session/pgear/full-cal", None, response_model=PgearCommandResponse)
-
-    async def pgear_calibrate_baseline(
-        self, payload: SessionPgearCalibrateBaselinePayload
-    ) -> PgearCommandResponse:
-        return await self._request(
-            "POST",
-            "/session/pgear/calibrate-baseline",
-            payload,
-            response_model=PgearCommandResponse,
-        )
-
-    async def pgear_cancel_calibrate(self) -> PgearCommandResponse:
-        return await self._request(
-            "POST",
-            "/session/pgear/cancel-calibrate",
-            None,
-            response_model=PgearCommandResponse,
-        )
-
-    async def get_calibration_status(self) -> CalibrationStatusResponse:
-        return await self._request(
-            "GET",
-            "/session/pgear/calibration-status",
-            None,
-            response_model=CalibrationStatusResponse,
-        )
 
     async def rosbag_start(self, payload: SessionRosbagStartPayload) -> RosbagResponse:
         return await self._request(

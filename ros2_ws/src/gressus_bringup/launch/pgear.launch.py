@@ -1,3 +1,6 @@
+import os
+
+from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument
 from launch.substitutions import LaunchConfiguration
@@ -6,7 +9,7 @@ from launch_ros.actions import Node
 
 def generate_launch_description() -> LaunchDescription:
     return LaunchDescription([
-        DeclareLaunchArgument('esp_host', default_value=''),
+        DeclareLaunchArgument('udp_port', default_value='47000'),
         DeclareLaunchArgument('publish_hz', default_value='100.0'),
         DeclareLaunchArgument('stale_after_s', default_value='0.5'),
         DeclareLaunchArgument('topic', default_value='/exoskeleton/telemetry'),
@@ -21,7 +24,7 @@ def generate_launch_description() -> LaunchDescription:
             name='pgear_device_node',
             output='screen',
             parameters=[{
-                'esp_host': LaunchConfiguration('esp_host'),
+                'udp_port': LaunchConfiguration('udp_port'),
                 'publish_hz': LaunchConfiguration('publish_hz'),
                 'stale_after_s': LaunchConfiguration('stale_after_s'),
                 'topic': LaunchConfiguration('topic'),

@@ -3,13 +3,12 @@
 <package format="3">
   <name>gressus_pgear</name>
   <version>0.0.0</version>
-  <description>P.GEAR exoskeleton device node (Esp32Link via pgear_tools)</description>
+  <description>P.GEAR UDP telemetry ROS node (LogPacket broadcast receiver)</description>
   <maintainer email="ulan.sharipov@nu.edu.kz">Ulan Sharipov</maintainer>
   <license>Apache-2.0</license>
 
   <exec_depend>rclpy</exec_depend>
   <exec_depend>gressus_msgs</exec_depend>
-  <exec_depend>std_srvs</exec_depend>
 
   <test_depend>ament_copyright</test_depend>
   <test_depend>ament_flake8</test_depend>

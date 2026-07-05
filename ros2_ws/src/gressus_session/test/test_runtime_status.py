@@ -14,7 +14,7 @@ def test_build_runtime_snapshot_idle_without_pgear_node() -> None:
             "connected": False,
             "telemetryAgeS": None,
             "linkAgeMs": None,
-            "error": "service unavailable: /pgear_device_node/arm",
+            "error": "no telemetry publisher on /exoskeleton/telemetry",
         },
     )
     assert payload["state"] == "idle"
