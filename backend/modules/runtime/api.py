@@ -24,7 +24,7 @@ router = APIRouter(prefix="/api/runtime", tags=["runtime"])
 async def runtime_status(
     service: Annotated[RuntimeService, Depends(get_runtime_service)],
 ) -> RuntimeSnapshot:
-    """Poll whether a ROS stack is running (Control panel, ~1.5 s interval)."""
+    """Poll ROS runtime health: rosbag job, pgear node, telemetry freshness."""
     return await service.snapshot()
 
 

@@ -23,10 +23,11 @@ from typing import Any
 from urllib.parse import urlparse
 
 from gressus_session.pgear_ros_client import get_pgear_client
-from gressus_session.process_manager import LaunchProcessManager
+from gressus_session.rosbag_recorder import RosbagRecorder
+from gressus_session.runtime_status import build_runtime_snapshot, probe_pgear_status
 from gressus_session.session_context import ClinicalSessionContext
 
-_ROSBAG = LaunchProcessManager()
+_ROSBAG = RosbagRecorder()
 
 
 def _rosbag_target_dir(ctx: ClinicalSessionContext) -> str:
@@ -41,11 +42,6 @@ def _rosbag_target_dir(ctx: ClinicalSessionContext) -> str:
         out = f"{out}_{int(time.time())}"
     return out
 
-
-def _rosbag_command(out_dir: str) -> list[str]:
-    topics = os.environ.get("GRESSUS_ROSBAG_TOPICS", "").split()
-    record_args = topics if topics else ["-a"]
-    return ["ros2", "bag", "record", "-o", out_dir, *record_args]
 
 _PGEAR_ROUTES: dict[str, str] = {
     "/session/pgear/load-profile": "load_profile",
@@ -84,11 +80,9 @@ def _read_json(handler: BaseHTTPRequestHandler) -> dict[str, Any]:
 
 
 def _runtime_snapshot() -> dict[str, Any]:
-    return {
-        "state": "idle",
-        "activeJob": None,
-        "lastExit": None,
-    }
+    rosbag = _ROSBAG.snapshot()
+    pgear = probe_pgear_status(get_pgear_client())
+    return build_runtime_snapshot(rosbag=rosbag, pgear=pgear)
 
 
 class SessionHandler(BaseHTTPRequestHandler):
@@ -192,7 +186,7 @@ class SessionHandler(BaseHTTPRequestHandler):
         out_dir = _rosbag_target_dir(ctx)
         try:
             os.makedirs(os.path.dirname(out_dir), exist_ok=True)
-            started = _ROSBAG.start(name=f"rosbag:{ctx.session_id}", command=_rosbag_command(out_dir))
+            started = _ROSBAG.start(out_dir=out_dir, session_id=ctx.session_id)
         except RuntimeError as exc:
             # A recording is already running (single active bag).
             _json_response(self, HTTPStatus.CONFLICT, {"ok": False, "error": str(exc)})
@@ -203,7 +197,7 @@ class SessionHandler(BaseHTTPRequestHandler):
             )
             return
 
-        if not _ROSBAG.wait_briefly(0.4):
+        if not _ROSBAG.wait_started(0.4):
             _json_response(
                 self,
                 HTTPStatus.INTERNAL_SERVER_ERROR,

@@ -1,0 +1,36 @@
+"""Assemble ``GET /session/status`` runtime payload from live probes."""
+
+from __future__ import annotations
+
+from typing import Any
+
+
+def _default_pgear_status(*, error: str | None = None) -> dict[str, Any]:
+    return {
+        "nodeAvailable": False,
+        "telemetryAvailable": False,
+        "connected": False,
+        "telemetryAgeS": None,
+        "linkAgeMs": None,
+        "error": error,
+    }
+
+
+def build_runtime_snapshot(*, rosbag: dict[str, Any], pgear: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Merge rosbag process state with P.GEAR device probes."""
+    bag_state = rosbag.get("state", "idle")
+    return {
+        "state": bag_state if bag_state in ("idle", "running") else "idle",
+        "sessionManager": "up",
+        "activeJob": rosbag.get("activeJob"),
+        "lastExit": rosbag.get("lastExit"),
+        "pgear": pgear if pgear is not None else _default_pgear_status(),
+    }
+
+
+def probe_pgear_status(client: Any) -> dict[str, Any]:
+    """Call ``device_status`` on the pgear client; never raise."""
+    try:
+        return client.device_status()
+    except Exception as exc:  # noqa: BLE001 — status endpoint must stay available
+        return _default_pgear_status(error=str(exc))

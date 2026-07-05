@@ -104,6 +104,7 @@ class ActiveJobSnapshot(BaseModel):
     command: list[str]
     pid: int
     uptimeS: float = Field(ge=0.0)
+    dir: str | None = None
 
 
 class LastExitSnapshot(BaseModel):
@@ -114,14 +115,26 @@ class LastExitSnapshot(BaseModel):
     finishedAt: float | None = None
 
 
+class PgearStatusSnapshot(BaseModel):
+    """Live ``pgear_device_node`` probe from session_manager."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    nodeAvailable: bool = False
+    connected: bool = False
+    error: str | None = None
+
+
 class RuntimeSnapshot(BaseModel):
-    """Launch job state returned by ``GET /session/status`` → ``runtime``."""
+    """Runtime state returned by ``GET /session/status`` → ``runtime``."""
 
     model_config = ConfigDict(extra="ignore")
 
     state: Literal["idle", "running"]
+    sessionManager: Literal["up"] = "up"
     activeJob: ActiveJobSnapshot | None = None
     lastExit: LastExitSnapshot | None = None
+    pgear: PgearStatusSnapshot = Field(default_factory=PgearStatusSnapshot)
     clinicalSession: ClinicalSessionSnapshot | None = None
 
 

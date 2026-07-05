@@ -8,13 +8,15 @@ import time
 from typing import Any
 
 import rclpy
-from gressus_msgs.msg import PgearCalibrationStatus
+from gressus_msgs.msg import PgearCalibrationStatus, PgearTelemetry
 from gressus_msgs.srv import CalibratePgearBaseline, LoadPgearProfile
 from rclpy.node import Node
 from rclpy.qos import QoSDurabilityPolicy, QoSHistoryPolicy, QoSProfile
+from rclpy.time import Time
 from std_srvs.srv import Trigger
 
 _CAL_STATUS_TOPIC = "/exoskeleton/calibration_status"
+_TELEMETRY_TOPIC = "/exoskeleton/telemetry"
 
 
 class PgearRosClient:
@@ -107,6 +109,53 @@ class PgearRosClient:
 
     def cancel_calibrate(self) -> dict[str, Any]:
         return self._call_trigger("cancel_calibrate")
+
+    def device_status(
+        self,
+        *,
+        service_timeout_s: float = 0.5,
+        telem_timeout_s: float = 0.5,
+    ) -> dict[str, Any]:
+        """Probe ``pgear_device_node`` services and latest telemetry freshness."""
+        service = self._service("arm")
+        node_available = False
+        with self._lock:
+            client = self._node.create_client(Trigger, service)
+            try:
+                node_available = client.wait_for_service(timeout_sec=service_timeout_s)
+            finally:
+                self._node.destroy_client(client)
+
+        holder: dict[str, PgearTelemetry] = {}
+        with self._lock:
+            sub = self._node.create_subscription(
+                PgearTelemetry,
+                _TELEMETRY_TOPIC,
+                lambda msg: holder.__setitem__("msg", msg),
+                10,
+            )
+            try:
+                deadline = time.time() + telem_timeout_s
+                while "msg" not in holder and time.time() < deadline:
+                    rclpy.spin_once(self._node, timeout_sec=0.1)
+            finally:
+                self._node.destroy_subscription(sub)
+                
+        # Получаем сообщение с телеметрией и оттуда вытаскиваем флаг connected
+        msg = holder.get("msg")
+        if msg is None:
+            error = "no telemetry yet" if node_available else f"service unavailable: {service}"
+            return {
+                "nodeAvailable": node_available,
+                "connected": False,
+                "error": error,
+            }
+        error = str(msg.error).strip() or None
+        return {
+            "nodeAvailable": node_available,
+            "connected": bool(msg.connected),
+            "error": error,
+        }
 
     def calibration_status(self, *, timeout_s: float = 1.5) -> dict[str, Any]:
         """Read the latest latched calibration status (transient_local topic)."""

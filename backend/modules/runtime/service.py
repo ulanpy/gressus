@@ -2,8 +2,9 @@
 
 One per-request service that ties together:
 - P.GEAR device commands (proxied to ``pgear_device_node`` via session_manager),
-- the clinical gait-session coupling: ``run`` opens a DB session, ``stop_gait`` /
-  ``disarm`` close it, and ``calibrate_baseline`` merges kind-0 coeffs into it.
+- the clinical gait-session coupling: ``run`` currently opens a logging-only DB
+  session, ``stop_gait`` closes it, and ``calibrate_baseline`` merges kind-0
+  coeffs into it.
 
 The only app-singleton is :class:`SessionManagerClient` (it owns the httpx
 connection pool). This service is built per request with a fresh DB session;
@@ -121,10 +122,14 @@ class RuntimeService:
 
         exo_profile = _unwrap_profile(profile_json)
 
-        resp = await self._call(self._session_manager.pgear_run)
-        if not resp.success:
-            # Device refused gait — do not open a session.
-            return resp
+        # Logging-only mode: firmware/API control is not stable yet. Keep the
+        # public endpoint and session shape, but do not send RUN to the ESP32.
+        # When control is enabled, this is the only call that needs restoring.
+        resp = PgearCommandResponse(
+            ok=True,
+            success=True,
+            message="logging session started (P.GEAR control disabled)",
+        )
 
         next_number = await self._sessions.max_session_number(patient_id) + 1
         now = _now()
@@ -169,7 +174,13 @@ class RuntimeService:
         return resp.model_copy(update={"sessionId": session_obj.id})
 
     async def pgear_stop_gait(self) -> PgearCommandResponse:
-        resp = await self._call(self._session_manager.pgear_stop_gait)
+        # Logging-only mode: close the Gressus session/rosbag without sending
+        # STOP_GAIT to the ESP32. The exoskeleton is operated separately for now.
+        resp = PgearCommandResponse(
+            ok=True,
+            success=True,
+            message="logging session stopped (P.GEAR control disabled)",
+        )
         return await self._finish_open_session(resp)
 
     async def pgear_disarm(self) -> PgearCommandResponse:

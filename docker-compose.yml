@@ -26,6 +26,8 @@ services:
       RMW_IMPLEMENTATION: ${RMW_IMPLEMENTATION:-rmw_fastrtps_cpp}
       GRESSUS_SESSION_MANAGER: ${GRESSUS_SESSION_MANAGER:-1}
       GRESSUS_SESSION_PORT: ${GRESSUS_SESSION_PORT:-9090}
+      GRESSUS_SESSION_DATA_ROOT: ${GRESSUS_SESSION_DATA_ROOT:-/data/sessions}
+      GRESSUS_ROSBAG_TOPICS: ${GRESSUS_ROSBAG_TOPICS:-/exoskeleton/telemetry /exoskeleton/calibration_status}
     volumes:
       - .:/gressus:rw
       - /tmp/.X11-unix:/tmp/.X11-unix:rw

@@ -218,7 +218,7 @@ const initialProgress: ProgressStep[] = [
   { id: 'profile', label: 'Profile loaded', status: 'idle' },
   { id: 'configuration', label: 'Configuration checked', status: 'idle' },
   { id: 'baseline', label: 'Baseline calibrated', status: 'idle' },
-  { id: 'gait', label: 'Gait started', status: 'idle' },
+  { id: 'gait', label: 'Recording started', status: 'idle' },
   { id: 'running', label: 'Session running', status: 'idle' },
   { id: 'stopped', label: 'Session stopped', status: 'idle' },
 ]
@@ -1078,8 +1078,9 @@ export function ExoskeletonControl() {
     setProfileDialogOpen(true)
   }
 
-  // Single "Start" = arm → load profile → validate → run gait.
-  // "Stop" = stop-gait → disarm. Arm/disarm are internal and not exposed in the UI.
+  // Logging-only mode: "Start" opens a Gressus session + rosbag recording.
+  // P.GEAR control commands stay implemented behind the API, but are not sent
+  // from the operator flow until the firmware/API is stable.
   const startSession = async (patient: Patient, profile: GaitProfile) => {
     setProfileDialogOpen(false)
     setBusy(true)
@@ -1089,33 +1090,21 @@ export function ExoskeletonControl() {
     setProgress(initialProgress)
     setActivePatient(patient)
     setActiveProfile(profile)
-    let currentStep: ProgressStepId = 'arm'
+    let currentStep: ProgressStepId = 'gait'
 
     try {
-      currentStep = 'arm'
-      if (mockMode) setSessionState('Arming')
-      updateStep('arm', 'running', 'Arming motors...')
-      await runPgearCommand('arm')
-      updateStep('arm', 'success', 'Arming motors complete')
-
-      currentStep = 'profile'
-      if (mockMode) setSessionState('Loading Profile')
-      updateStep('profile', 'running', 'Loading profile...')
-      await runPgearCommand('loadProfile', { profileJson: profile.profileJson })
-      updateStep('profile', 'success', 'Profile ready')
+      updateStep('arm', 'success', 'Control skipped')
+      updateStep('profile', 'success', 'Profile recorded')
 
       currentStep = 'configuration'
-      updateStep('configuration', 'running', 'Validating configuration...')
-      if (telemetry?.connected === false) {
-        throw new Error('Device is not connected.')
-      }
+      updateStep('configuration', 'running', 'Preparing recording...')
       if (mockMode) await sleep(300)
-      updateStep('configuration', 'success', 'Configuration valid')
+      updateStep('configuration', 'success', 'Recording ready')
 
       currentStep = 'gait'
-      updateStep('gait', 'running', 'Starting gait...')
+      updateStep('gait', 'running', 'Starting session recording...')
       await runPgearCommand('run', { patientId: patient.id, profileJson: profile.profileJson })
-      updateStep('gait', 'success', 'Gait started')
+      updateStep('gait', 'success', 'Recording started')
       setSessionState('Running')
       if (mockMode) {
         setMockTelemetry((frame) =>
@@ -1133,7 +1122,7 @@ export function ExoskeletonControl() {
 
       updateStep('baseline', 'success', 'Baseline skipped')
 
-      updateStep('running', 'success', 'Session running')
+      updateStep('running', 'success', 'Session recording')
     } catch (err) {
       updateStep(currentStep, 'error')
       setSessionState('Error')
@@ -1192,7 +1181,6 @@ export function ExoskeletonControl() {
       if (mockMode) setSessionState('Stopping')
       updateStep('stopped', 'running', 'Stopping session...')
       await runPgearCommand('stopGait')
-      await runPgearCommand('disarm')
       updateStep('stopped', 'success', 'Session stopped')
       setSessionState('Idle')
       setActivePatient(null)
@@ -1323,14 +1311,14 @@ export function ExoskeletonControl() {
           ? {
               icon: 'stop' as IconName,
               title: 'Stop Session',
-              subtitle: 'Stop assisted gait and disarm the exoskeleton.',
+              subtitle: 'Stop recording and close the clinical session.',
               onClick: stopSession,
               variant: 'danger' as const,
             }
           : {
               icon: 'play' as IconName,
               title: 'Start Session',
-              subtitle: 'Select patient and profile; arm, calibrate and run automatically.',
+              subtitle: 'Select patient and start structured ROS recording.',
               onClick: openStartDialog,
               variant: 'primary' as const,
             }
@@ -1456,8 +1444,8 @@ export function ExoskeletonControl() {
 
             {workflowState === 'running' ? (
               <div className="mt-5 rounded-2xl border border-blue-200 bg-blue-50 p-4 text-blue-800">
-                <div className="text-[16px] font-extrabold">Session Running</div>
-                <div className="mt-1 text-sm font-semibold">Assisted gait is active.</div>
+                <div className="text-[16px] font-extrabold">Session Recording</div>
+                <div className="mt-1 text-sm font-semibold">ROS topics are being recorded.</div>
               </div>
             ) : null}
 
