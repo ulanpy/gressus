@@ -28,3 +28,12 @@ class SessionStatus(str, Enum):
             SessionStatus.FAILED,
             SessionStatus.ABORTED,
         }
+
+
+class AnalyticsStatus(str, Enum):
+    """Post-session analytics pipeline state (separate from clinical session status)."""
+
+    PENDING = "pending"
+    PROCESSING = "processing"
+    READY = "ready"
+    FAILED = "failed"

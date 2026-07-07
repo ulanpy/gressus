@@ -17,7 +17,7 @@ from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from backend.core.database.base import Base, TimestampMixin
-from backend.modules.sessions.enums import SessionStatus
+from backend.modules.sessions.enums import AnalyticsStatus, SessionStatus
 
 if TYPE_CHECKING:
     from backend.modules.patients.models import Patient
@@ -59,5 +59,16 @@ class Session(Base, TimestampMixin):
     # Gait timing for the run tied to this session (rosbag window later).
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    analytics_status: Mapped[AnalyticsStatus | None] = mapped_column(
+        SAEnum(
+            AnalyticsStatus,
+            name="analytics_status",
+            values_callable=lambda enum: [member.value for member in enum],
+        ),
+        nullable=True,
+        index=True,
+    )
+    analytics_metrics: Mapped[dict | None] = mapped_column(JSONB)
 
     patient: Mapped["Patient"] = relationship(back_populates="sessions")

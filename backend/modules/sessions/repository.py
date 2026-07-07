@@ -5,9 +5,10 @@ from __future__ import annotations
 from collections.abc import Sequence
 from uuid import UUID
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from backend.modules.sessions.enums import AnalyticsStatus, SessionStatus
 from backend.modules.sessions.models import Session
 
 
@@ -47,3 +48,32 @@ class SessionRepository:
 
     async def flush(self) -> None:
         await self._session.flush()
+
+    async def claim_next_for_analytics(self) -> Session | None:
+        """Lock the oldest session that still needs analytics processing."""
+
+        terminal = (
+            SessionStatus.COMPLETED,
+            SessionStatus.FAILED,
+            SessionStatus.ABORTED,
+        )
+        stmt = (
+            select(Session)
+            .where(
+                Session.status.in_(terminal),
+                or_(
+                    Session.analytics_status == AnalyticsStatus.PENDING,
+                    Session.analytics_status.is_(None),
+                ),
+            )
+            .order_by(Session.ended_at.asc().nulls_last(), Session.created_at.asc())
+            .limit(1)
+            .with_for_update(skip_locked=True)
+        )
+        result = await self._session.execute(stmt)
+        session_obj = result.scalars().first()
+        if session_obj is None:
+            return None
+        session_obj.analytics_status = AnalyticsStatus.PROCESSING
+        await self._session.flush()
+        return session_obj

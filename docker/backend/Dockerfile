@@ -23,6 +23,7 @@ RUN cd backend && poetry install --no-root --no-cache
 
 COPY backend ./backend
 COPY docker/backend/start.sh /start.sh
-RUN sed -i 's/\r$//' /start.sh && chmod +x /start.sh
+COPY docker/backend/worker.sh /worker.sh
+RUN sed -i 's/\r$//' /start.sh /worker.sh && chmod +x /start.sh /worker.sh
 
 CMD ["/start.sh"]

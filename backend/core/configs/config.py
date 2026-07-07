@@ -27,6 +27,8 @@ class Config(BaseSettings):
     INSOLE_WS_URL: str = "ws://127.0.0.1:8765/ws/insole"
     SESSION_MANAGER_URL: str = "http://127.0.0.1:9090"
     SESSION_MANAGER_TIMEOUT_S: float = 10.0
+    GRESSUS_SESSION_DATA_ROOT: str = "/data/sessions"
+    ANALYTICS_WORKER_POLL_INTERVAL_S: float = 10.0
     CORS_ORIGINS: list[str] = [
         "http://localhost:5173",
         "http://127.0.0.1:5173",

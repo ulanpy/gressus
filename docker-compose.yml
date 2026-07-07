@@ -34,6 +34,7 @@ services:
       - ${HOME}/.Xauthority:/root/.Xauthority:ro
       - ${XDG_RUNTIME_DIR:-/dev/null}:${XDG_RUNTIME_DIR:-/dev/null}:rw
       - /dev:/dev
+      - session_data:/data/sessions
     working_dir: /gressus/ros2_ws
     entrypoint: ["/gressus/docker/entrypoint.sh"]
     command: bash
@@ -89,6 +90,29 @@ services:
     networks:
       - gressus-network
 
+  worker:
+    image: gressus-backend
+    build:
+      context: .
+      dockerfile: docker/backend/Dockerfile
+    container_name: gressus-worker
+    restart: unless-stopped
+    depends_on:
+      - postgres
+    env_file:
+      - .env
+    volumes:
+      - .:/gressus:rw
+      - session_data:/data/sessions
+    networks:
+      - gressus-network
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      RUN_MIGRATIONS: "false"
+      GRESSUS_SESSION_DATA_ROOT: /data/sessions
+    command: ["/gressus/docker/backend/worker.sh"]
+
   pgadmin:
     image: dpage/pgadmin4
     container_name: gressus-pgadmin
@@ -110,6 +134,7 @@ volumes:
   postgres_data:
   frontend_node_modules:
   pgadmin_data:
+  session_data:
 
 networks:
   gressus-network:

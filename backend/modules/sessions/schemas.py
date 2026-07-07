@@ -8,7 +8,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from backend.modules.sessions.enums import SessionStatus
+from backend.modules.sessions.enums import AnalyticsStatus, SessionStatus
 
 
 class SessionBase(BaseModel):
@@ -40,5 +40,7 @@ class SessionRead(SessionBase):
     status: SessionStatus
     started_at: datetime | None = None
     ended_at: datetime | None = None
+    analytics_status: AnalyticsStatus | None = None
+    analytics_metrics: dict[str, Any] | None = None
     created_at: datetime
     updated_at: datetime

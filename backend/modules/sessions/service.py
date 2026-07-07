@@ -9,6 +9,7 @@ from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.modules.patients.repository import PatientRepository
+from backend.modules.sessions.analytics import queue_session_analytics
 from backend.modules.sessions.enums import SessionStatus
 from backend.modules.sessions.models import Session
 from backend.modules.sessions.repository import SessionRepository
@@ -81,5 +82,6 @@ class SessionService:
                 ),
             )
         session_obj.status = new_status
+        queue_session_analytics(session_obj)
         await self._repo.flush()
         return session_obj

@@ -20,6 +20,7 @@ from backend.modules.runtime.schemas import (
     SessionActionResponse,
     SessionRosbagStartPayload,
 )
+from backend.modules.sessions.analytics import queue_session_analytics
 from backend.modules.sessions.enums import SessionStatus
 from backend.modules.sessions.models import Session
 from backend.modules.sessions.repository import SessionRepository
@@ -120,6 +121,7 @@ class RuntimeService:
 
         session_obj.status = SessionStatus.COMPLETED
         session_obj.ended_at = _now()
+        queue_session_analytics(session_obj)
         await self._sessions.flush()
         await self._try_stop_rosbag()
 
