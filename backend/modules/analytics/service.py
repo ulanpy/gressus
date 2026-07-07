@@ -6,17 +6,16 @@ import logging
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from backend.modules.analytics.interface import SessionAnalytics
 from backend.modules.analytics.processor import process_session
-from backend.modules.sessions.enums import AnalyticsStatus
-from backend.modules.sessions.repository import SessionRepository
 
 logger = logging.getLogger(__name__)
 
 
 class AnalyticsWorkerService:
-    def __init__(self, db: AsyncSession) -> None:
-        self._sessions = SessionRepository(db)
+    def __init__(self, db: AsyncSession, sessions: SessionAnalytics) -> None:
         self._db = db
+        self._sessions = sessions
 
     async def run_once(self) -> bool:
         """Claim and process one pending session. Returns True if work was done."""
@@ -31,13 +30,11 @@ class AnalyticsWorkerService:
             metrics = await process_session(session_obj)
         except Exception:
             logger.exception("analytics failed for session %s", session_id)
-            session_obj.analytics_status = AnalyticsStatus.FAILED
-            session_obj.analytics_metrics = None
+            await self._sessions.fail_analytics(session_obj)
             await self._db.commit()
             return True
 
-        session_obj.analytics_status = AnalyticsStatus.READY
-        session_obj.analytics_metrics = metrics
+        await self._sessions.complete_analytics(session_obj, metrics)
         await self._db.commit()
         logger.info("analytics ready for session %s", session_id)
         return True

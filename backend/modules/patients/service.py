@@ -23,6 +23,11 @@ class PatientService:
             raise HTTPException(status_code=404, detail=f"patient {patient_id} not found")
         return patient
 
+    async def ensure_exists(self, patient_id: UUID) -> None:
+        """Satisfies ``PatientReader`` ports in other modules."""
+
+        await self.get_or_404(patient_id)
+
     async def list(
         self, *, include_archived: bool = False, limit: int = 100, offset: int = 0
     ) -> Sequence[Patient]:

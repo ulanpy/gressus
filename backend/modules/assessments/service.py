@@ -8,21 +8,16 @@ from uuid import UUID
 from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from backend.modules.assessments.interface import PatientReader
 from backend.modules.assessments.models import Assessment
 from backend.modules.assessments.repository import AssessmentRepository
 from backend.modules.assessments.schemas import AssessmentCreate, AssessmentUpdate
-from backend.modules.patients.repository import PatientRepository
 
 
 class AssessmentService:
-    def __init__(self, session: AsyncSession) -> None:
+    def __init__(self, session: AsyncSession, patients: PatientReader) -> None:
         self._repo = AssessmentRepository(session)
-        self._patients = PatientRepository(session)
-
-    async def _ensure_patient(self, patient_id: UUID) -> None:
-        patient = await self._patients.get_by_id(patient_id)
-        if patient is None:
-            raise HTTPException(status_code=404, detail=f"patient {patient_id} not found")
+        self._patients = patients
 
     async def get_or_404(self, patient_id: UUID, assessment_id: UUID) -> Assessment:
         assessment = await self._repo.get(assessment_id)
@@ -36,11 +31,11 @@ class AssessmentService:
     async def list_for_patient(
         self, patient_id: UUID, *, limit: int = 100, offset: int = 0
     ) -> Sequence[Assessment]:
-        await self._ensure_patient(patient_id)
+        await self._patients.ensure_exists(patient_id)
         return await self._repo.list_for_patient(patient_id, limit=limit, offset=offset)
 
     async def create(self, patient_id: UUID, payload: AssessmentCreate) -> Assessment:
-        await self._ensure_patient(patient_id)
+        await self._patients.ensure_exists(patient_id)
         next_number = await self._repo.max_assessment_number(patient_id) + 1
         assessment = Assessment(
             patient_id=patient_id,

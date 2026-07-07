@@ -6,7 +6,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends
 
-from backend.common.dependencies import get_runtime_service
+from backend.modules.runtime.dependencies import get_runtime_service
 from backend.modules.runtime.schemas import (
     RuntimeSnapshot,
     SessionActionResponse,

@@ -9,7 +9,7 @@ import signal
 from backend.core.configs.config import config
 import backend.core.database.models  # noqa: F401 — register all ORM mappers
 from backend.core.database.manager import db_manager
-from backend.modules.analytics.service import AnalyticsWorkerService
+from backend.modules.analytics.dependencies import build_analytics_worker_service
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +25,7 @@ async def _poll_loop(stop_event: asyncio.Event) -> None:
     while not stop_event.is_set():
         processed = False
         async with db_manager.async_session_maker() as session:
-            worker = AnalyticsWorkerService(session)
+            worker = build_analytics_worker_service(session)
             try:
                 processed = await worker.run_once()
             except Exception:

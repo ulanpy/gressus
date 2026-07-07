@@ -49,6 +49,19 @@ class SessionRepository:
     async def flush(self) -> None:
         await self._session.flush()
 
+    async def get_open_recording_session(self) -> Session | None:
+        stmt = (
+            select(Session)
+            .where(
+                Session.status == SessionStatus.ACTIVE,
+                Session.started_at.is_not(None),
+                Session.ended_at.is_(None),
+            )
+            .order_by(Session.started_at.desc())
+        )
+        result = await self._session.execute(stmt)
+        return result.scalars().first()
+
     async def claim_next_for_analytics(self) -> Session | None:
         """Lock the oldest session that still needs analytics processing."""
 

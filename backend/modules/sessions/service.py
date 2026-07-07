@@ -3,28 +3,29 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+from datetime import datetime, timezone
+from typing import Any
 from uuid import UUID
 
 from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.modules.patients.repository import PatientRepository
 from backend.modules.sessions.analytics import queue_session_analytics
-from backend.modules.sessions.enums import SessionStatus
+from backend.modules.sessions.enums import AnalyticsStatus, SessionStatus
+from backend.modules.sessions.interface import PatientReader
 from backend.modules.sessions.models import Session
 from backend.modules.sessions.repository import SessionRepository
 from backend.modules.sessions.schemas import SessionCreate, SessionUpdate
 
 
-class SessionService:
-    def __init__(self, session: AsyncSession) -> None:
-        self._repo = SessionRepository(session)
-        self._patients = PatientRepository(session)
+def _now() -> datetime:
+    return datetime.now(timezone.utc)
 
-    async def _ensure_patient(self, patient_id: UUID) -> None:
-        patient = await self._patients.get_by_id(patient_id)
-        if patient is None:
-            raise HTTPException(status_code=404, detail=f"patient {patient_id} not found")
+
+class SessionService:
+    def __init__(self, session: AsyncSession, patients: PatientReader) -> None:
+        self._repo = SessionRepository(session)
+        self._patients = patients
 
     async def get_or_404(self, patient_id: UUID, session_id: UUID) -> Session:
         session_obj = await self._repo.get(session_id)
@@ -38,11 +39,11 @@ class SessionService:
     async def list_for_patient(
         self, patient_id: UUID, *, limit: int = 100, offset: int = 0
     ) -> Sequence[Session]:
-        await self._ensure_patient(patient_id)
+        await self._patients.ensure_exists(patient_id)
         return await self._repo.list_for_patient(patient_id, limit=limit, offset=offset)
 
     async def create(self, patient_id: UUID, payload: SessionCreate) -> Session:
-        await self._ensure_patient(patient_id)
+        await self._patients.ensure_exists(patient_id)
         next_number = await self._repo.max_session_number(patient_id) + 1
         session_obj = Session(
             patient_id=patient_id,
@@ -85,3 +86,52 @@ class SessionService:
         queue_session_analytics(session_obj)
         await self._repo.flush()
         return session_obj
+
+    async def get_open_recording_session(self) -> Session | None:
+        return await self._repo.get_open_recording_session()
+
+    async def start_recording_session(
+        self,
+        patient_id: UUID,
+        exo_profile: dict[str, Any] | None,
+    ) -> Session:
+        await self._patients.ensure_exists(patient_id)
+        next_number = await self._repo.max_session_number(patient_id) + 1
+        now = _now()
+        session_obj = Session(
+            patient_id=patient_id,
+            session_number=next_number,
+            status=SessionStatus.ACTIVE,
+            session_date=now.date(),
+            started_at=now,
+            exo_profile=exo_profile,
+        )
+        return await self._repo.add(session_obj)
+
+    async def stop_recording_session(self) -> Session | None:
+        session_obj = await self.get_open_recording_session()
+        if session_obj is None:
+            return None
+
+        session_obj.status = SessionStatus.COMPLETED
+        session_obj.ended_at = _now()
+        queue_session_analytics(session_obj)
+        await self._repo.flush()
+        return session_obj
+
+    async def claim_next_for_analytics(self) -> Session | None:
+        return await self._repo.claim_next_for_analytics()
+
+    async def complete_analytics(
+        self,
+        session_obj: Session,
+        metrics: dict[str, Any] | None,
+    ) -> None:
+        session_obj.analytics_status = AnalyticsStatus.READY
+        session_obj.analytics_metrics = metrics
+        await self._repo.flush()
+
+    async def fail_analytics(self, session_obj: Session) -> None:
+        session_obj.analytics_status = AnalyticsStatus.FAILED
+        session_obj.analytics_metrics = None
+        await self._repo.flush()
