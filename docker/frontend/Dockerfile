@@ -1,6 +1,6 @@
-FROM node:20-alpine
+FROM node:20-bookworm
 
-RUN apk add --no-cache bash curl git
+RUN apt-get update && apt-get install -y bash curl git
 
 WORKDIR /gressus/frontend
 

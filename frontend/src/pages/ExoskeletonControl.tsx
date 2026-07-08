@@ -687,8 +687,8 @@ function ProfileDialog({
       name: initialProfile
         ? 'Обновлённый профиль'
         : lastProfile
-        ? `Профиль (из сессии #${lastProfile.sessionNumber ?? '—'})`
-        : 'Новый профиль',
+          ? `Профиль (из сессии #${lastProfile.sessionNumber ?? '—'})`
+          : 'Новый профиль',
       description: '',
       baselineRequired: false,
       profileJson: buildProfileJson(),
@@ -724,9 +724,8 @@ function ProfileDialog({
             {lastProfileLoading
               ? 'Загрузка профиля прошлой сессии…'
               : lastProfile
-                ? `Параметры предзаполнены из сессии #${lastProfile.sessionNumber ?? '—'}${
-                    lastProfile.sessionDate ? ` (${lastProfile.sessionDate})` : ''
-                  }.${hasStoredCoeffs ? ' Baseline-коэффициенты сохранены.' : ''}`
+                ? `Параметры предзаполнены из сессии #${lastProfile.sessionNumber ?? '—'}${lastProfile.sessionDate ? ` (${lastProfile.sessionDate})` : ''
+                }.${hasStoredCoeffs ? ' Baseline-коэффициенты сохранены.' : ''}`
                 : 'Прошлых профилей нет — значения по умолчанию.'}
           </div>
 
@@ -1253,7 +1252,7 @@ export function ExoskeletonControl() {
 
   const waitForCalibration = async () => {
     const deadline = Date.now() + 180_000
-    for (;;) {
+    for (; ;) {
       await sleep(1000)
       const status = await getCalibrationStatus()
       updateStep(
@@ -1302,38 +1301,38 @@ export function ExoskeletonControl() {
   const primaryAction =
     workflowState === 'estop'
       ? {
-          icon: 'refresh' as IconName,
-          title: 'Reset E-STOP',
-          subtitle: 'Clear the emergency stop before continuing.',
-          onClick: resetEstop,
-          variant: 'danger' as const,
-        }
+        icon: 'refresh' as IconName,
+        title: 'Reset E-STOP',
+        subtitle: 'Clear the emergency stop before continuing.',
+        onClick: resetEstop,
+        variant: 'danger' as const,
+      }
       : workflowState === 'error'
         ? {
-            icon: 'refresh' as IconName,
-            title: retryTitle,
-            subtitle:
-              retryTitle === 'Resolve Error'
-                ? 'Check device connection, then start the session again.'
-                : 'Start the session again.',
+          icon: 'refresh' as IconName,
+          title: retryTitle,
+          subtitle:
+            retryTitle === 'Resolve Error'
+              ? 'Check device connection, then start the session again.'
+              : 'Start the session again.',
+          onClick: openStartDialog,
+          variant: 'primary' as const,
+        }
+        : workflowState === 'running'
+          ? {
+            icon: 'stop' as IconName,
+            title: 'Stop Session',
+            subtitle: 'Stop assisted gait and disarm the exoskeleton.',
+            onClick: stopSession,
+            variant: 'danger' as const,
+          }
+          : {
+            icon: 'play' as IconName,
+            title: 'Start Session',
+            subtitle: 'Select patient and profile; arm, calibrate and run automatically.',
             onClick: openStartDialog,
             variant: 'primary' as const,
           }
-        : workflowState === 'running'
-          ? {
-              icon: 'stop' as IconName,
-              title: 'Stop Session',
-              subtitle: 'Stop assisted gait and disarm the exoskeleton.',
-              onClick: stopSession,
-              variant: 'danger' as const,
-            }
-          : {
-              icon: 'play' as IconName,
-              title: 'Start Session',
-              subtitle: 'Select patient and profile; arm, calibrate and run automatically.',
-              onClick: openStartDialog,
-              variant: 'primary' as const,
-            }
 
   return (
     <div className="mx-auto grid w-full max-w-[1540px] gap-5 text-[#17213b]">
@@ -1377,138 +1376,8 @@ export function ExoskeletonControl() {
         </div>
       </div>
 
-      <div className="grid grid-cols-[430px_minmax(0,1fr)] gap-5 max-[1100px]:grid-cols-1">
-        <aside className="grid content-start gap-5">
-          <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-[0_18px_50px_rgb(15_23_42/0.05)]">
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div>
-                <h1 className="m-0 text-[22px] font-extrabold tracking-[-0.02em] text-slate-950">
-                  Session Workflow
-                </h1>
-                {/* <p className="mt-2 mb-0 text-sm font-semibold leading-6 text-slate-500">
-                  One action is shown for the current system state.
-                </p> */}
-              </div>
-              {/* <span
-                className={cn(
-                  'rounded-full px-3 py-2 text-xs font-extrabold',
-                  workflowState === 'initial' && 'bg-slate-100 text-slate-600',
-                  workflowState === 'running' && 'bg-blue-100 text-blue-700',
-                  workflowState === 'error' && 'bg-red-100 text-red-700',
-                  workflowState === 'estop' && 'bg-red-600 text-white',
-                )}
-              >
-                {workflowStateLabel(workflowState)}
-              </span> */}
-            </div>
-
-            {workflowState === 'estop' ? (
-              <div className="mt-5 rounded-2xl border border-red-200 bg-red-50 p-4 text-red-800">
-                <div className="flex items-center gap-2 text-[16px] font-extrabold">
-                  <Icon name="alert" className="h-5 w-5" />
-                  Emergency stop is active
-                </div>
-                <p className="mt-2 mb-0 text-sm font-semibold leading-6">
-                  Session actions are unavailable until the emergency stop is reset.
-                </p>
-              </div>
-            ) : null}
-
-            {workflowState === 'error' ? (
-              <div className="mt-5 rounded-2xl border border-red-200 bg-red-50 p-4 text-red-800">
-                <div className="text-[13px] font-extrabold uppercase">Current error</div>
-                <div className="mt-1 text-sm font-semibold leading-6">
-                  {lastError ?? telemetry?.error ?? 'The system reported an error.'}
-                </div>
-              </div>
-            ) : null}
-
-            {(workflowState === 'running' || workflowState === 'error') && (
-              <div className="mt-5 grid gap-3 rounded-2xl bg-slate-50 p-4">
-                <div>
-                  <div className="text-[12px] font-extrabold uppercase text-slate-500">
-                    Active patient
-                  </div>
-                  <div className="mt-1 text-[15px] font-extrabold text-slate-950">
-                    {activePatient?.display_name ?? 'No patient selected'}
-                  </div>
-                </div>
-                <div>
-                  <div className="text-[12px] font-extrabold uppercase text-slate-500">
-                    Active profile
-                  </div>
-                  <button
-                    type="button"
-                    className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-left text-[15px] font-extrabold text-slate-950 shadow-[0_6px_16px_rgb(15_23_42/0.04)] transition-[border-color,background] hover:border-cyan-400 hover:bg-cyan-50 disabled:cursor-not-allowed disabled:opacity-50"
-                    disabled={!activeProfile || busy}
-                    onClick={openEditProfileDialog}
-                  >
-                    <span className="block">{activeProfile?.name ?? 'No profile loaded'}</span>
-                    {activeProfile ? (
-                      <span className="mt-1 block text-[11px] font-bold text-cyan-700">
-                        Click to edit and reload profile
-                      </span>
-                    ) : null}
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {workflowState === 'running' ? (
-              <div className="mt-5 rounded-2xl border border-blue-200 bg-blue-50 p-4 text-blue-800">
-                <div className="text-[16px] font-extrabold">Session Running</div>
-                <div className="mt-1 text-sm font-semibold">Assisted gait is active.</div>
-              </div>
-            ) : null}
-
-            <div className="mt-5">
-              <PrimaryAction
-                icon={primaryAction.icon}
-                title={busy ? 'Working...' : primaryAction.title}
-                subtitle={primaryAction.subtitle}
-                disabled={busy}
-                variant={primaryAction.variant}
-                onClick={() => void primaryAction.onClick()}
-              />
-            </div>
-
-            <button
-              type="button"
-              className="mt-3 flex w-full items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-extrabold text-slate-900 shadow-[0_8px_18px_rgb(15_23_42/0.05)] transition-[border-color,background] hover:border-cyan-400 hover:bg-cyan-50 disabled:cursor-not-allowed disabled:opacity-50"
-              disabled={busy || workflowState === 'estop'}
-              onClick={() => void calibrateBaseline()}
-            >
-              <Icon name="refresh" className="h-5 w-5" />
-              Calibrate Baseline
-            </button>
-
-            {/* <div className="mt-5 rounded-2xl bg-slate-50 p-4">
-              <div className="text-[12px] font-extrabold uppercase text-slate-500">
-                Setup summary
-              </div>
-              <div className="mt-1 text-[15px] font-extrabold text-slate-950">
-                {profileSubtitle}
-              </div>
-            </div> */}
-          </section>
-
-          {/* <section className="rounded-3xl border border-red-200 bg-white p-5 shadow-[0_18px_50px_rgb(15_23_42/0.05)]">
-            <h2 className="m-0 text-[14px] font-extrabold text-slate-950">Safety</h2>
-            <p className="mt-1 mb-0 text-[12px] font-semibold leading-5 text-slate-500">
-              Immediately cut assistance. Reset is required afterwards to start again.
-            </p>
-            <button
-              type="button"
-              className="mt-4 grid w-full place-items-center gap-1 rounded-2xl border-2 border-red-600 bg-red-600 px-4 py-5 text-white shadow-[0_12px_28px_rgb(220_38_38/0.25)] transition-transform hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-50"
-              disabled={busy || workflowState === 'estop'}
-              onClick={() => void triggerEstop()}
-            >
-              <Icon name="alert" className="h-8 w-8" />
-              <strong className="text-[18px] tracking-[0.08em]">E-STOP</strong>
-            </button>
-          </section> */}
-
-        </aside>
+      <div className="grid gap-5">
+       
 
         <div className="grid gap-5">
           <SimplifiedTelemetry

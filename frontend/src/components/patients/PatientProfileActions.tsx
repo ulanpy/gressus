@@ -23,6 +23,7 @@ export function PatientProfileActions({
   const [formOpen, setFormOpen] = useState(false)
   const [archiveOpen, setArchiveOpen] = useState(false)
   const [assessmentOpen, setAssessmentOpen] = useState(false)
+  
 
   const openEdit = () => {
     if (!workflow.selectedPatient) return
@@ -125,6 +126,23 @@ export function PatientProfileActions({
         {editButton}
         {createAssessmentButton}
         {archiveButton}
+        <IconButton
+  label="Start Session"
+  onClick={async () => {
+    try {
+      await workflow.startSession()
+    } catch (e) {
+      console.error(e)
+    }
+  }}
+  disabled={
+    !workflow.selectedPatient ||
+    workflow.pendingAction ||
+    workflow.patientLocked
+  }
+>
+  ▶
+</IconButton>
         {children}
       </div>
       {modals}
