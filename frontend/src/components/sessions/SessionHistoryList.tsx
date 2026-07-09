@@ -1,4 +1,4 @@
-import { formatDateTime } from '../../lib/format'
+import { formatDateOnly, formatDateTime } from '../../lib/format'
 import { useI18n } from '../../i18n/context'
 import type { TherapySession } from '../../types/sessions'
 import { HistoryIcon } from '../patients/PatientFieldIcons'
@@ -44,18 +44,26 @@ export function SessionHistoryList({ sessions, activeSessionId }: SessionHistory
 
   return (
     <ul className={sessionHistory}>
-      {history.map((session) => (
-        <li key={session.id} className={sessionHistoryItem}>
-          <div>
-            <strong>{t.workflow.sessionNumber(session.session_number ?? 0)}</strong>
-            <span className={sessionHistoryStatus}>{statusLabel(session.status)}</span>
-          </div>
-          <div className={sessionCardMeta}>
-            {session.session_date && <span>{session.session_date}</span>}
-            <span>{formatDateTime(session.created_at, language)}</span>
-          </div>
-        </li>
-      ))}
+      {history.map((session) => {
+        const primaryDate = session.started_at ?? session.created_at
+        return (
+          <li key={session.id} className={sessionHistoryItem}>
+            <div>
+              <strong>{t.workflow.sessionNumber(session.session_number ?? 0)}</strong>{' '}
+              <span className={sessionHistoryStatus}>{statusLabel(session.status)}</span>
+            </div>
+            <div className={sessionCardMeta}>
+              <span>
+                {primaryDate
+                  ? formatDateTime(primaryDate, language)
+                  : session.session_date
+                    ? formatDateOnly(session.session_date, language)
+                    : ''}
+              </span>
+            </div>
+          </li>
+        )
+      })}
     </ul>
   )
 }

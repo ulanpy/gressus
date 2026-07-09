@@ -10,6 +10,12 @@ export function formatShortDate(date: string, language: Language) {
   return new Intl.DateTimeFormat(dateLocale(language), { month: 'short', day: 'numeric' }).format(new Date(date))
 }
 
+export function formatDateOnly(value: string, language: Language = 'ru') {
+  const [year, month, day] = value.split('-').map(Number)
+  const date = year && month && day ? new Date(year, month - 1, day) : new Date(value)
+  return new Intl.DateTimeFormat(dateLocale(language), { dateStyle: 'short' }).format(date)
+}
+
 export function formatDateTime(value: string, language: Language = 'ru') {
   return new Intl.DateTimeFormat(dateLocale(language), {
     dateStyle: 'short',
