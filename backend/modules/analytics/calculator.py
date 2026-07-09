@@ -9,7 +9,7 @@ episode, then aggregates those episode metrics for the full session.
 from __future__ import annotations
 
 from collections import Counter
-from math import isfinite, sin, sqrt
+from math import isfinite, pi, sin, sqrt
 from statistics import mean
 from typing import Any
 
@@ -67,6 +67,32 @@ FORMULAS: dict[str, str] = {
     "efficiency_score": "E = mean(v_belt/v_normal, cadence/cad_normal, stride_length/SL_normal)",
     "strength_score": "STR = mean(PTF_left_hip, PTF_right_hip, PTF_left_knee, PTF_right_knee)",
     "gri": "GRI = 0.25*S + 0.15*V + 0.20*B + 0.20*E + 0.20*STR",
+    "joint_rom": "ROM_J = max(J_deg) - min(J_deg)",
+    "reference_rom": "ROM_ref_J = max(J_ref_deg) - min(J_ref_deg)",
+    "active_rom_ratio": "Active_ROM_ratio_J = clamp(ROM_J / ROM_ref_J, 0, 1.5)",
+    "tracking_error": "e_J(t) = J_ref_deg(t) - J_deg(t)",
+    "mean_error": "ME_J = mean(e_J)",
+    "mean_absolute_error": "MAE_J = mean(abs(e_J))",
+    "tracking_rmse": "RMSE_J = sqrt(mean(e_J^2))",
+    "max_tracking_error": "MaxErr_J = max(abs(e_J))",
+    "reference_compliance": "Compliance_J = clamp(1 - RMSE_J / ROM_ref_J, 0, 1)",
+    "peak_flexion_extension": "PeakFlex_J = max(J_deg); PeakExt_J = min(J_deg)",
+    "velocity": "MeanVel_J = mean(abs(J_vel)); PeakVel_J = max(abs(J_vel))",
+    "robot_torque": "RobotTorqueMean_J = mean(abs(J_meas_nm)); RobotTorqueRMS_J = sqrt(mean(J_meas_nm^2))",
+    "torque_tracking": "TorqueErr_J = J_cmd_nm - J_meas_nm; TorqueRMSE_J = sqrt(mean(TorqueErr_J^2))",
+    "patient_torque": "PatientTorqueMean_J = mean(abs(J_patient_nm)) where J_patient_status == ok",
+    "participation": "Participation_J = clamp(mean(abs(J_patient_nm)) / (mean(abs(J_patient_nm)) + mean(abs(J_meas_nm))), 0, 1)",
+    "mechanical_power": "PowerRobot_J(t) = J_meas_nm(t) * deg_to_rad(J_vel(t)); PowerPatient_J(t) = J_patient_nm(t) * deg_to_rad(J_vel(t))",
+    "mechanical_work": "Work_J = sum(Power_J(t) * dt); PositiveWork = sum(max(Power, 0) * dt); NegativeWork = sum(min(Power, 0) * dt)",
+    "assistance_summary": "AssistMean = mean(assist_r); AANDrivingPct = count(aan_driving > 0) / total * 100",
+    "rom_symmetry": "ROM_SI = abs(ROM_L - ROM_R) / ((ROM_L + ROM_R) / 2) * 100",
+    "step_metrics": "StepROM_J(i), StepRMSE_J(i), StepPatientTorque_J(i), StepRobotTorque_J(i); report mean/std/CV",
+    "fatigue_trend": "Trend = slope(metric vs time_minutes) using 60-second windows",
+    "reliability_score": "ReliabilityScore = valid_running_safe_samples / total_samples",
+    "session_score": "SessionScore = 0.25*Tracking + 0.20*Motion + 0.25*Participation + 0.15*Symmetry + 0.15*Reliability",
+    "average_gait_cycle": "For each detected gait cycle c, normalize time to phase p=(t-t_start)/(t_end-t_start)*100, interpolate J_ref_deg and J_deg to fixed phase grid p=[0..100], then average across cycles.",
+    "average_gait_cycle_error": "e_mean(p)=mean(J_ref_deg_c(p)-J_deg_c(p)) across cycles",
+    "average_gait_cycle_sd": "sd_actual(p)=std(J_deg_c(p)); sd_ref(p)=std(J_ref_deg_c(p))",
 }
 
 JOINTS = {
@@ -74,6 +100,13 @@ JOINTS = {
     "right_hip": {"angle": "HR_deg", "patient_torque": "HR_patient_nm", "force": "F_hip_R"},
     "left_knee": {"angle": "KL_deg", "patient_torque": "KL_patient_nm", "force": "F_knee_L"},
     "right_knee": {"angle": "KR_deg", "patient_torque": "KR_patient_nm", "force": "F_knee_R"},
+}
+
+EXO_JOINTS = {
+    "HR": {"label": "right_hip", "side": "right", "kind": "hip"},
+    "KR": {"label": "right_knee", "side": "right", "kind": "knee"},
+    "HL": {"label": "left_hip", "side": "left", "kind": "hip"},
+    "KL": {"label": "left_knee", "side": "left", "kind": "knee"},
 }
 
 
@@ -241,6 +274,8 @@ def aggregate_episode_metrics(
         "strength": avg(("scores", "strength")),
     }
     session_scores["gri"] = _weighted_gri(session_scores, params["weights"])
+    exo = _exoskeleton_session_metrics(rows)
+    average_cycle = _average_gait_cycle_profiles(rows)
 
     return {
         "startS": start_s,
@@ -274,10 +309,23 @@ def aggregate_episode_metrics(
         },
         "strideLengthMeanM": avg(("spatial", "strideLengthM", "mean")),
         "torque": {
+            "exoskeletonJoints": exo["torque"]["joints"],
             "strengthScore": avg(("torque", "strengthScore")),
             "joints": _aggregate_joint_metrics(episodes),
         },
-        "scores": session_scores,
+        "kinematics": exo["kinematics"],
+        "tracking": {
+            **exo["tracking"],
+            "averageGaitCycle": average_cycle,
+        },
+        "power": exo["power"],
+        "participation": exo["participation"],
+        "assistance": exo["assistance"],
+        "symmetry": exo["symmetry"],
+        "fatigue": exo["fatigue"],
+        "safety": exo["safety"],
+        "cemrrScores": session_scores,
+        "scores": exo["scores"],
     }
 
 
@@ -335,6 +383,454 @@ def _timing_metrics(rows: list[dict[str, Any]]) -> dict[str, Any]:
         "doubleSupport": _summary(double_support),
         "doubleSupportRatioPct": _ratio_pct(_safe_mean(double_support), _safe_mean(left_stride)),
         "strideTimeSymmetryIndexPct": _symmetry_index(_safe_mean(left_stride), _safe_mean(right_stride)),
+    }
+
+
+def _exoskeleton_session_metrics(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    ordered = sorted(rows, key=_row_time_s)
+    joint_metrics = {
+        joint: _exoskeleton_joint_metrics(ordered, joint)
+        for joint in EXO_JOINTS
+    }
+    symmetry = _exoskeleton_symmetry(joint_metrics)
+    fatigue = _fatigue_trends(ordered)
+    safety = _safety_metrics(ordered)
+    scores = _exoskeleton_scores(joint_metrics, symmetry, safety)
+
+    return {
+        "kinematics": {
+            "joints": {
+                joint: {
+                    "label": meta["label"],
+                    "romDeg": metrics["romDeg"],
+                    "referenceRomDeg": metrics["referenceRomDeg"],
+                    "activeRomRatio": metrics["activeRomRatio"],
+                    "peakFlexionDeg": metrics["peakFlexionDeg"],
+                    "peakExtensionDeg": metrics["peakExtensionDeg"],
+                    "meanVelocityDegS": metrics["meanVelocityDegS"],
+                    "peakVelocityDegS": metrics["peakVelocityDegS"],
+                    "stepMetrics": metrics["stepMetrics"]["kinematics"],
+                }
+                for joint, metrics in joint_metrics.items()
+                for meta in [EXO_JOINTS[joint]]
+            },
+        },
+        "tracking": {
+            "joints": {
+                joint: {
+                    "meanErrorDeg": metrics["meanErrorDeg"],
+                    "meanAbsErrorDeg": metrics["meanAbsErrorDeg"],
+                    "rmseDeg": metrics["rmseDeg"],
+                    "maxErrorDeg": metrics["maxErrorDeg"],
+                    "compliance": metrics["compliance"],
+                    "stepMetrics": metrics["stepMetrics"]["tracking"],
+                }
+                for joint, metrics in joint_metrics.items()
+            },
+        },
+        "torque": {
+            "joints": {
+                joint: {
+                    "robotTorqueMeanNm": metrics["robotTorqueMeanNm"],
+                    "robotTorquePeakNm": metrics["robotTorquePeakNm"],
+                    "robotTorqueRmsNm": metrics["robotTorqueRmsNm"],
+                    "torqueRmseNm": metrics["torqueRmseNm"],
+                    "patientTorqueMeanNm": metrics["patientTorqueMeanNm"],
+                    "patientTorquePeakNm": metrics["patientTorquePeakNm"],
+                    "patientTorqueValidPct": metrics["patientTorqueValidPct"],
+                    "stepMetrics": metrics["stepMetrics"]["torque"],
+                }
+                for joint, metrics in joint_metrics.items()
+            },
+        },
+        "power": {
+            "joints": {
+                joint: {
+                    "robot": metrics["robotPower"],
+                    "patient": metrics["patientPower"],
+                }
+                for joint, metrics in joint_metrics.items()
+            },
+        },
+        "participation": {
+            "joints": {
+                joint: metrics["participation"]
+                for joint, metrics in joint_metrics.items()
+            },
+            "mean": _mean_present([metrics["participation"] for metrics in joint_metrics.values()]),
+        },
+        "assistance": _assistance_metrics(ordered),
+        "symmetry": symmetry,
+        "fatigue": fatigue,
+        "safety": safety,
+        "scores": scores,
+    }
+
+
+def _average_gait_cycle_profiles(rows: list[dict[str, Any]], points: int = 101) -> dict[str, Any]:
+    ordered = sorted(rows, key=_row_time_s)
+    phase_grid = list(range(points))
+    left_hs = _explicit_events(ordered, "HS_L")
+    right_hs = _explicit_events(ordered, "HS_R")
+    if left_hs or right_hs:
+        cycle_starts = sorted(set(left_hs + right_hs))
+        event_source = "explicit_insole_events"
+    else:
+        cycle_starts = _step_transition_times(ordered)
+        event_source = "step_idx_zero_crossings_estimated"
+
+    intervals = [
+        (start, end)
+        for start, end in zip(cycle_starts, cycle_starts[1:])
+        if 0.5 <= end - start <= 3.0
+    ]
+    joints: dict[str, Any] = {}
+    for joint, meta in EXO_JOINTS.items():
+        ref_cycles: list[list[float]] = []
+        actual_cycles: list[list[float]] = []
+        ref_key = f"{joint}_ref_deg"
+        actual_key = f"{joint}_deg"
+
+        for (start, end), cycle_rows in zip(intervals, _rows_by_intervals(ordered, intervals)):
+            if len(cycle_rows) < 5:
+                continue
+
+            phases = []
+            ref_values = []
+            actual_values = []
+            duration = end - start
+            for row in cycle_rows:
+                ref = _as_float(row.get(ref_key))
+                actual = _as_float(row.get(actual_key))
+                if ref is None or actual is None:
+                    continue
+                phases.append((_row_time_s(row) - start) / duration * 100.0)
+                ref_values.append(ref)
+                actual_values.append(actual)
+
+            if len(phases) < 5:
+                continue
+            ref_cycles.append(_interpolate_series(phases, ref_values, phase_grid))
+            actual_cycles.append(_interpolate_series(phases, actual_values, phase_grid))
+
+        ref_mean = _mean_by_index(ref_cycles)
+        actual_mean = _mean_by_index(actual_cycles)
+        ref_std = _std_by_index(ref_cycles)
+        actual_std = _std_by_index(actual_cycles)
+        error_cycles = [
+            [ref - actual for ref, actual in zip(ref_cycle, actual_cycle)]
+            for ref_cycle, actual_cycle in zip(ref_cycles, actual_cycles)
+        ]
+        error_std = _std_by_index(error_cycles)
+        error_mean = [
+            None if ref is None or actual is None else ref - actual
+            for ref, actual in zip(ref_mean, actual_mean)
+        ]
+        errors = [value for value in error_mean if value is not None]
+        reference_values = [value for value in ref_mean if value is not None]
+        actual_values = [value for value in actual_mean if value is not None]
+        rmse = _rms(errors)
+        reference_rom = _range(reference_values)
+
+        joints[joint] = {
+            "label": meta["label"],
+            "cycleCount": len(ref_cycles),
+            "summary": {
+                "rmseDeg": rmse,
+                "maeDeg": _mean_abs(errors),
+                "maxErrorDeg": _max_abs(errors),
+                "referenceRomDeg": reference_rom,
+                "actualRomDeg": _range(actual_values),
+                "compliance": _clamp(
+                    None
+                    if rmse is None or reference_rom in (None, 0.0)
+                    else 1.0 - rmse / reference_rom,
+                    0.0,
+                    1.0,
+                ),
+            },
+            "points": [
+                {
+                    "phasePct": phase,
+                    "refDeg": ref_mean[index],
+                    "actualDeg": actual_mean[index],
+                    "errorDeg": error_mean[index],
+                    "refStdDeg": ref_std[index],
+                    "actualStdDeg": actual_std[index],
+                    "errorStdDeg": error_std[index],
+                }
+                for index, phase in enumerate(phase_grid)
+            ],
+        }
+
+    return {
+        "phaseGridPct": phase_grid,
+        "eventSource": event_source,
+        "cycleIntervalCount": len(intervals),
+        "joints": joints,
+    }
+
+
+def _exoskeleton_joint_metrics(rows: list[dict[str, Any]], joint: str) -> dict[str, Any]:
+    pos = _values(rows, f"{joint}_deg")
+    ref = _values(rows, f"{joint}_ref_deg")
+    vel = _values(rows, f"{joint}_vel")
+    meas_torque = _values(rows, f"{joint}_meas_nm")
+    cmd_torque = _values(rows, f"{joint}_cmd_nm")
+    patient_all = _values(rows, f"{joint}_patient_nm")
+    patient_ok = [
+        _as_float(row.get(f"{joint}_patient_nm"))
+        for row in rows
+        if str(row.get(f"{joint}_patient_status", "")).lower() == "ok"
+        and _as_float(row.get(f"{joint}_patient_nm")) is not None
+    ]
+    patient_ok_values = [value for value in patient_ok if value is not None]
+
+    errors = _paired_values(rows, f"{joint}_ref_deg", f"{joint}_deg", lambda a, b: a - b)
+    torque_errors = _paired_values(rows, f"{joint}_cmd_nm", f"{joint}_meas_nm", lambda a, b: a - b)
+    rom = _range(pos)
+    ref_rom = _range(ref)
+    robot_mean = _mean_abs(meas_torque)
+    patient_mean = _mean_abs(patient_ok_values)
+
+    return {
+        "romDeg": rom,
+        "referenceRomDeg": ref_rom,
+        "activeRomRatio": _clamp(_ratio(rom, ref_rom), 0.0, 1.5),
+        "meanErrorDeg": _safe_mean(errors),
+        "meanAbsErrorDeg": _mean_abs(errors),
+        "rmseDeg": _rms(errors),
+        "maxErrorDeg": _max_abs(errors),
+        "compliance": _clamp(
+            None if _rms(errors) is None or ref_rom in (None, 0.0) else 1.0 - _rms(errors) / ref_rom,
+            0.0,
+            1.0,
+        ),
+        "peakFlexionDeg": max(pos) if pos else None,
+        "peakExtensionDeg": min(pos) if pos else None,
+        "meanVelocityDegS": _mean_abs(vel),
+        "peakVelocityDegS": _max_abs(vel),
+        "robotTorqueMeanNm": robot_mean,
+        "robotTorquePeakNm": _max_abs(meas_torque),
+        "robotTorqueRmsNm": _rms(meas_torque),
+        "torqueRmseNm": _rms(torque_errors),
+        "patientTorqueMeanNm": patient_mean,
+        "patientTorquePeakNm": _max_abs(patient_ok_values),
+        "patientTorqueValidPct": _ratio_pct(len(patient_ok_values), len(rows)) if rows else None,
+        "participation": _clamp(
+            None
+            if patient_mean is None or robot_mean is None or patient_mean + robot_mean == 0
+            else patient_mean / (patient_mean + robot_mean),
+            0.0,
+            1.0,
+        ),
+        "robotPower": _power_work(rows, f"{joint}_meas_nm", f"{joint}_vel"),
+        "patientPower": _power_work(rows, f"{joint}_patient_nm", f"{joint}_vel"),
+        "stepMetrics": _step_level_exoskeleton_metrics(rows, joint),
+    }
+
+
+def _assistance_metrics(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    return {
+        "assistMean": _safe_mean(_values(rows, "assist_r")),
+        "assistLeftMean": _safe_mean(_values(rows, "assist_l")),
+        "aanFactorMean": _safe_mean(_values(rows, "aan_factor")),
+        "aanDrivingPct": _count_pct(rows, lambda row: (_as_float(row.get("aan_driving")) or 0.0) > 0),
+        "torqueModePct": _count_pct(rows, lambda row: _as_float(row.get("torque_mode")) == 1.0),
+    }
+
+
+def _exoskeleton_symmetry(joint_metrics: dict[str, dict[str, Any]]) -> dict[str, Any]:
+    rom_si_hip = _symmetry_index(joint_metrics["HL"]["romDeg"], joint_metrics["HR"]["romDeg"])
+    rom_si_knee = _symmetry_index(joint_metrics["KL"]["romDeg"], joint_metrics["KR"]["romDeg"])
+    pt_si_hip = _symmetry_index(
+        joint_metrics["HL"]["patientTorqueMeanNm"],
+        joint_metrics["HR"]["patientTorqueMeanNm"],
+    )
+    pt_si_knee = _symmetry_index(
+        joint_metrics["KL"]["patientTorqueMeanNm"],
+        joint_metrics["KR"]["patientTorqueMeanNm"],
+    )
+    return {
+        "romSiHipPct": rom_si_hip,
+        "romSiKneePct": rom_si_knee,
+        "patientTorqueSiHipPct": pt_si_hip,
+        "patientTorqueSiKneePct": pt_si_knee,
+    }
+
+
+def _safety_metrics(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    ctrl_loop = _values(rows, "ctrl_loop_us")
+    link_age = _values(rows, "link_age_ms")
+    total = len(rows)
+    valid_running_safe = sum(
+        1
+        for row in rows
+        if _as_float(row.get("running")) == 1.0
+        and _as_float(row.get("estop")) != 1.0
+        and (_as_float(row.get("hb_error")) or 0.0) == 0.0
+        and (_as_float(row.get("cross_check")) or 0.0) == 0.0
+    )
+    return {
+        "estopCount": sum(1 for row in rows if _as_float(row.get("estop")) == 1.0),
+        "runningPct": _count_pct(rows, lambda row: _as_float(row.get("running")) == 1.0),
+        "sensorOnlinePct": _count_pct(rows, lambda row: _as_float(row.get("sensor_online")) == 1.0),
+        "heartbeatErrorCount": sum(1 for row in rows if (_as_float(row.get("hb_error")) or 0.0) != 0.0),
+        "crossCheckErrorCount": sum(1 for row in rows if (_as_float(row.get("cross_check")) or 0.0) != 0.0),
+        "meanLinkAgeMs": _safe_mean(link_age),
+        "maxLinkAgeMs": max(link_age) if link_age else None,
+        "meanCtrlLoopUs": _safe_mean(ctrl_loop),
+        "maxCtrlLoopUs": max(ctrl_loop) if ctrl_loop else None,
+        "ctrlLoopJitterUs": _sample_std(ctrl_loop),
+        "validRunningSafeSamples": valid_running_safe,
+        "totalSamples": total,
+        "validRunningSafePct": _ratio_pct(valid_running_safe, total) if total else None,
+    }
+
+
+def _exoskeleton_scores(
+    joint_metrics: dict[str, dict[str, Any]],
+    symmetry: dict[str, Any],
+    safety: dict[str, Any],
+) -> dict[str, Any]:
+    tracking = _mean_present([metrics["compliance"] for metrics in joint_metrics.values()])
+    motion = _mean_present([
+        _clamp(metrics["activeRomRatio"], 0.0, 1.0)
+        for metrics in joint_metrics.values()
+    ])
+    participation = _mean_present([metrics["participation"] for metrics in joint_metrics.values()])
+    rom_si_values = [symmetry["romSiHipPct"], symmetry["romSiKneePct"]]
+    symmetry_score = _clamp(
+        None if _mean_present(rom_si_values) is None else 1.0 - _mean_present(rom_si_values) / 100.0,
+        0.0,
+        1.0,
+    )
+    reliability = _ratio(safety["validRunningSafeSamples"], safety["totalSamples"])
+    score_values = [tracking, motion, participation, symmetry_score, reliability]
+    session_score = (
+        None
+        if any(value is None for value in score_values)
+        else (
+            0.25 * tracking
+            + 0.20 * motion
+            + 0.25 * participation
+            + 0.15 * symmetry_score
+            + 0.15 * reliability
+        )
+    )
+    return {
+        "trackingScore": tracking,
+        "motionScore": motion,
+        "participationScore": participation,
+        "symmetryScore": symmetry_score,
+        "reliabilityScore": reliability,
+        "sessionScore": session_score,
+    }
+
+
+def _step_level_exoskeleton_metrics(rows: list[dict[str, Any]], joint: str) -> dict[str, Any]:
+    segments = _contiguous_step_segments(rows)
+    step_rom: list[float] = []
+    step_rmse: list[float] = []
+    step_patient: list[float] = []
+    step_robot: list[float] = []
+
+    for segment in segments:
+        pos = _values(segment, f"{joint}_deg")
+        errors = _paired_values(segment, f"{joint}_ref_deg", f"{joint}_deg", lambda a, b: a - b)
+        patient = [
+            _as_float(row.get(f"{joint}_patient_nm"))
+            for row in segment
+            if str(row.get(f"{joint}_patient_status", "")).lower() == "ok"
+        ]
+        patient_values = [value for value in patient if value is not None]
+        robot = _values(segment, f"{joint}_meas_nm")
+        if pos:
+            step_rom.append(max(pos) - min(pos))
+        rmse = _rms(errors)
+        if rmse is not None:
+            step_rmse.append(rmse)
+        patient_mean = _mean_abs(patient_values)
+        robot_mean = _mean_abs(robot)
+        if patient_mean is not None:
+            step_patient.append(patient_mean)
+        if robot_mean is not None:
+            step_robot.append(robot_mean)
+
+    return {
+        "segmentCount": len(segments),
+        "kinematics": {"stepRomDeg": _summary_with_cv(step_rom)},
+        "tracking": {"stepRmseDeg": _summary_with_cv(step_rmse)},
+        "torque": {
+            "stepPatientTorqueNm": _summary_with_cv(step_patient),
+            "stepRobotTorqueNm": _summary_with_cv(step_robot),
+        },
+    }
+
+
+def _fatigue_trends(rows: list[dict[str, Any]], *, window_s: float = 60.0) -> dict[str, Any]:
+    if not rows:
+        return {"windowS": window_s, "joints": {}, "interpretation": []}
+
+    start = _row_time_s(rows[0])
+    windows: dict[int, list[dict[str, Any]]] = {}
+    for row in rows:
+        index = int((_row_time_s(row) - start) // window_s)
+        windows.setdefault(index, []).append(row)
+
+    joints: dict[str, Any] = {}
+    interpretations: list[str] = []
+    for joint in EXO_JOINTS:
+        series = []
+        for index, window_rows in sorted(windows.items()):
+            metrics = _exoskeleton_joint_metrics_without_steps(window_rows, joint)
+            series.append((index * window_s / 60.0, metrics))
+        slopes = {
+            "romDegPerMin": _slope([(t, m["romDeg"]) for t, m in series]),
+            "rmseDegPerMin": _slope([(t, m["rmseDeg"]) for t, m in series]),
+            "patientTorqueNmPerMin": _slope([(t, m["patientTorqueMeanNm"]) for t, m in series]),
+            "robotTorqueNmPerMin": _slope([(t, m["robotTorqueMeanNm"]) for t, m in series]),
+            "participationPerMin": _slope([(t, m["participation"]) for t, m in series]),
+        }
+        joint_interpretation = []
+        if (slopes["romDegPerMin"] or 0.0) < 0 and (slopes["rmseDegPerMin"] or 0.0) > 0:
+            joint_interpretation.append("possible_fatigue")
+        if (slopes["patientTorqueNmPerMin"] or 0.0) > 0 and (slopes["robotTorqueNmPerMin"] or 0.0) < 0:
+            joint_interpretation.append("improving_participation")
+        interpretations.extend(f"{joint}:{label}" for label in joint_interpretation)
+        joints[joint] = {
+            "windowCount": len(series),
+            "slopes": slopes,
+            "interpretation": joint_interpretation,
+        }
+    return {"windowS": window_s, "joints": joints, "interpretation": interpretations}
+
+
+def _exoskeleton_joint_metrics_without_steps(rows: list[dict[str, Any]], joint: str) -> dict[str, Any]:
+    pos = _values(rows, f"{joint}_deg")
+    errors = _paired_values(rows, f"{joint}_ref_deg", f"{joint}_deg", lambda a, b: a - b)
+    robot = _values(rows, f"{joint}_meas_nm")
+    patient = [
+        _as_float(row.get(f"{joint}_patient_nm"))
+        for row in rows
+        if str(row.get(f"{joint}_patient_status", "")).lower() == "ok"
+        and _as_float(row.get(f"{joint}_patient_nm")) is not None
+    ]
+    patient_values = [value for value in patient if value is not None]
+    patient_mean = _mean_abs(patient_values)
+    robot_mean = _mean_abs(robot)
+    return {
+        "romDeg": _range(pos),
+        "rmseDeg": _rms(errors),
+        "patientTorqueMeanNm": patient_mean,
+        "robotTorqueMeanNm": robot_mean,
+        "participation": _clamp(
+            None
+            if patient_mean is None or robot_mean is None or patient_mean + robot_mean == 0
+            else patient_mean / (patient_mean + robot_mean),
+            0.0,
+            1.0,
+        ),
     }
 
 
@@ -650,6 +1146,75 @@ def _summary(values: list[float]) -> dict[str, float | None]:
     }
 
 
+def _summary_with_cv(values: list[float]) -> dict[str, float | None]:
+    summary = _summary(values)
+    mean_value = summary["mean"]
+    std_value = summary["std"]
+    summary["cvPct"] = (
+        None
+        if mean_value in (None, 0.0) or std_value is None
+        else std_value / mean_value * 100.0
+    )
+    return summary
+
+
+def _interpolate_series(
+    phases: list[float],
+    values: list[float],
+    phase_grid: list[int],
+) -> list[float]:
+    pairs = sorted(
+        (phase, value)
+        for phase, value in zip(phases, values)
+        if isfinite(phase) and isfinite(value)
+    )
+    if not pairs:
+        return [0.0 for _ in phase_grid]
+    if len(pairs) == 1:
+        return [pairs[0][1] for _ in phase_grid]
+
+    out: list[float] = []
+    cursor = 0
+    for phase in phase_grid:
+        target = float(phase)
+        if target <= pairs[0][0]:
+            out.append(pairs[0][1])
+            continue
+        if target >= pairs[-1][0]:
+            out.append(pairs[-1][1])
+            continue
+        while cursor + 1 < len(pairs) and pairs[cursor + 1][0] < target:
+            cursor += 1
+        left_phase, left_value = pairs[cursor]
+        right_phase, right_value = pairs[cursor + 1]
+        if right_phase == left_phase:
+            out.append(right_value)
+            continue
+        alpha = (target - left_phase) / (right_phase - left_phase)
+        out.append(left_value + alpha * (right_value - left_value))
+    return out
+
+
+def _mean_by_index(list_of_lists: list[list[float]]) -> list[float | None]:
+    if not list_of_lists:
+        return [None for _ in range(101)]
+    width = min(len(values) for values in list_of_lists)
+    return [
+        _safe_mean([values[index] for values in list_of_lists])
+        for index in range(width)
+    ]
+
+
+def _std_by_index(list_of_lists: list[list[float]]) -> list[float | None]:
+    if not list_of_lists:
+        return [None for _ in range(101)]
+    width = min(len(values) for values in list_of_lists)
+    return [
+        _sample_std([values[index] for values in list_of_lists])
+        for index in range(width)
+    ]
+
+
 def _sample_std(values: list[float]) -> float | None:
     if len(values) < 2:
         return None
@@ -708,6 +1273,128 @@ def _aggregate_joint_metrics(episodes: list[dict[str, Any]]) -> dict[str, Any]:
             "patientTorqueNmMean": _safe_mean(torque_values),
         }
     return out
+
+
+def _paired_values(
+    rows: list[dict[str, Any]],
+    left_key: str,
+    right_key: str,
+    fn,
+) -> list[float]:
+    out = []
+    for row in rows:
+        left = _as_float(row.get(left_key))
+        right = _as_float(row.get(right_key))
+        if left is not None and right is not None:
+            out.append(fn(left, right))
+    return out
+
+
+def _range(values: list[float]) -> float | None:
+    return None if not values else max(values) - min(values)
+
+
+def _mean_abs(values: list[float]) -> float | None:
+    clean = [abs(value) for value in values if isfinite(value)]
+    return mean(clean) if clean else None
+
+
+def _max_abs(values: list[float]) -> float | None:
+    clean = [abs(value) for value in values if isfinite(value)]
+    return max(clean) if clean else None
+
+
+def _rms(values: list[float]) -> float | None:
+    clean = [value for value in values if isfinite(value)]
+    if not clean:
+        return None
+    return sqrt(mean([value * value for value in clean]))
+
+
+def _mean_present(values: list[Any]) -> float | None:
+    clean = [float(value) for value in values if isinstance(value, (int, float)) and isfinite(value)]
+    return mean(clean) if clean else None
+
+
+def _count_pct(rows: list[dict[str, Any]], predicate) -> float | None:
+    if not rows:
+        return None
+    return sum(1 for row in rows if predicate(row)) / len(rows) * 100.0
+
+
+def _power_work(rows: list[dict[str, Any]], torque_key: str, vel_key: str) -> dict[str, Any]:
+    powers: list[float] = []
+    timed_powers: list[tuple[float, float]] = []
+    for row in rows:
+        torque = _as_float(row.get(torque_key))
+        vel = _as_float(row.get(vel_key))
+        if torque is None or vel is None:
+            continue
+        power = torque * (vel * pi / 180.0)
+        powers.append(power)
+        timed_powers.append((_row_time_s(row), power))
+
+    work = 0.0
+    positive = 0.0
+    negative = 0.0
+    for (time_s, power), (next_time_s, _) in zip(timed_powers, timed_powers[1:]):
+        dt = next_time_s - time_s
+        if dt < 0:
+            continue
+        energy = power * dt
+        work += energy
+        if power > 0:
+            positive += energy
+        elif power < 0:
+            negative += energy
+
+    return {
+        "meanW": _safe_mean(powers),
+        "peakAbsW": _max_abs(powers),
+        "workJ": work if timed_powers else None,
+        "positiveWorkJ": positive if timed_powers else None,
+        "negativeWorkJ": negative if timed_powers else None,
+    }
+
+
+def _contiguous_step_segments(
+    rows: list[dict[str, Any]],
+    *,
+    min_samples: int = 3,
+) -> list[list[dict[str, Any]]]:
+    segments: list[list[dict[str, Any]]] = []
+    current: list[dict[str, Any]] = []
+    previous_step: int | None = None
+    for row in rows:
+        step = _as_float(row.get("step_idx"))
+        current_step = int(step) if step is not None else None
+        if previous_step is not None and current_step != previous_step:
+            if len(current) >= min_samples:
+                segments.append(current)
+            current = []
+        current.append(row)
+        previous_step = current_step
+    if len(current) >= min_samples:
+        segments.append(current)
+    return segments
+
+
+def _slope(points: list[tuple[float, Any]]) -> float | None:
+    clean = [
+        (float(x), float(y))
+        for x, y in points
+        if isinstance(y, (int, float)) and isfinite(y)
+    ]
+    if len(clean) < 2:
+        return None
+    xs = [x for x, _ in clean]
+    ys = [y for _, y in clean]
+    x_mean = mean(xs)
+    y_mean = mean(ys)
+    denominator = sum((x - x_mean) ** 2 for x in xs)
+    if denominator == 0:
+        return None
+    return sum((x - x_mean) * (y - y_mean) for x, y in clean) / denominator
 
 
 def _merge_parameters(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
@@ -834,6 +1521,25 @@ def _first_between(values: list[float], start: float, end: float | None) -> floa
             continue
         return value
     return None
+
+
+def _rows_by_intervals(
+    rows: list[dict[str, Any]],
+    intervals: list[tuple[float, float]],
+) -> list[list[dict[str, Any]]]:
+    timed_rows = [(_row_time_s(row), row) for row in rows]
+    out: list[list[dict[str, Any]]] = []
+    row_index = 0
+    for start, end in intervals:
+        while row_index < len(timed_rows) and timed_rows[row_index][0] < start:
+            row_index += 1
+        scan_index = row_index
+        interval_rows: list[dict[str, Any]] = []
+        while scan_index < len(timed_rows) and timed_rows[scan_index][0] <= end:
+            interval_rows.append(timed_rows[scan_index][1])
+            scan_index += 1
+        out.append(interval_rows)
+    return out
 
 
 def _max_for_intervals(
