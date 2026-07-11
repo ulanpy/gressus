@@ -27,5 +27,6 @@ def test_clinical_session_context_builds_env_and_data_dir(monkeypatch) -> None:
 
 def test_clinical_session_context_empty_when_ids_missing() -> None:
     ctx = ClinicalSessionContext.from_payload({"job": "game"})
-    assert ctx.to_snapshot() is None
+    assert ctx.session_id is None
+    assert ctx.patient_id is None
     assert ctx.to_env() == {}

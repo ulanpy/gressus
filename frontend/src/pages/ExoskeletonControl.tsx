@@ -1,8 +1,16 @@
 import { useEffect, useState, type ReactNode } from 'react'
+import { useI18n } from '../i18n/context'
 import { useExoskeletonTelemetry } from '../hooks/useExoskeletonTelemetry'
+import { useRuntimeStatus } from '../hooks/useRuntimeStatus'
 import { listPatients } from '../lib/api/patients'
 import { getLatestExoProfile, type LatestExoProfile } from '../lib/api/sessions'
-import { startRecordingSession, stopRecordingSession, type SessionActionResponse } from '../lib/api/runtime'
+import {
+  startRecordingSession,
+  stopRecordingSession,
+  type PgearStatusSnapshot,
+  type SessionActionResponse,
+} from '../lib/api/runtime'
+import { mapExoErrorDetail, resolveExoLinkStatus } from '../lib/exoskeleton/statusText'
 import { cn } from '../lib/cn'
 import type { ExoskeletonTelemetryFrame } from '../types/exoskeleton'
 import type { Patient } from '../types/patients'
@@ -188,26 +196,6 @@ const fallbackPatients: Patient[] = [
   },
 ]
 
-const mockPatients: Patient[] = ['Patient A', 'Patient B', 'Patient C'].map((name, index) => ({
-  id: `mock-patient-${index + 1}`,
-  display_name: name,
-  date_of_birth: null,
-  sex: 'unknown',
-  cp_type: 'Mock gait training',
-  affected_side: null,
-  gmfcs_current: null,
-  dominant_side: null,
-  comorbidities: null,
-  contraindications: null,
-  consent_on_file: true,
-  consent_date: null,
-  guardian_contact: null,
-  enrollment_date: null,
-  created_at: '',
-  updated_at: '',
-  archived_at: null,
-}))
-
 const initialProgress: ProgressStep[] = [
   { id: 'arm', label: 'Arm complete', status: 'idle' },
   { id: 'profile', label: 'Profile loaded', status: 'idle' },
@@ -217,53 +205,6 @@ const initialProgress: ProgressStep[] = [
   { id: 'running', label: 'Session running', status: 'idle' },
   { id: 'stopped', label: 'Session stopped', status: 'idle' },
 ]
-
-function sleep(ms: number) {
-  return new Promise((resolve) => window.setTimeout(resolve, ms))
-}
-
-function createMockTelemetry(overrides: Partial<ExoskeletonTelemetryFrame> = {}): ExoskeletonTelemetryFrame {
-  const seq = overrides.seq ?? 0
-  const wave = Math.sin(seq / 12)
-  return {
-    source: 'mock',
-    mode: 'mock',
-    state: 'Idle',
-    seq: 0,
-    connected: true,
-    error: null,
-    gaitPhase: 0,
-    gaitPhaseName: 'IDLE',
-    stepIdx: 0,
-    profileSlot: 0,
-    version: 3,
-    sensorHealthMask: 0,
-    flags: 4,
-    running: false,
-    estop: false,
-    sensorOnline: true,
-    aanOn: false,
-    linkAgeMs: 38,
-    controllerTimeMs: 0,
-    ampR: 0.5,
-    ampL: 0.5,
-    assistR: 0.5,
-    assistL: 0.5,
-    ctrlLoopUs: 7,
-    linkCrcFails: 0,
-    linkResyncs: 0,
-    crossCheckFault: 0,
-    hbErrorByte: 0,
-    hbAgeMs: [0, 0, 0, 0],
-    joints: [
-      { name: 'HR', refPos: 0.137 + wave * 0.04, pos: 0.12 + wave * 0.03, vel: wave * 0.12, measTorque: wave * 0.25, iq: wave * 0.18, motorEffort: 0.12 },
-      { name: 'KR', refPos: -0.535 - wave * 0.05, pos: -0.5 - wave * 0.04, vel: -wave * 0.11, measTorque: -wave * 0.2, iq: -wave * 0.15, motorEffort: 0.1 },
-      { name: 'HL', refPos: 1.157 - wave * 0.04, pos: 1.1 - wave * 0.03, vel: -wave * 0.12, measTorque: -wave * 0.24, iq: -wave * 0.18, motorEffort: 0.12 },
-      { name: 'KL', refPos: 2.99 + wave * 0.05, pos: 2.94 + wave * 0.04, vel: wave * 0.1, measTorque: wave * 0.22, iq: wave * 0.14, motorEffort: 0.1 },
-    ],
-    ...overrides,
-  }
-}
 
 const jointLabels: Record<string, string> = {
   HR: 'Right Hip',
@@ -434,7 +375,7 @@ function ClinicalGauge({
   )
 }
 
-function ConnectingTelemetry() {
+function ConnectingTelemetry({ title, detail }: { title: string; detail: string }) {
   return (
     <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-[0_18px_50px_rgb(15_23_42/0.05)]">
       <div className="grid min-h-[420px] place-items-center text-center">
@@ -444,9 +385,9 @@ function ConnectingTelemetry() {
             <div className="absolute inset-0 animate-spin rounded-full border-8 border-transparent border-t-blue-500" />
           </div>
           <div>
-            <h1 className="m-0 text-[24px] font-extrabold text-slate-950">Connecting</h1>
+            <h1 className="m-0 text-[24px] font-extrabold text-slate-950">{title}</h1>
             <p className="mt-2 mb-0 max-w-[360px] text-sm font-semibold leading-6 text-slate-500">
-              Telemetry will be shown soon once the exoskeleton connection is established.
+              {detail}
             </p>
           </div>
         </div>
@@ -568,7 +509,6 @@ function ProfileDialog({
   initialPatientId,
   initialProfile,
   loading,
-  mockMode,
   onClose,
   onConfirm,
   patients,
@@ -578,13 +518,12 @@ function ProfileDialog({
   initialPatientId?: string | null
   initialProfile?: GaitProfile | null
   loading: boolean
-  mockMode: boolean
   onClose: () => void
   onConfirm: (patient: Patient, profile: GaitProfile) => void
   patients: Patient[]
   title?: string
 }) {
-  const availablePatients = mockMode ? mockPatients : patients.length ? patients : fallbackPatients
+  const availablePatients = patients.length ? patients : fallbackPatients
   const [patientId, setPatientId] = useState(initialPatientId ?? availablePatients[0]?.id ?? '')
   const patient = availablePatients.find((item) => item.id === patientId) ?? availablePatients[0]
   const [lastProfile, setLastProfile] = useState<LatestExoProfile | null>(null)
@@ -594,7 +533,7 @@ function ProfileDialog({
   const [structural, setStructural] = useState<ExoStructural>(DEFAULT_EXO_STRUCTURAL)
 
   useEffect(() => {
-    if (mockMode || !patient) {
+    if (!patient) {
       setLastProfile(null)
       return
     }
@@ -613,7 +552,7 @@ function ProfileDialog({
     return () => {
       cancelled = true
     }
-  }, [patient?.id, mockMode])
+  }, [patient?.id])
 
   // Prefill the editable params from the patient's last session (or defaults).
   useEffect(() => {
@@ -837,69 +776,80 @@ function ProfileDialog({
 
 function SimplifiedTelemetry({
   activeProfileName,
-  mockMode,
   onEditProfile,
+  pgear,
   progress,
   sessionState,
+  statusError,
+  statusLoading,
   telemetry,
-  wsStatus,
 }: {
   activeProfileName: string | null
-  mockMode: boolean
   onEditProfile?: () => void
+  pgear: PgearStatusSnapshot | null
   progress: ProgressStep[]
   sessionState: SessionState
+  statusError: string | null
+  statusLoading: boolean
   telemetry: ExoskeletonTelemetryFrame | null
-  wsStatus: string
 }) {
-  const connected = Boolean(telemetry?.connected)
-  const error = telemetry?.error
-  if (!mockMode && !connected) {
-    return <ConnectingTelemetry />
+  const { t } = useI18n()
+  const exo = t.exoskeleton
+
+  if (statusLoading && !pgear) {
+    return <ConnectingTelemetry title={exo.connectingTitle} detail={exo.connectingDetail} />
   }
 
+  const link = resolveExoLinkStatus(pgear, statusError, t)
+  const errorDetail =
+    link.tone === 'waiting'
+      ? mapExoErrorDetail(telemetry?.error, t)
+      : mapExoErrorDetail(pgear?.error, t) ??
+        mapExoErrorDetail(statusError, t) ??
+        mapExoErrorDetail(telemetry?.error, t) ??
+        link.detail
   const processStep =
     progress.find((step) => step.status === 'running') ??
     progress.find((step) => step.status === 'error') ??
-    [...progress].reverse().find((step) => step.status === 'success') ??
     null
   const processStatus = processStep?.status ?? 'idle'
-  const processText = processStep?.detail ?? processStep?.label ?? 'Waiting'
+  const processText = processStep?.detail ?? processStep?.label ?? ''
+  const showProcessBadge = processStatus === 'running' || processStatus === 'error'
 
   return (
     <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-[0_18px_50px_rgb(15_23_42/0.05)]">
       <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="m-0 text-[22px] font-extrabold tracking-[-0.02em] text-slate-950">
-            Live Telemetry
+            {exo.telemetryTitle}
           </h1>
-          {/* <p className="mt-1 mb-0 text-sm font-semibold text-slate-500">
-            Clinical view with technical detail hidden.
-          </p> */}
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <span
-            className={cn(
-              'inline-flex items-center gap-2 rounded-full px-3 py-2 text-sm font-extrabold',
-              processStatus === 'success' && 'bg-emerald-100 text-emerald-700',
-              processStatus === 'running' && 'bg-blue-100 text-blue-700',
-              processStatus === 'error' && 'bg-red-100 text-red-700',
-              processStatus === 'idle' && 'bg-slate-100 text-slate-600',
-            )}
-          >
-            <span className="grid h-4 w-4 place-items-center text-[13px] leading-none">
-              {stepIcon(processStatus)}
+          {showProcessBadge ? (
+            <span
+              className={cn(
+                'inline-flex items-center gap-2 rounded-full px-3 py-2 text-sm font-extrabold',
+                processStatus === 'running' && 'bg-blue-100 text-blue-700',
+                processStatus === 'error' && 'bg-red-100 text-red-700',
+              )}
+            >
+              <span className="grid h-4 w-4 place-items-center text-[13px] leading-none">
+                {stepIcon(processStatus)}
+              </span>
+              {processText}
             </span>
-            {processText}
-          </span>
+          ) : null}
           <span
             className={cn(
               'inline-flex items-center gap-2 rounded-full px-3 py-2 text-sm font-extrabold',
-              connected ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700',
+              link.tone === 'connected' && 'bg-emerald-100 text-emerald-700',
+              link.tone === 'waiting' && 'bg-amber-100 text-amber-800',
+              link.tone === 'lost' && 'bg-red-100 text-red-700',
+              link.tone === 'unavailable' && 'bg-red-100 text-red-700',
             )}
           >
             <Icon name="wifi" className="h-4 w-4" />
-            {connected ? 'Device connected' : wsStatus}
+            {link.label}
           </span>
         </div>
       </div>
@@ -961,8 +911,8 @@ function SimplifiedTelemetry({
           )}
         </InfoCard>
         <InfoCard label="Error Message">
-          <div className={cn('text-[16px] font-extrabold', error ? 'text-red-600' : 'text-slate-500')}>
-            {error ?? 'None'}
+          <div className={cn('text-[16px] font-extrabold', errorDetail ? 'text-red-600' : 'text-slate-500')}>
+            {errorDetail ?? exo.errorNone}
           </div>
         </InfoCard>
       </div>
@@ -971,7 +921,6 @@ function SimplifiedTelemetry({
 }
 
 export function ExoskeletonControl() {
-  const [mockMode, setMockMode] = useState(false)
   const [patients, setPatients] = useState<Patient[]>([])
   const [patientsLoading, setPatientsLoading] = useState(false)
   const [profileDialogOpen, setProfileDialogOpen] = useState(false)
@@ -983,76 +932,26 @@ export function ExoskeletonControl() {
   const [busy, setBusy] = useState(false)
   const [, setLastResponse] = useState<SessionActionResponse | null>(null)
   const [lastError, setLastError] = useState<string | null>(null)
-  const [mockTelemetry, setMockTelemetry] = useState<ExoskeletonTelemetryFrame>(() => createMockTelemetry())
-  const { frame: realTelemetry, status: realWsStatus } = useExoskeletonTelemetry(!mockMode)
-  const telemetry = mockMode ? mockTelemetry : realTelemetry
-  const wsStatus = mockMode ? 'mock telemetry' : realWsStatus
+  const {
+    snapshot: runtime,
+    loading: statusLoading,
+    error: statusError,
+    refresh: refreshRuntime,
+  } = useRuntimeStatus(true)
+  const { frame: telemetry } = useExoskeletonTelemetry(true)
 
   useEffect(() => {
-    if (mockMode) {
-      setPatients(mockPatients)
-      setPatientsLoading(false)
-      return
-    }
     setPatientsLoading(true)
     listPatients()
       .then(setPatients)
       .catch(() => setPatients(fallbackPatients))
       .finally(() => setPatientsLoading(false))
-  }, [mockMode])
-
-  useEffect(() => {
-    if (!mockMode) return
-    const timer = window.setInterval(() => {
-      setMockTelemetry((frame) => {
-        if (frame.estop) return frame
-        const running = sessionState === 'Running'
-        const seq = frame.seq + 1
-        const gaitPhase = running ? (seq % 4) + 1 : 0
-        return createMockTelemetry({
-          ...frame,
-          state: sessionState,
-          seq,
-          connected: true,
-          error: lastError,
-          gaitPhase,
-          gaitPhaseName: running ? ['INIT', 'GAIT', 'SWING', 'STANCE'][seq % 4] : 'IDLE',
-          stepIdx: running && seq % 4 === 0 ? frame.stepIdx + 1 : frame.stepIdx,
-          running,
-          aanOn: running,
-          flags: running ? 5 : 4,
-          linkAgeMs: 34 + (seq % 5),
-          controllerTimeMs: running ? frame.controllerTimeMs + 250 : frame.controllerTimeMs,
-        })
-      })
-    }, 250)
-    return () => window.clearInterval(timer)
-  }, [lastError, mockMode, sessionState])
-
-  const resetForMode = (enabled: boolean) => {
-    setMockMode(enabled)
-    setActivePatient(null)
-    setActiveProfile(null)
-    setProgress(initialProgress)
-    setSessionState('Idle')
-    setBusy(false)
-    setLastError(null)
-    setLastResponse(null)
-    setProfileDialogOpen(false)
-    setProfileDialogMode('start')
-    setMockTelemetry(createMockTelemetry())
-  }
+  }, [])
 
   const runSessionAction = async (
     action: 'start' | 'stop',
     body?: { patientId: string; profileJson?: string },
   ) => {
-    if (mockMode) {
-      await sleep(350)
-      const payload = { ok: true, success: true, message: `Mock ${action} complete` }
-      setLastResponse(payload)
-      return payload
-    }
     const payload =
       action === 'start'
         ? await startRecordingSession(body!)
@@ -1061,6 +960,7 @@ export function ExoskeletonControl() {
       throw new Error(payload.message || 'Request failed')
     }
     setLastResponse(payload)
+    refreshRuntime()
     return payload
   }
 
@@ -1097,7 +997,6 @@ export function ExoskeletonControl() {
 
       currentStep = 'configuration'
       updateStep('configuration', 'running', 'Preparing recording...')
-      if (mockMode) await sleep(300)
       updateStep('configuration', 'success', 'Recording ready')
 
       currentStep = 'gait'
@@ -1108,19 +1007,6 @@ export function ExoskeletonControl() {
       })
       updateStep('gait', 'success', 'Recording started')
       setSessionState('Running')
-      if (mockMode) {
-        setMockTelemetry((frame) =>
-          createMockTelemetry({
-            ...frame,
-            state: 'Running',
-            running: true,
-            gaitPhase: 2,
-            gaitPhaseName: 'GAIT',
-            connected: true,
-            error: null,
-          }),
-        )
-      }
 
       updateStep('baseline', 'success', 'Baseline skipped')
 
@@ -1149,19 +1035,6 @@ export function ExoskeletonControl() {
         if (wasRunning) return 'Running'
         return current === 'Loading Profile' ? 'Ready' : current
       })
-      if (mockMode) {
-        setMockTelemetry((frame) =>
-          createMockTelemetry({
-            ...frame,
-            state: sessionState,
-            ampR: profile.profileJson.includes('amp_r') ? frame.ampR : 0.5,
-            ampL: profile.profileJson.includes('amp_l') ? frame.ampL : 0.5,
-            assistR: 0.5,
-            assistL: 0.5,
-            error: null,
-          }),
-        )
-      }
     } catch (err) {
       updateStep('profile', 'error')
       setSessionState('Error')
@@ -1177,24 +1050,12 @@ export function ExoskeletonControl() {
     setLastResponse(null)
 
     try {
-      if (mockMode) setSessionState('Stopping')
       updateStep('stopped', 'running', 'Stopping session...')
       await runSessionAction('stop')
       updateStep('stopped', 'success', 'Session stopped')
       setSessionState('Idle')
       setActivePatient(null)
       setActiveProfile(null)
-      if (mockMode) {
-        setMockTelemetry((frame) =>
-          createMockTelemetry({
-            ...frame,
-            state: 'Idle',
-            running: false,
-            gaitPhase: 0,
-            gaitPhaseName: 'IDLE',
-          }),
-        )
-      }
     } catch (err) {
       updateStep('stopped', 'error')
       setSessionState('Error')
@@ -1210,18 +1071,6 @@ export function ExoskeletonControl() {
     setActivePatient(null)
     setActiveProfile(null)
     setProgress(initialProgress)
-    if (mockMode) {
-      setMockTelemetry((frame) =>
-        createMockTelemetry({
-          ...frame,
-          state: 'Idle',
-          estop: false,
-          running: false,
-          error: null,
-          flags: 4,
-        }),
-      )
-    }
   }
 
   const workflowState: WorkflowState = telemetry?.estop
@@ -1270,46 +1119,6 @@ export function ExoskeletonControl() {
 
   return (
     <div className="mx-auto grid w-full max-w-[1540px] gap-5 text-[#17213b]">
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white px-5 py-4 shadow-[0_12px_28px_rgb(15_23_42/0.04)]">
-        <div className="flex flex-wrap items-center gap-3">
-          <span
-            className={cn(
-              'rounded-full px-3 py-2 text-xs font-extrabold tracking-[0.12em]',
-              mockMode ? 'bg-amber-400 text-amber-950' : 'bg-emerald-100 text-emerald-700',
-            )}
-          >
-            {mockMode ? 'MOCK MODE' : 'REAL MODE'}
-          </span>
-          {/* <span className="text-sm font-semibold text-slate-500">
-            {mockMode
-              ? 'All exoskeleton controls and telemetry are simulated in this browser.'
-              : 'Using backend API and live exoskeleton telemetry.'}
-          </span> */}
-        </div>
-        <div className="inline-flex rounded-full border border-slate-200 bg-slate-100 p-1">
-          <button
-            type="button"
-            className={cn(
-              'rounded-full px-4 py-2 text-sm font-extrabold',
-              !mockMode ? 'bg-slate-950 text-white' : 'text-slate-600',
-            )}
-            onClick={() => resetForMode(false)}
-          >
-            Real Mode
-          </button>
-          <button
-            type="button"
-            className={cn(
-              'rounded-full px-4 py-2 text-sm font-extrabold',
-              mockMode ? 'bg-amber-400 text-amber-950' : 'text-slate-600',
-            )}
-            onClick={() => resetForMode(true)}
-          >
-            Mock Mode
-          </button>
-        </div>
-      </div>
-
       <div className="grid grid-cols-[430px_minmax(0,1fr)] gap-5 max-[1100px]:grid-cols-1">
         <aside className="grid content-start gap-5">
           <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-[0_18px_50px_rgb(15_23_42/0.05)]">
@@ -1318,21 +1127,7 @@ export function ExoskeletonControl() {
                 <h1 className="m-0 text-[22px] font-extrabold tracking-[-0.02em] text-slate-950">
                   Session Workflow
                 </h1>
-                {/* <p className="mt-2 mb-0 text-sm font-semibold leading-6 text-slate-500">
-                  One action is shown for the current system state.
-                </p> */}
               </div>
-              {/* <span
-                className={cn(
-                  'rounded-full px-3 py-2 text-xs font-extrabold',
-                  workflowState === 'initial' && 'bg-slate-100 text-slate-600',
-                  workflowState === 'running' && 'bg-blue-100 text-blue-700',
-                  workflowState === 'error' && 'bg-red-100 text-red-700',
-                  workflowState === 'estop' && 'bg-red-600 text-white',
-                )}
-              >
-                {workflowStateLabel(workflowState)}
-              </span> */}
             </div>
 
             {workflowState === 'estop' ? (
@@ -1404,66 +1199,20 @@ export function ExoskeletonControl() {
                 onClick={() => void primaryAction.onClick()}
               />
             </div>
-
-            {/* <div className="mt-5 rounded-2xl bg-slate-50 p-4">
-              <div className="text-[12px] font-extrabold uppercase text-slate-500">
-                Setup summary
-              </div>
-              <div className="mt-1 text-[15px] font-extrabold text-slate-950">
-                {profileSubtitle}
-              </div>
-            </div> */}
           </section>
-
-          {/* <section className="rounded-3xl border border-red-200 bg-white p-5 shadow-[0_18px_50px_rgb(15_23_42/0.05)]">
-            <h2 className="m-0 text-[14px] font-extrabold text-slate-950">Safety</h2>
-            <p className="mt-1 mb-0 text-[12px] font-semibold leading-5 text-slate-500">
-              Immediately cut assistance. Reset is required afterwards to start again.
-            </p>
-            <button
-              type="button"
-              className="mt-4 grid w-full place-items-center gap-1 rounded-2xl border-2 border-red-600 bg-red-600 px-4 py-5 text-white shadow-[0_12px_28px_rgb(220_38_38/0.25)] transition-transform hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-50"
-              disabled={busy || workflowState === 'estop'}
-              onClick={() => void triggerEstop()}
-            >
-              <Icon name="alert" className="h-8 w-8" />
-              <strong className="text-[18px] tracking-[0.08em]">E-STOP</strong>
-            </button>
-          </section> */}
-
         </aside>
 
         <div className="grid gap-5">
           <SimplifiedTelemetry
             activeProfileName={activeProfile?.name ?? null}
-            mockMode={mockMode}
             onEditProfile={activeProfile && !busy ? openEditProfileDialog : undefined}
+            pgear={runtime?.pgear ?? null}
             progress={progress}
             sessionState={sessionState}
+            statusError={statusError}
+            statusLoading={statusLoading}
             telemetry={telemetry}
-            wsStatus={wsStatus}
           />
-
-          {/* <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-[0_18px_50px_rgb(15_23_42/0.05)]">
-            <h2 className="m-0 text-[18px] font-extrabold text-slate-950">Session Status</h2>
-            <div className="mt-4 grid grid-cols-3 gap-4 max-[760px]:grid-cols-1">
-              <InfoCard label="Device Connection">
-                <div className={cn('text-xl font-extrabold', telemetry?.connected ? 'text-emerald-600' : 'text-red-600')}>
-                  {telemetry?.connected ? 'Connected' : 'Disconnected'}
-                </div>
-              </InfoCard>
-              <InfoCard label="Profile State">
-                <div className="text-xl font-extrabold text-slate-950">
-                  {activeProfile ? 'Ready' : 'Not loaded'}
-                </div>
-              </InfoCard>
-              <InfoCard label="Last Message">
-                <div className={cn('text-sm font-extrabold', lastError ? 'text-red-600' : 'text-slate-600')}>
-                  {lastError ?? lastResponse?.message ?? 'No recent action'}
-                </div>
-              </InfoCard>
-            </div>
-          </section> */}
         </div>
       </div>
 
@@ -1473,7 +1222,6 @@ export function ExoskeletonControl() {
           initialPatientId={profileDialogMode === 'edit' ? activePatient?.id : null}
           initialProfile={profileDialogMode === 'edit' ? activeProfile : null}
           loading={patientsLoading || busy}
-          mockMode={mockMode}
           patients={patients}
           onClose={() => setProfileDialogOpen(false)}
           onConfirm={(patient, profile) =>

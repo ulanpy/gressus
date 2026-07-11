@@ -43,15 +43,3 @@ class ClinicalSessionContext:
         if self.data_dir:
             env["GRESSUS_SESSION_DATA_DIR"] = self.data_dir
         return env
-
-    def to_snapshot(self) -> dict[str, str] | None:
-        if not self.session_id and not self.patient_id:
-            return None
-        out: dict[str, str] = {}
-        if self.session_id:
-            out["sessionId"] = self.session_id
-        if self.patient_id:
-            out["patientId"] = self.patient_id
-        if self.data_dir:
-            out["dataDir"] = self.data_dir
-        return out

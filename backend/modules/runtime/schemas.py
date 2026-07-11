@@ -51,14 +51,6 @@ class RosbagResponse(BaseModel):
     error: str | None = None
 
 
-class ClinicalSessionSnapshot(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-
-    sessionId: str
-    patientId: str
-    dataDir: str | None = None
-
-
 class ActiveJobSnapshot(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
@@ -67,14 +59,6 @@ class ActiveJobSnapshot(BaseModel):
     pid: int
     uptimeS: float = Field(ge=0.0)
     dir: str | None = None
-
-
-class LastExitSnapshot(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-
-    name: str | None = None
-    code: int | None = None
-    finishedAt: float | None = None
 
 
 class PgearStatusSnapshot(BaseModel):
@@ -93,11 +77,8 @@ class RuntimeSnapshot(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
     state: Literal["idle", "running"]
-    sessionManager: Literal["up"] = "up"
     activeJob: ActiveJobSnapshot | None = None
-    lastExit: LastExitSnapshot | None = None
     pgear: PgearStatusSnapshot = Field(default_factory=PgearStatusSnapshot)
-    clinicalSession: ClinicalSessionSnapshot | None = None
 
 
 class SessionStatusResponse(BaseModel):

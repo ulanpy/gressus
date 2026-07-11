@@ -7,7 +7,7 @@ from gressus_session.runtime_status import build_runtime_snapshot
 
 def test_build_runtime_snapshot_idle_without_pgear_node() -> None:
     payload = build_runtime_snapshot(
-        rosbag={"state": "idle", "activeJob": None, "lastExit": None},
+        rosbag={"state": "idle", "activeJob": None},
         pgear={
             "nodeAvailable": False,
             "telemetryAvailable": False,
@@ -18,7 +18,6 @@ def test_build_runtime_snapshot_idle_without_pgear_node() -> None:
         },
     )
     assert payload["state"] == "idle"
-    assert payload["sessionManager"] == "up"
     assert payload["activeJob"] is None
     assert payload["pgear"]["nodeAvailable"] is False
 
@@ -33,7 +32,6 @@ def test_build_runtime_snapshot_recording_with_live_telemetry() -> None:
                 "pid": 1234,
                 "uptimeS": 12.5,
             },
-            "lastExit": None,
         },
         pgear={
             "nodeAvailable": True,

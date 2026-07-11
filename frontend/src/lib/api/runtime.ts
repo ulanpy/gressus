@@ -1,4 +1,4 @@
-import { apiPost } from './client'
+import { apiGet, apiPost } from './client'
 
 export type SessionActionResponse = {
   ok: boolean
@@ -10,6 +10,30 @@ export type SessionActionResponse = {
 export type SessionStartBody = {
   patientId: string
   profileJson?: string
+}
+
+export type ActiveJobSnapshot = {
+  name: string
+  command: string[]
+  pid: number
+  uptimeS: number
+  dir?: string | null
+}
+
+export type PgearStatusSnapshot = {
+  nodeAvailable: boolean
+  connected: boolean
+  error?: string | null
+}
+
+export type RuntimeSnapshot = {
+  state: 'idle' | 'running'
+  activeJob: ActiveJobSnapshot | null
+  pgear: PgearStatusSnapshot
+}
+
+export function getRuntimeStatus(): Promise<RuntimeSnapshot> {
+  return apiGet<RuntimeSnapshot>('/runtime/status')
 }
 
 export function startRecordingSession(body: SessionStartBody): Promise<SessionActionResponse> {

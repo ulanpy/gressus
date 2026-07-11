@@ -1,9 +1,7 @@
 import type { FootFrame, FootSide, FramePayload, FootSilhouette, FootDashboard } from './insole'
 import type { SourceMode } from './insole'
-import type { ViewMode, TherapistSection } from './navigation'
+import type { ViewMode } from './navigation'
 import type { Language } from './i18n'
-import type { ProgressSummary, SessionMetrics, TherapyRecommendation } from '../progressAnalytics'
-import type { CemrrProgressState } from '../hooks/useCemrrProgress'
 import type { PatientSessionWorkflow } from '../hooks/usePatientSessionWorkflow'
 
 export type MetricProps = {
@@ -63,9 +61,6 @@ export type TherapistPageProps = {
   showSensors: boolean
   source: SourceMode
   status: string
-  cemrr: CemrrProgressState
-  activeSection: TherapistSection
-  setActiveSection: (section: TherapistSection) => void
 }
 
 export type ControlPageProps = {
@@ -86,29 +81,44 @@ export type PatientFootPanelProps = {
   silhouette: FootSilhouette
 }
 
-export type TherapistSectionTabsProps = {
-  activeSection: TherapistSection
-  setActiveSection: (section: TherapistSection) => void
-}
-
-export type ProgressSummaryCardsProps = {
-  summary: ProgressSummary
-}
-
 export type SummaryCardProps = {
   label: string
   trend: string
   value: string
 }
 
+export type ProgressSummaryCardsProps = {
+  summary: {
+    latest: { gaitScore: number; date: string }
+    baseline: { date: string }
+    symmetryChange: number
+    stabilityChange: number
+    sessionsCompleted: number
+    gaitScorePercent: number
+    symmetryPercent: number
+    stabilityPercent: number
+  }
+}
+
 export type ChartProps = {
-  metrics: SessionMetrics[]
+  metrics: Array<{
+    gaitScore: number
+    symmetryScore: number
+    stabilityScore: number
+    leftAvgPressure: number
+    rightAvgPressure: number
+  }>
 }
 
 export type ClinicalDomainsCardProps = {
-  metrics: SessionMetrics[]
+  metrics: ChartProps['metrics']
 }
 
 export type TherapyRecommendationsCardProps = {
-  recommendations: TherapyRecommendation[]
+  recommendations: Array<{
+    id: string
+    tone: 'focus' | 'steady' | 'positive'
+    label?: string
+    detail?: string
+  }>
 }

@@ -33,7 +33,6 @@ class RosbagRecorder:
         self._lock = threading.Lock()
         self._proc: subprocess.Popen[str] | None = None
         self._recording: RecordingInfo | None = None
-        self._last_exit: dict[str, Any] | None = None
 
     def start(self, *, out_dir: str, session_id: str) -> RecordingInfo:
         command = _record_command(out_dir)
@@ -65,9 +64,8 @@ class RosbagRecorder:
             if self._proc is None:
                 return False
             proc = self._proc
-            recording = self._recording
             self._terminate_locked(proc, timeout_s=timeout_s)
-            self._refresh_locked(force=True, stopped=recording)
+            self._refresh_locked(force=True)
             return True
 
     def snapshot(self) -> dict[str, Any]:
@@ -86,7 +84,6 @@ class RosbagRecorder:
             return {
                 "state": "running" if active else "idle",
                 "activeJob": active,
-                "lastExit": self._last_exit,
             }
 
     def wait_started(self, seconds: float = 0.4) -> bool:
@@ -103,23 +100,11 @@ class RosbagRecorder:
         with self._lock:
             return self._proc is not None and self._proc.poll() is None
 
-    def _refresh_locked(
-        self,
-        *,
-        force: bool = False,
-        stopped: RecordingInfo | None = None,
-    ) -> None:
+    def _refresh_locked(self, *, force: bool = False) -> None:
         if self._proc is None:
             return
-        code = self._proc.poll()
-        if code is None and not force:
+        if self._proc.poll() is None and not force:
             return
-        recording = stopped or self._recording
-        self._last_exit = {
-            "name": f"rosbag:{recording.session_id}" if recording else None,
-            "code": code,
-            "finishedAt": round(time.monotonic(), 3),
-        }
         self._proc = None
         self._recording = None
 

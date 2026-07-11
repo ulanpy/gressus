@@ -21,9 +21,7 @@ def build_runtime_snapshot(*, rosbag: dict[str, Any], pgear: dict[str, Any] | No
     bag_state = rosbag.get("state", "idle")
     return {
         "state": bag_state if bag_state in ("idle", "running") else "idle",
-        "sessionManager": "up",
         "activeJob": rosbag.get("activeJob"),
-        "lastExit": rosbag.get("lastExit"),
         "pgear": pgear if pgear is not None else _default_pgear_status(),
     }
 

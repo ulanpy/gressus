@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import type { SourceMode } from '../types/insole'
-import type { ViewMode, TherapistSection } from '../types/navigation'
+import type { ViewMode } from '../types/navigation'
 import type { Language } from '../types/i18n'
 import { INSOLE_SIZE } from '../constants/insole'
 import { I18nContext, useI18n } from '../i18n/context'
@@ -9,7 +9,6 @@ import { useGeometry } from '../hooks/useGeometry'
 import { useInsoleFrame } from '../hooks/useInsoleFrame'
 import { usePatientSessionWorkflow } from '../hooks/usePatientSessionWorkflow'
 import { useFootDashboard } from '../hooks/useFootDashboard'
-import { useCemrrProgress } from '../hooks/useCemrrProgress'
 import { PageTabs } from '../components/layout/PageTabs'
 import { LanguageToggle } from '../components/layout/LanguageToggle'
 import { TherapistPage } from '../pages/TherapistPage'
@@ -26,14 +25,10 @@ type DashboardShellProps = {
 function DashboardShell({ language, setLanguage }: DashboardShellProps) {
   const { t } = useI18n()
   const [activeView, setActiveView] = useState<ViewMode>('therapist')
-  const [therapistSection, setTherapistSection] = useState<TherapistSection>('live')
   const [source, setSource] = useState<SourceMode>('mock')
   const [showSensors, setShowSensors] = useState(true)
   const workflow = usePatientSessionWorkflow()
-  const cemrr = useCemrrProgress()
-  const livePanelVisible =
-    activeView === 'therapist' && therapistSection === 'live'
-  const liveGateOpen = livePanelVisible
+  const liveGateOpen = activeView === 'therapist'
   const liveInactive = false
   const { geometry, setStatus, status } = useGeometry(INSOLE_SIZE)
   const { frame } = useInsoleFrame(source, INSOLE_SIZE, setStatus, liveGateOpen)
@@ -71,9 +66,6 @@ function DashboardShell({ language, setLanguage }: DashboardShellProps) {
           showSensors={showSensors}
           source={source}
           status={status}
-          cemrr={cemrr}
-          activeSection={therapistSection}
-          setActiveSection={setTherapistSection}
         />
       )}
 
