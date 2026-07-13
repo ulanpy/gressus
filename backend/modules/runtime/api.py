@@ -31,7 +31,16 @@ async def session_start(
     service: Annotated[RuntimeService, Depends(get_runtime_service)],
 ) -> SessionActionResponse:
     """Open a DB session for the patient and start rosbag recording."""
-    return await service.start_session(payload.patientId, payload.profileJson)
+    anthropometrics = (
+        payload.anthropometrics.model_dump(exclude_none=True)
+        if payload.anthropometrics is not None
+        else None
+    )
+    return await service.start_session(
+        payload.patientId,
+        payload.profileJson,
+        anthropometrics,
+    )
 
 
 @router.post("/session/stop", response_model=SessionActionResponse)

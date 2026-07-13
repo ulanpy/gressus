@@ -1,5 +1,6 @@
 import { apiGet, apiPatch, apiPost } from './client'
 import type {
+  SessionAnthropometrics,
   SessionCreateBody,
   SessionDto,
   SessionStatus,
@@ -22,6 +23,22 @@ export type LatestExoProfile = {
   sessionNumber: number | null
   sessionDate: string | null
   profileJson: string
+}
+
+/** Most recent session's anthropometrics for a patient (or null if none). */
+export async function getLatestAnthropometrics(
+  patientId: string,
+): Promise<SessionAnthropometrics | null> {
+  const sessions = await listPatientSessions(patientId)
+  const withAnthro = sessions.filter((s) => {
+    const a = s.anthropometrics
+    return a != null && Object.values(a).some((v) => v != null && v !== '')
+  })
+  if (!withAnthro.length) return null
+  const latest = withAnthro.reduce((a, b) =>
+    (b.session_number ?? 0) > (a.session_number ?? 0) ? b : a,
+  )
+  return latest.anthropometrics
 }
 
 /** Most recent session's recorded exo profile for a patient (or null if none). */

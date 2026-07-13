@@ -94,6 +94,7 @@ class SessionService:
         self,
         patient_id: UUID,
         exo_profile: dict[str, Any] | None,
+        anthropometrics: dict[str, Any] | None = None,
     ) -> Session:
         await self._patients.ensure_exists(patient_id)
         next_number = await self._repo.max_session_number(patient_id) + 1
@@ -105,6 +106,7 @@ class SessionService:
             session_date=now.date(),
             started_at=now,
             exo_profile=exo_profile,
+            anthropometrics=anthropometrics,
         )
         return await self._repo.add(session_obj)
 

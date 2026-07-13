@@ -2,6 +2,7 @@ import { formatDateOnly, formatDateTime } from '../../lib/format'
 import { useI18n } from '../../i18n/context'
 import type { TherapySession } from '../../types/sessions'
 import { HistoryIcon } from '../patients/PatientFieldIcons'
+import { SessionAnthropometricsLine } from './SessionAnthropometricsLine'
 import {
   sessionCardMeta,
   sessionHistory,
@@ -60,6 +61,10 @@ export function SessionHistoryList({ sessions, activeSessionId }: SessionHistory
                     ? formatDateOnly(session.session_date, language)
                     : ''}
               </span>
+              <SessionAnthropometricsLine
+                anthropometrics={session.anthropometrics}
+                className="block text-xs text-slate-500"
+              />
             </div>
           </li>
         )

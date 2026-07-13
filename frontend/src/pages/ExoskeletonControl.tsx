@@ -3,7 +3,12 @@ import { useI18n } from '../i18n/context'
 import { useExoskeletonTelemetry } from '../hooks/useExoskeletonTelemetry'
 import { useRuntimeStatus } from '../hooks/useRuntimeStatus'
 import { listPatients } from '../lib/api/patients'
-import { getLatestExoProfile, type LatestExoProfile } from '../lib/api/sessions'
+import { getLatestAnthropometrics, getLatestExoProfile, type LatestExoProfile } from '../lib/api/sessions'
+import type { SessionAnthropometrics } from '../types/sessions'
+import {
+  buildAnthropometricsPayload,
+  DEFAULT_ANTHROPOMETRICS,
+} from '../components/sessions/SessionAnthropometricsLine'
 import {
   startRecordingSession,
   stopRecordingSession,
@@ -506,6 +511,7 @@ function PrimaryAction({
 
 function ProfileDialog({
   confirmLabel = 'Подтвердить и загрузить',
+  includeAnthropometrics = false,
   initialPatientId,
   initialProfile,
   loading,
@@ -515,14 +521,16 @@ function ProfileDialog({
   title = 'Начать сессию',
 }: {
   confirmLabel?: string
+  includeAnthropometrics?: boolean
   initialPatientId?: string | null
   initialProfile?: GaitProfile | null
   loading: boolean
   onClose: () => void
-  onConfirm: (patient: Patient, profile: GaitProfile) => void
+  onConfirm: (patient: Patient, profile: GaitProfile, anthropometrics?: SessionAnthropometrics) => void
   patients: Patient[]
   title?: string
 }) {
+  const { t } = useI18n()
   const availablePatients = patients.length ? patients : fallbackPatients
   const [patientId, setPatientId] = useState(initialPatientId ?? availablePatients[0]?.id ?? '')
   const patient = availablePatients.find((item) => item.id === patientId) ?? availablePatients[0]
@@ -531,6 +539,9 @@ function ProfileDialog({
   const [params, setParams] = useState<ExoParams>(DEFAULT_EXO_PARAMS)
   const [extras, setExtras] = useState<Record<string, unknown>>({})
   const [structural, setStructural] = useState<ExoStructural>(DEFAULT_EXO_STRUCTURAL)
+  const [anthropometrics, setAnthropometrics] = useState<SessionAnthropometrics>(
+    DEFAULT_ANTHROPOMETRICS,
+  )
 
   useEffect(() => {
     if (!patient) {
@@ -548,6 +559,19 @@ function ProfileDialog({
       })
       .finally(() => {
         if (!cancelled) setLastProfileLoading(false)
+      })
+    getLatestAnthropometrics(patient.id)
+      .then((found) => {
+        if (!cancelled && found) {
+          setAnthropometrics({
+            leg_length_left: found.leg_length_left ?? DEFAULT_ANTHROPOMETRICS.leg_length_left,
+            leg_length_right: found.leg_length_right ?? DEFAULT_ANTHROPOMETRICS.leg_length_right,
+            bodyweight: found.bodyweight ?? null,
+          })
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setAnthropometrics(DEFAULT_ANTHROPOMETRICS)
       })
     return () => {
       cancelled = true
@@ -614,19 +638,33 @@ function ProfileDialog({
       enable: { ...prev.enable, [idx]: event.target.checked },
     }))
 
+  const setAnthro =
+    (key: keyof SessionAnthropometrics) => (event: { target: { value: string } }) => {
+      const raw = event.target.value
+      const parsed = raw === '' ? null : Number(raw)
+      setAnthropometrics((prev) => ({
+        ...prev,
+        [key]: parsed != null && Number.isFinite(parsed) ? parsed : null,
+      }))
+    }
+
   const handleConfirm = () => {
     if (!patient) return
-    onConfirm(patient, {
-      id: 'exo-profile',
-      name: initialProfile
-        ? 'Обновлённый профиль'
-        : lastProfile
-        ? `Профиль (из сессии #${lastProfile.sessionNumber ?? '—'})`
-        : 'Новый профиль',
-      description: '',
-      baselineRequired: false,
-      profileJson: buildProfileJson(),
-    })
+    onConfirm(
+      patient,
+      {
+        id: 'exo-profile',
+        name: initialProfile
+          ? 'Обновлённый профиль'
+          : lastProfile
+          ? `Профиль (из сессии #${lastProfile.sessionNumber ?? '—'})`
+          : 'Новый профиль',
+        description: '',
+        baselineRequired: false,
+        profileJson: buildProfileJson(),
+      },
+      buildAnthropometricsPayload(anthropometrics),
+    )
   }
 
   return (
@@ -663,6 +701,47 @@ function ProfileDialog({
                   }.${hasStoredCoeffs ? ' Baseline-коэффициенты сохранены.' : ''}`
                 : 'Прошлых профилей нет — значения по умолчанию.'}
           </div>
+
+          {includeAnthropometrics ? (
+            <div className="grid gap-2">
+              <span className="text-sm font-extrabold text-slate-700">{t.workflow.sessionAnthropometrics}</span>
+              <div className="grid grid-cols-2 gap-3">
+                <label className="grid gap-1">
+                  <span className="text-xs font-extrabold text-slate-600">{t.workflow.legLengthLeft}</span>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    className="rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-900"
+                    value={anthropometrics.leg_length_left ?? ''}
+                    onChange={setAnthro('leg_length_left')}
+                  />
+                </label>
+                <label className="grid gap-1">
+                  <span className="text-xs font-extrabold text-slate-600">{t.workflow.legLengthRight}</span>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    className="rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-900"
+                    value={anthropometrics.leg_length_right ?? ''}
+                    onChange={setAnthro('leg_length_right')}
+                  />
+                </label>
+                <label className="col-span-2 grid gap-1">
+                  <span className="text-xs font-extrabold text-slate-600">{t.workflow.bodyweight}</span>
+                  <input
+                    type="number"
+                    step="0.1"
+                    min="0"
+                    className="rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-900"
+                    value={anthropometrics.bodyweight ?? ''}
+                    onChange={setAnthro('bodyweight')}
+                  />
+                </label>
+              </div>
+            </div>
+          ) : null}
 
           <div className="grid grid-cols-2 gap-3">
             {EXO_PARAM_FIELDS.map((field) => (
@@ -950,7 +1029,11 @@ export function ExoskeletonControl() {
 
   const runSessionAction = async (
     action: 'start' | 'stop',
-    body?: { patientId: string; profileJson?: string },
+    body?: {
+      patientId: string
+      profileJson?: string
+      anthropometrics?: SessionAnthropometrics
+    },
   ) => {
     const payload =
       action === 'start'
@@ -980,7 +1063,11 @@ export function ExoskeletonControl() {
   }
 
   // Logging-only: start/stop opens a Gressus session and rosbag recording.
-  const startSession = async (patient: Patient, profile: GaitProfile) => {
+  const startSession = async (
+    patient: Patient,
+    profile: GaitProfile,
+    anthropometrics?: SessionAnthropometrics,
+  ) => {
     setProfileDialogOpen(false)
     setBusy(true)
     setLastError(null)
@@ -1004,6 +1091,7 @@ export function ExoskeletonControl() {
       await runSessionAction('start', {
         patientId: patient.id,
         profileJson: profile.profileJson,
+        anthropometrics,
       })
       updateStep('gait', 'success', 'Recording started')
       setSessionState('Running')
@@ -1219,15 +1307,16 @@ export function ExoskeletonControl() {
       {profileDialogOpen ? (
         <ProfileDialog
           confirmLabel={profileDialogMode === 'edit' ? 'Обновить профиль' : 'Подтвердить и загрузить'}
+          includeAnthropometrics={profileDialogMode === 'start'}
           initialPatientId={profileDialogMode === 'edit' ? activePatient?.id : null}
           initialProfile={profileDialogMode === 'edit' ? activeProfile : null}
           loading={patientsLoading || busy}
           patients={patients}
           onClose={() => setProfileDialogOpen(false)}
-          onConfirm={(patient, profile) =>
+          onConfirm={(patient, profile, anthropometrics) =>
             void (profileDialogMode === 'edit'
               ? updateActiveProfile(patient, profile)
-              : startSession(patient, profile))
+              : startSession(patient, profile, anthropometrics))
           }
           title={profileDialogMode === 'edit' ? 'Редактировать профиль' : 'Начать сессию'}
         />

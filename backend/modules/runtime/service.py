@@ -61,10 +61,17 @@ class RuntimeService:
         return body.runtime
 
     async def start_session(
-        self, patient_id: UUID, profile_json: str | None
+        self,
+        patient_id: UUID,
+        profile_json: str | None,
+        anthropometrics: dict[str, Any] | None = None,
     ) -> SessionActionResponse:
         exo_profile = _unwrap_profile(profile_json)
-        session_obj = await self._sessions.start_recording_session(patient_id, exo_profile)
+        session_obj = await self._sessions.start_recording_session(
+            patient_id,
+            exo_profile,
+            anthropometrics,
+        )
         await self._try_start_rosbag(session_obj.id, patient_id)
 
         return SessionActionResponse(

@@ -11,9 +11,20 @@ from pydantic import BaseModel, ConfigDict, Field
 from backend.modules.sessions.enums import AnalyticsStatus, SessionStatus
 
 
+class SessionAnthropometrics(BaseModel):
+    """Leg lengths (m) and body weight (kg) stored as one JSON object on the session."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    leg_length_left: float | None = Field(default=None, gt=0)
+    leg_length_right: float | None = Field(default=None, gt=0)
+    bodyweight: float | None = Field(default=None, gt=0)
+
+
 class SessionBase(BaseModel):
     session_date: date | None = None
     exo_profile: dict[str, Any] | None = None
+    anthropometrics: SessionAnthropometrics | None = None
 
 
 class SessionCreate(SessionBase):
@@ -23,6 +34,7 @@ class SessionCreate(SessionBase):
 class SessionUpdate(BaseModel):
     session_date: date | None = None
     exo_profile: dict[str, Any] | None = None
+    anthropometrics: SessionAnthropometrics | None = None
 
 
 class SessionStatusUpdate(BaseModel):

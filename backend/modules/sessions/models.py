@@ -56,6 +56,9 @@ class Session(Base, TimestampMixin):
     # (keyed by cps) + meta. Shape mirrors the P.GEAR ``load_profile`` JSON.
     exo_profile: Mapped[dict | None] = mapped_column(JSONB)
 
+    # Patient anthropometrics for analytics: leg lengths (m) and body weight (kg).
+    anthropometrics: Mapped[dict | None] = mapped_column(JSONB)
+
     # Gait timing for the run tied to this session (rosbag window later).
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

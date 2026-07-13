@@ -13,6 +13,7 @@ import {
   type PatientWorkspaceView,
 } from '../components/patients/PatientViewMenu'
 import { SessionHistoryList } from '../components/sessions/SessionHistoryList'
+import { SessionAnthropometricsLine } from '../components/sessions/SessionAnthropometricsLine'
 import { cn } from '../lib/cn'
 import { container, panel } from '../styles/ui'
 
@@ -47,10 +48,16 @@ function ControlContextBar({ workflow }: { workflow: PatientSessionWorkflow }) {
       </div>
 
       {workflow.activeSession && (
-        <p className="m-0 mt-3 text-sm font-semibold text-brand">
-          {t.workflow.sessionNumber(workflow.activeSession.session_number ?? 0)} ·{' '}
-          {t.workflow.statusActive}
-        </p>
+        <div className="m-0 mt-3 text-sm font-semibold text-brand">
+          <p className="m-0">
+            {t.workflow.sessionNumber(workflow.activeSession.session_number ?? 0)} ·{' '}
+            {t.workflow.statusActive}
+          </p>
+          <SessionAnthropometricsLine
+            anthropometrics={workflow.activeSession.anthropometrics}
+            className="mt-1 block text-xs font-medium text-slate-500"
+          />
+        </div>
       )}
 
       <PatientViewMenu

@@ -20,6 +20,7 @@ class SessionRecording(Protocol):
         self,
         patient_id: UUID,
         exo_profile: dict[str, Any] | None,
+        anthropometrics: dict[str, Any] | None = None,
     ) -> Session: ...
 
     async def stop_recording_session(self) -> Session | None: ...

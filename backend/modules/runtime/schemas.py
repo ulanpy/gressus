@@ -7,6 +7,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from backend.modules.sessions.schemas import SessionAnthropometrics
+
 
 class ExoProfile(BaseModel):
     """Exo profile stored on a session: gait params + optional kind-0 coeffs."""
@@ -30,6 +32,7 @@ class SessionStartRequest(BaseModel):
 
     patientId: UUID
     profileJson: str | None = Field(default=None, min_length=2)
+    anthropometrics: SessionAnthropometrics | None = None
 
 
 class SessionRosbagStartPayload(BaseModel):

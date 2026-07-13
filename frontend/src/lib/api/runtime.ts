@@ -10,6 +10,11 @@ export type SessionActionResponse = {
 export type SessionStartBody = {
   patientId: string
   profileJson?: string
+  anthropometrics?: {
+    leg_length_left?: number | null
+    leg_length_right?: number | null
+    bodyweight?: number | null
+  } | null
 }
 
 export type ActiveJobSnapshot = {

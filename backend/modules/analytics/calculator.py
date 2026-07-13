@@ -149,7 +149,11 @@ def parameters_from_session(session: Any) -> dict[str, Any]:
 
     profile = getattr(session, "exo_profile", None) or {}
     if not isinstance(profile, dict):
-        return {}
+        profile = {}
+
+    anthropometrics = getattr(session, "anthropometrics", None) or {}
+    if not isinstance(anthropometrics, dict):
+        anthropometrics = {}
 
     analytics = profile.get("analytics")
     source = analytics if isinstance(analytics, dict) else profile
@@ -157,8 +161,18 @@ def parameters_from_session(session: Any) -> dict[str, Any]:
 
     _copy_first(params, "leg_length_m", source, ("leg_length_m", "legLengthM", "leg_m"))
     if "leg_length_m" not in params:
-        left = _as_float(source.get("leg_length_left_m") or source.get("legLengthLeftM"))
-        right = _as_float(source.get("leg_length_right_m") or source.get("legLengthRightM"))
+        left = _as_float(
+            anthropometrics.get("leg_length_left")
+            or anthropometrics.get("leg_length_left_m")
+            or source.get("leg_length_left_m")
+            or source.get("legLengthLeftM")
+        )
+        right = _as_float(
+            anthropometrics.get("leg_length_right")
+            or anthropometrics.get("leg_length_right_m")
+            or source.get("leg_length_right_m")
+            or source.get("legLengthRightM")
+        )
         if left is not None and right is not None:
             params["leg_length_m"] = (left + right) / 2.0
         elif left is not None:
