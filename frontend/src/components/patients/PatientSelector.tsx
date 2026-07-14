@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useI18n } from '../../i18n/context'
 import type { PatientSessionWorkflow } from '../../hooks/usePatientSessionWorkflow'
 import { AssessmentSection } from '../assessments/AssessmentSection'
-import { SessionHistoryList } from '../sessions/SessionHistoryList'
+import { SessionsAnalyticsPanel } from '../sessions/SessionsAnalyticsPanel'
 import {
   uiSelect,
   workflowField,
@@ -73,9 +73,10 @@ export function PatientSelector({ workflow }: PatientSelectorProps) {
                 )}
 
                 {workspaceView === 'sessions' && (
-                  <SessionHistoryList
+                  <SessionsAnalyticsPanel
                     sessions={workflow.sessions}
                     activeSessionId={workflow.activeSession?.id ?? null}
+                    patientId={workflow.selectedPatientId}
                   />
                 )}
 

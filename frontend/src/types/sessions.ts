@@ -1,5 +1,7 @@
 export type SessionStatus = 'active' | 'completed' | 'failed' | 'aborted'
 
+export type AnalyticsStatus = 'pending' | 'processing' | 'ready' | 'failed'
+
 /** Leg lengths (m) and body weight (kg) stored on the session. */
 export type SessionAnthropometrics = {
   leg_length_left?: number | null
@@ -16,6 +18,8 @@ export type TherapySession = {
   status: SessionStatus
   exo_profile: Record<string, unknown> | null
   anthropometrics: SessionAnthropometrics | null
+  analytics_status: AnalyticsStatus | null
+  analytics_metrics: Record<string, unknown> | null
   started_at: string | null
   ended_at: string | null
   created_at: string

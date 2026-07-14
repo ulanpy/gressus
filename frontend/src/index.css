@@ -212,6 +212,17 @@
     background-clip: padding-box;
   }
 
+  .scrollbar-hide {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+    width: 0;
+    height: 0;
+  }
+
   .ui-date:hover::-webkit-calendar-picker-indicator,
   .ui-date:focus::-webkit-calendar-picker-indicator {
     opacity: 0.9;

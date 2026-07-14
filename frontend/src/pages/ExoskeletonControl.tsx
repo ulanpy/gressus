@@ -488,20 +488,20 @@ function PrimaryAction({
     <button
       type="button"
       className={cn(
-        'grid min-h-[116px] grid-cols-[48px_minmax(0,1fr)] items-center gap-4 rounded-2xl border px-5 text-left text-white shadow-[0_18px_35px_rgb(15_23_42/0.18)] transition-transform hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-45',
+        'inline-grid shrink-0 grid-cols-[40px_minmax(0,1fr)] items-center gap-3 rounded-2xl border px-4 py-3 text-left text-white transition-transform hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-45',
         variant === 'danger'
-          ? 'border-red-600 bg-red-600 shadow-[0_18px_40px_rgb(220_38_38/0.25)]'
-          : 'border-slate-200 bg-slate-950',
+          ? 'border-red-600 bg-red-600 shadow-[0_14px_28px_rgb(220_38_38/0.22)]'
+          : 'border-slate-950 bg-slate-950 shadow-[0_14px_28px_rgb(15_23_42/0.16)]',
       )}
       disabled={disabled}
       onClick={onClick}
     >
-      <span className="grid h-12 w-12 place-items-center rounded-full bg-white/12">
-        <Icon name={icon} className="h-7 w-7 text-white" />
+      <span className="grid h-10 w-10 place-items-center rounded-full bg-white/12">
+        <Icon name={icon} className="h-5 w-5 text-white" />
       </span>
-      <span>
-        <span className="block text-[18px] font-extrabold">{title}</span>
-        <span className="mt-1 block text-[13px] font-semibold leading-5 text-white/70">
+      <span className="min-w-0 pr-1">
+        <span className="block text-[16px] font-extrabold leading-tight">{title}</span>
+        <span className="mt-0.5 block text-[12px] font-semibold leading-4 text-white/70">
           {subtitle}
         </span>
       </span>
@@ -854,8 +854,6 @@ function ProfileDialog({
 }
 
 function SimplifiedTelemetry({
-  activeProfileName,
-  onEditProfile,
   pgear,
   progress,
   sessionState,
@@ -863,8 +861,6 @@ function SimplifiedTelemetry({
   statusLoading,
   telemetry,
 }: {
-  activeProfileName: string | null
-  onEditProfile?: () => void
   pgear: PgearStatusSnapshot | null
   progress: ProgressStep[]
   sessionState: SessionState
@@ -970,25 +966,7 @@ function SimplifiedTelemetry({
         <JointTable telemetry={telemetry} />
       </div>
 
-      <div className="mt-4 grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-4 max-[760px]:grid-cols-1">
-        <InfoCard label="Active Profile">
-          {onEditProfile ? (
-            <button
-              type="button"
-              className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-left text-[20px] font-extrabold text-slate-950 transition-[border-color,background] hover:border-cyan-400 hover:bg-cyan-50"
-              onClick={onEditProfile}
-            >
-              <span className="block">{activeProfileName}</span>
-              <span className="mt-1 block text-[11px] font-bold text-cyan-700">
-                Click to edit and reload profile
-              </span>
-            </button>
-          ) : (
-            <div className="text-[20px] font-extrabold text-slate-950">
-              {activeProfileName ?? 'No profile loaded'}
-            </div>
-          )}
-        </InfoCard>
+      <div className="mt-4">
         <InfoCard label="Error Message">
           <div className={cn('text-[16px] font-extrabold', errorDetail ? 'text-red-600' : 'text-slate-500')}>
             {errorDetail ?? exo.errorNone}
@@ -1174,7 +1152,7 @@ export function ExoskeletonControl() {
       ? {
           icon: 'refresh' as IconName,
           title: 'Reset E-STOP',
-          subtitle: 'Clear the emergency stop before continuing.',
+          subtitle: 'Clear emergency stop',
           onClick: acknowledgeEstop,
           variant: 'danger' as const,
         }
@@ -1184,8 +1162,8 @@ export function ExoskeletonControl() {
             title: retryTitle,
             subtitle:
               retryTitle === 'Resolve Error'
-                ? 'Check device connection, then start the session again.'
-                : 'Start the session again.',
+                ? 'Check device connection, then retry'
+                : 'Start the session again',
             onClick: openStartDialog,
             variant: 'primary' as const,
           }
@@ -1193,116 +1171,100 @@ export function ExoskeletonControl() {
           ? {
               icon: 'stop' as IconName,
               title: 'Stop Session',
-              subtitle: 'Stop recording and close the clinical session.',
+              subtitle: 'Stop recording',
               onClick: stopSession,
               variant: 'danger' as const,
             }
           : {
               icon: 'play' as IconName,
               title: 'Start Session',
-              subtitle: 'Select patient and start structured ROS recording.',
+              subtitle: 'Select patient and start recording',
               onClick: openStartDialog,
               variant: 'primary' as const,
             }
 
+  const showSessionContext = workflowState === 'running' || workflowState === 'error'
+  const patientLabel = activePatient?.display_name ?? 'No patient'
+  const statusLabel = workflowState === 'running' ? 'Recording' : 'Error'
+
   return (
     <div className="mx-auto grid w-full max-w-[1540px] gap-5 text-[#17213b]">
-      <div className="grid grid-cols-[430px_minmax(0,1fr)] gap-5 max-[1100px]:grid-cols-1">
-        <aside className="grid content-start gap-5">
-          <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-[0_18px_50px_rgb(15_23_42/0.05)]">
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div>
-                <h1 className="m-0 text-[22px] font-extrabold tracking-[-0.02em] text-slate-950">
-                  Session Workflow
-                </h1>
-              </div>
-            </div>
+      <section className="rounded-3xl border border-slate-200 bg-white px-6 py-5 shadow-[0_18px_50px_rgb(15_23_42/0.05)]">
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div className="min-w-0 flex-1">
+            <h1 className="m-0 text-[22px] font-extrabold tracking-[-0.02em] text-slate-950">
+              Session Workflow
+            </h1>
 
             {workflowState === 'estop' ? (
-              <div className="mt-5 rounded-2xl border border-red-200 bg-red-50 p-4 text-red-800">
-                <div className="flex items-center gap-2 text-[16px] font-extrabold">
-                  <Icon name="alert" className="h-5 w-5" />
-                  Emergency stop is active
+              <div className="mt-3 flex items-start gap-2 text-red-800">
+                <Icon name="alert" className="mt-0.5 h-5 w-5 shrink-0" />
+                <div>
+                  <div className="text-[15px] font-extrabold">Emergency stop is active</div>
+                  <p className="m-0 mt-1 text-sm font-semibold text-red-700">
+                    Reset E-STOP before continuing.
+                  </p>
                 </div>
-                <p className="mt-2 mb-0 text-sm font-semibold leading-6">
-                  Session actions are unavailable until the emergency stop is reset.
-                </p>
               </div>
             ) : null}
 
             {workflowState === 'error' ? (
-              <div className="mt-5 rounded-2xl border border-red-200 bg-red-50 p-4 text-red-800">
-                <div className="text-[13px] font-extrabold uppercase">Current error</div>
-                <div className="mt-1 text-sm font-semibold leading-6">
-                  {lastError ?? telemetry?.error ?? 'The system reported an error.'}
+              <p className="m-0 mt-2 text-sm font-semibold leading-6 text-red-700">
+                {lastError ?? telemetry?.error ?? 'The system reported an error.'}
+              </p>
+            ) : null}
+
+            {workflowState === 'initial' ? (
+              <p className="m-0 mt-2 text-sm font-semibold leading-6 text-slate-500">
+                Start a session to begin recording.
+              </p>
+            ) : null}
+
+            {showSessionContext ? (
+              <div className="mt-2 flex flex-wrap items-baseline gap-x-4 gap-y-1">
+                <p className="m-0 text-[15px] font-extrabold text-slate-950">
+                  {patientLabel}
+                  <span className="font-semibold text-slate-400"> · </span>
+                  <span className="font-semibold text-slate-600">{statusLabel}</span>
+                </p>
+                <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                  <span className="text-sm font-semibold text-slate-700">
+                    {activeProfile?.name ?? 'No profile loaded'}
+                  </span>
+                  {activeProfile ? (
+                    <button
+                      type="button"
+                      className="border-0 bg-transparent p-0 text-sm font-bold text-slate-500 underline-offset-2 hover:text-slate-900 hover:underline disabled:cursor-not-allowed disabled:opacity-45"
+                      disabled={busy}
+                      onClick={openEditProfileDialog}
+                    >
+                      Edit
+                    </button>
+                  ) : null}
                 </div>
               </div>
             ) : null}
+          </div>
 
-            {(workflowState === 'running' || workflowState === 'error') && (
-              <div className="mt-5 grid gap-3 rounded-2xl bg-slate-50 p-4">
-                <div>
-                  <div className="text-[12px] font-extrabold uppercase text-slate-500">
-                    Active patient
-                  </div>
-                  <div className="mt-1 text-[15px] font-extrabold text-slate-950">
-                    {activePatient?.display_name ?? 'No patient selected'}
-                  </div>
-                </div>
-                <div>
-                  <div className="text-[12px] font-extrabold uppercase text-slate-500">
-                    Active profile
-                  </div>
-                  <button
-                    type="button"
-                    className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-left text-[15px] font-extrabold text-slate-950 shadow-[0_6px_16px_rgb(15_23_42/0.04)] transition-[border-color,background] hover:border-cyan-400 hover:bg-cyan-50 disabled:cursor-not-allowed disabled:opacity-50"
-                    disabled={!activeProfile || busy}
-                    onClick={openEditProfileDialog}
-                  >
-                    <span className="block">{activeProfile?.name ?? 'No profile loaded'}</span>
-                    {activeProfile ? (
-                      <span className="mt-1 block text-[11px] font-bold text-cyan-700">
-                        Click to edit and reload profile
-                      </span>
-                    ) : null}
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {workflowState === 'running' ? (
-              <div className="mt-5 rounded-2xl border border-blue-200 bg-blue-50 p-4 text-blue-800">
-                <div className="text-[16px] font-extrabold">Session Recording</div>
-                <div className="mt-1 text-sm font-semibold">ROS topics are being recorded.</div>
-              </div>
-            ) : null}
-
-            <div className="mt-5">
-              <PrimaryAction
-                icon={primaryAction.icon}
-                title={busy ? 'Working...' : primaryAction.title}
-                subtitle={primaryAction.subtitle}
-                disabled={busy}
-                variant={primaryAction.variant}
-                onClick={() => void primaryAction.onClick()}
-              />
-            </div>
-          </section>
-        </aside>
-
-        <div className="grid gap-5">
-          <SimplifiedTelemetry
-            activeProfileName={activeProfile?.name ?? null}
-            onEditProfile={activeProfile && !busy ? openEditProfileDialog : undefined}
-            pgear={runtime?.pgear ?? null}
-            progress={progress}
-            sessionState={sessionState}
-            statusError={statusError}
-            statusLoading={statusLoading}
-            telemetry={telemetry}
+          <PrimaryAction
+            icon={primaryAction.icon}
+            title={busy ? 'Working...' : primaryAction.title}
+            subtitle={primaryAction.subtitle}
+            disabled={busy}
+            variant={primaryAction.variant}
+            onClick={() => void primaryAction.onClick()}
           />
         </div>
-      </div>
+      </section>
+
+      <SimplifiedTelemetry
+        pgear={runtime?.pgear ?? null}
+        progress={progress}
+        sessionState={sessionState}
+        statusError={statusError}
+        statusLoading={statusLoading}
+        telemetry={telemetry}
+      />
 
       {profileDialogOpen ? (
         <ProfileDialog

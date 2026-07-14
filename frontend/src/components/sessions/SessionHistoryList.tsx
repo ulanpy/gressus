@@ -1,21 +1,49 @@
 import { formatDateOnly, formatDateTime } from '../../lib/format'
 import { useI18n } from '../../i18n/context'
-import type { TherapySession } from '../../types/sessions'
+import { cn } from '../../lib/cn'
+import type { AnalyticsStatus, TherapySession } from '../../types/sessions'
 import { HistoryIcon } from '../patients/PatientFieldIcons'
 import { SessionAnthropometricsLine } from './SessionAnthropometricsLine'
+import { SessionStatusIcon } from './SessionStatusIcon'
 import {
   sessionCardMeta,
   sessionHistory,
   sessionHistoryItem,
-  sessionHistoryStatus,
 } from '../../styles/ui'
 
 type SessionHistoryListProps = {
   sessions: TherapySession[]
   activeSessionId: string | null
+  selectedSessionId?: string | null
+  onSelectSession?: (sessionId: string) => void
+  /** Cap height and scroll internally (master–detail layout). */
+  scrollable?: boolean
 }
 
-export function SessionHistoryList({ sessions, activeSessionId }: SessionHistoryListProps) {
+function analyticsBadgeLabel(
+  status: AnalyticsStatus | null | undefined,
+  t: ReturnType<typeof useI18n>['t'],
+): string | null {
+  switch (status) {
+    case 'ready':
+      return t.workflow.analyticsReadyShort
+    case 'pending':
+    case 'processing':
+      return t.workflow.analyticsPendingShort
+    case 'failed':
+      return t.workflow.analyticsFailedShort
+    default:
+      return null
+  }
+}
+
+export function SessionHistoryList({
+  sessions,
+  activeSessionId,
+  selectedSessionId = null,
+  onSelectSession,
+  scrollable = false,
+}: SessionHistoryListProps) {
   const { t, language } = useI18n()
   const history = sessions.filter((s) => s.id !== activeSessionId)
 
@@ -30,45 +58,81 @@ export function SessionHistoryList({ sessions, activeSessionId }: SessionHistory
     )
   }
 
-  const statusLabel = (status: TherapySession['status']) => {
-    switch (status) {
-      case 'active':
-        return t.workflow.statusActive
-      case 'completed':
-        return t.workflow.statusCompleted
-      case 'failed':
-        return t.workflow.statusFailed
-      default:
-        return t.workflow.statusAborted
-    }
-  }
-
   return (
-    <ul className={sessionHistory}>
-      {history.map((session) => {
-        const primaryDate = session.started_at ?? session.created_at
-        return (
-          <li key={session.id} className={sessionHistoryItem}>
-            <div>
-              <strong>{t.workflow.sessionNumber(session.session_number ?? 0)}</strong>{' '}
-              <span className={sessionHistoryStatus}>{statusLabel(session.status)}</span>
-            </div>
-            <div className={sessionCardMeta}>
-              <span>
-                {primaryDate
-                  ? formatDateTime(primaryDate, language)
-                  : session.session_date
-                    ? formatDateOnly(session.session_date, language)
-                    : ''}
-              </span>
-              <SessionAnthropometricsLine
-                anthropometrics={session.anthropometrics}
-                className="block text-xs text-slate-500"
-              />
-            </div>
-          </li>
-        )
-      })}
-    </ul>
+    <div
+      className={cn(
+        scrollable &&
+          'scrollbar-hide max-h-[min(420px,55vh)] overflow-y-auto rounded-2xl border border-slate-200 bg-slate-50/80 p-2 min-[900px]:max-h-[min(640px,70vh)]',
+      )}
+    >
+      <ul className={cn(sessionHistory, scrollable && 'mt-0 gap-1.5')}>
+        {history.map((session) => {
+          const primaryDate = session.started_at ?? session.created_at
+          const selected = session.id === selectedSessionId
+          const analyticsLabel = analyticsBadgeLabel(session.analytics_status, t)
+          const interactive = Boolean(onSelectSession)
+
+          return (
+            <li key={session.id}>
+              <button
+                type="button"
+                className={cn(
+                  sessionHistoryItem,
+                  'w-full border text-left transition-colors',
+                  scrollable && 'px-3 py-2.5 rounded-xl',
+                  interactive ? 'cursor-pointer' : 'cursor-default',
+                  selected
+                    ? 'border-slate-900 bg-white shadow-[0_8px_20px_rgb(15_23_42/0.06)]'
+                    : 'border-transparent hover:border-slate-200 hover:bg-white',
+                )}
+                disabled={!interactive}
+                onClick={() => onSelectSession?.(session.id)}
+              >
+                <div className="flex items-center gap-2">
+                  <strong className="text-sm">
+                    {t.workflow.sessionNumber(session.session_number ?? 0)}
+                  </strong>
+                  <SessionStatusIcon status={session.status} />
+                  {analyticsLabel ? (
+                    <span
+                      className={cn(
+                        'rounded-full px-2 py-0.5 text-[11px] font-extrabold',
+                        session.analytics_status === 'ready' && 'bg-emerald-100 text-emerald-800',
+                        (session.analytics_status === 'pending' ||
+                          session.analytics_status === 'processing') &&
+                          'bg-amber-100 text-amber-800',
+                        session.analytics_status === 'failed' && 'bg-red-100 text-red-700',
+                      )}
+                      title={
+                        session.analytics_status === 'ready'
+                          ? t.workflow.analyticsTooltipReady
+                          : session.analytics_status === 'failed'
+                            ? t.workflow.analyticsTooltipFailed
+                            : t.workflow.analyticsTooltipPending
+                      }
+                    >
+                      {analyticsLabel}
+                    </span>
+                  ) : null}
+                </div>
+                <div className={cn(sessionCardMeta, 'mt-1')}>
+                  <span className="text-xs">
+                    {primaryDate
+                      ? formatDateTime(primaryDate, language)
+                      : session.session_date
+                        ? formatDateOnly(session.session_date, language)
+                        : ''}
+                  </span>
+                  <SessionAnthropometricsLine
+                    anthropometrics={session.anthropometrics}
+                    className="block text-xs text-slate-500"
+                  />
+                </div>
+              </button>
+            </li>
+          )
+        })}
+      </ul>
+    </div>
   )
 }

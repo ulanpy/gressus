@@ -12,7 +12,7 @@ import {
   PatientViewMenu,
   type PatientWorkspaceView,
 } from '../components/patients/PatientViewMenu'
-import { SessionHistoryList } from '../components/sessions/SessionHistoryList'
+import { SessionsAnalyticsPanel } from '../components/sessions/SessionsAnalyticsPanel'
 import { SessionAnthropometricsLine } from '../components/sessions/SessionAnthropometricsLine'
 import { cn } from '../lib/cn'
 import { container, panel } from '../styles/ui'
@@ -71,9 +71,10 @@ function ControlContextBar({ workflow }: { workflow: PatientSessionWorkflow }) {
         {workspaceView === 'profile' && <PatientCard patient={workflow.selectedPatient} />}
 
         {workspaceView === 'sessions' && (
-          <SessionHistoryList
+          <SessionsAnalyticsPanel
             sessions={workflow.sessions}
             activeSessionId={workflow.activeSession?.id ?? null}
+            patientId={workflow.selectedPatientId}
           />
         )}
 
