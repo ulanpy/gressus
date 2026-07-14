@@ -75,6 +75,7 @@ function ControlContextBar({ workflow }: { workflow: PatientSessionWorkflow }) {
             sessions={workflow.sessions}
             activeSessionId={workflow.activeSession?.id ?? null}
             patientId={workflow.selectedPatientId}
+            onSessionUpdated={() => void workflow.refreshSessions()}
           />
         )}
 

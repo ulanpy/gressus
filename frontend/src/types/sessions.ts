@@ -9,6 +9,15 @@ export type SessionAnthropometrics = {
   bodyweight?: number | null
 }
 
+/** Therapist knobs for how analytics are interpreted (extensible). */
+export type SessionAnalyticsConfig = {
+  excluded_episode_indexes?: number[]
+  notes?: string | null
+  [key: string]: unknown
+}
+
+export const SESSION_NOTES_MAX_LENGTH = 250
+
 /** Normalized session (API `session_id` mapped to `id`). Mirrors backend `SessionRead`. */
 export type TherapySession = {
   id: string
@@ -20,6 +29,7 @@ export type TherapySession = {
   anthropometrics: SessionAnthropometrics | null
   analytics_status: AnalyticsStatus | null
   analytics_metrics: Record<string, unknown> | null
+  analytics_config: SessionAnalyticsConfig | null
   started_at: string | null
   ended_at: string | null
   created_at: string
@@ -36,6 +46,7 @@ export type SessionUpdate = {
   session_date?: string | null
   exo_profile?: Record<string, unknown> | null
   anthropometrics?: SessionAnthropometrics | null
+  analytics_config?: SessionAnalyticsConfig | null
 }
 
 /** Raw API response shape. */

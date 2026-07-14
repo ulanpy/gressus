@@ -9,6 +9,7 @@ type SessionsAnalyticsPanelProps = {
   sessions: TherapySession[]
   activeSessionId: string | null
   patientId: string | null
+  onSessionUpdated?: (session: TherapySession) => void
 }
 
 const NARROW_MQ = '(max-width: 899px)'
@@ -30,6 +31,7 @@ export function SessionsAnalyticsPanel({
   sessions,
   activeSessionId,
   patientId,
+  onSessionUpdated,
 }: SessionsAnalyticsPanelProps) {
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null)
   const detailRef = useRef<HTMLDivElement>(null)
@@ -56,6 +58,10 @@ export function SessionsAnalyticsPanel({
     setSelectedSessionId(sessionId)
   }
 
+  const handleSessionUpdated = (updated: TherapySession) => {
+    onSessionUpdated?.(updated)
+  }
+
   useEffect(() => {
     if (skipScrollRef.current || !selectedSessionId || !detailRef.current) return
     if (typeof window === 'undefined') return
@@ -78,7 +84,10 @@ export function SessionsAnalyticsPanel({
       <div ref={detailRef} className="min-w-0 scroll-mt-4">
         {selectedSession ? (
           <div className="grid gap-4">
-            <SessionAnalyticsSummaryCard session={selectedSession} />
+            <SessionAnalyticsSummaryCard
+              session={selectedSession}
+              onSessionUpdated={handleSessionUpdated}
+            />
             <AverageGaitCycleChart session={selectedSession} />
           </div>
         ) : (

@@ -60,7 +60,8 @@ class SessionService:
         for field, value in payload.model_dump(exclude_unset=True).items():
             setattr(session_obj, field, value)
         await self._repo.flush()
-        return session_obj
+        # ``updated_at`` is DB-side onupdate; refresh so async validation doesn't lazy-load.
+        return await self._repo.refresh(session_obj)
 
     async def set_status(
         self, patient_id: UUID, session_id: UUID, new_status: SessionStatus
@@ -85,7 +86,7 @@ class SessionService:
         session_obj.status = new_status
         queue_session_analytics(session_obj)
         await self._repo.flush()
-        return session_obj
+        return await self._repo.refresh(session_obj)
 
     async def get_open_recording_session(self) -> Session | None:
         return await self._repo.get_open_recording_session()

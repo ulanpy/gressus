@@ -21,6 +21,18 @@ class SessionAnthropometrics(BaseModel):
     bodyweight: float | None = Field(default=None, gt=0)
 
 
+class SessionAnalyticsConfig(BaseModel):
+    """Therapist knobs that shape how analytics are interpreted for a session.
+
+    Extensible JSON document; currently episode inclusion + free-form notes.
+    """
+
+    model_config = ConfigDict(extra="allow")
+
+    excluded_episode_indexes: list[int] = Field(default_factory=list)
+    notes: str | None = Field(default=None, max_length=250)
+
+
 class SessionBase(BaseModel):
     session_date: date | None = None
     exo_profile: dict[str, Any] | None = None
@@ -35,6 +47,7 @@ class SessionUpdate(BaseModel):
     session_date: date | None = None
     exo_profile: dict[str, Any] | None = None
     anthropometrics: SessionAnthropometrics | None = None
+    analytics_config: SessionAnalyticsConfig | None = None
 
 
 class SessionStatusUpdate(BaseModel):
@@ -54,5 +67,6 @@ class SessionRead(SessionBase):
     ended_at: datetime | None = None
     analytics_status: AnalyticsStatus | None = None
     analytics_metrics: dict[str, Any] | None = None
+    analytics_config: SessionAnalyticsConfig | None = None
     created_at: datetime
     updated_at: datetime

@@ -30,6 +30,86 @@ export type SessionAnalyticsBundle = {
   episodes: SessionAnalyticsSummary[]
 }
 
+/** Default CEMRR weights (mirror backend DEFAULT_PARAMETERS.weights). */
+const CLINICAL_WEIGHTS: Record<SessionAspectKey, number> = {
+  symmetry: 0.25,
+  stability: 0.15,
+  support: 0.2,
+  efficiency: 0.2,
+  strength: 0.2,
+}
+
+export function excludedEpisodeIndexes(
+  analyticsConfig: { excluded_episode_indexes?: number[] | null } | null | undefined,
+): Set<number> {
+  const raw = analyticsConfig?.excluded_episode_indexes
+  if (!Array.isArray(raw)) return new Set()
+  return new Set(
+    raw.filter((v): v is number => typeof v === 'number' && Number.isInteger(v) && v >= 0),
+  )
+}
+
+function avgField(
+  episodes: SessionAnalyticsSummary[],
+  pick: (ep: SessionAnalyticsSummary) => number | null,
+): number | null {
+  const values = episodes
+    .map(pick)
+    .filter((v): v is number => v != null && Number.isFinite(v))
+  if (!values.length) return null
+  return values.reduce((a, b) => a + b, 0) / values.length
+}
+
+function weightedGri(aspects: Record<SessionAspectKey, number | null>): number | null {
+  let total = 0
+  for (const key of SESSION_ASPECT_KEYS) {
+    const value = aspects[key]
+    if (value == null || !Number.isFinite(value)) return null
+    total += value * CLINICAL_WEIGHTS[key]
+  }
+  return total
+}
+
+/** Clinical session summary: average only episodes not in excluded indexes. */
+export function clinicalSessionSummary(
+  episodes: SessionAnalyticsSummary[],
+  excluded: Set<number>,
+): SessionAnalyticsSummary | null {
+  const included = episodes.filter(
+    (ep) => ep.episodeIndex != null && !excluded.has(ep.episodeIndex),
+  )
+  if (!included.length) return null
+
+  const aspects: Record<SessionAspectKey, number | null> = {
+    symmetry: avgField(included, (ep) => ep.aspects.symmetry),
+    stability: avgField(included, (ep) => ep.aspects.stability),
+    support: avgField(included, (ep) => ep.aspects.support),
+    efficiency: avgField(included, (ep) => ep.aspects.efficiency),
+    strength: avgField(included, (ep) => ep.aspects.strength),
+  }
+
+  const durationSum = included.reduce((acc, ep) => {
+    return ep.durationS != null && Number.isFinite(ep.durationS) ? acc + ep.durationS : acc
+  }, 0)
+
+  return {
+    labelKey: 'session',
+    episodeIndex: null,
+    durationS: durationSum > 0 ? durationSum : null,
+    episodeCount: included.length,
+    cadenceStepsPerMin: avgField(included, (ep) => ep.cadenceStepsPerMin),
+    strideTimeLeftS: avgField(included, (ep) => ep.strideTimeLeftS),
+    strideTimeRightS: avgField(included, (ep) => ep.strideTimeRightS),
+    strideTimeSiPct: avgField(included, (ep) => ep.strideTimeSiPct),
+    stepLengthLeftM: avgField(included, (ep) => ep.stepLengthLeftM),
+    stepLengthRightM: avgField(included, (ep) => ep.stepLengthRightM),
+    stepLengthSiPct: avgField(included, (ep) => ep.stepLengthSiPct),
+    strideLengthMeanM: avgField(included, (ep) => ep.strideLengthMeanM),
+    gri: weightedGri(aspects),
+    aspects,
+  }
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }

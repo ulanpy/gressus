@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useI18n } from '../../i18n/context'
 import {
+  clinicalSessionSummary,
+  excludedEpisodeIndexes,
   parseSessionAnalyticsBundle,
   SESSION_ASPECT_KEYS,
   type SessionAspectKey,
@@ -8,9 +10,12 @@ import {
 } from '../../lib/analytics/sessionSummary'
 import { cn } from '../../lib/cn'
 import type { TherapySession } from '../../types/sessions'
+import { PencilIcon } from '../ui/IconButton'
+import { SessionAnalyticsConfigDialog } from './SessionAnalyticsConfigDialog'
 
 type SessionAnalyticsSummaryProps = {
   session: TherapySession | null
+  onSessionUpdated?: (session: TherapySession) => void
 }
 
 type Scope = 'session' | number
@@ -126,26 +131,46 @@ function SummaryBody({ summary }: { summary: Summary }) {
   )
 }
 
-export function SessionAnalyticsSummaryCard({ session }: SessionAnalyticsSummaryProps) {
+export function SessionAnalyticsSummaryCard({
+  session,
+  onSessionUpdated,
+}: SessionAnalyticsSummaryProps) {
   const { t } = useI18n()
   const bundle = useMemo(
     () => (session ? parseSessionAnalyticsBundle(session.analytics_metrics) : null),
     [session],
   )
+  const excluded = useMemo(
+    () => excludedEpisodeIndexes(session?.analytics_config),
+    [session?.analytics_config],
+  )
+  const notes =
+    typeof session?.analytics_config?.notes === 'string'
+      ? session.analytics_config.notes.trim()
+      : ''
   const [scope, setScope] = useState<Scope>('session')
+  const [configOpen, setConfigOpen] = useState(false)
 
   useEffect(() => {
     setScope('session')
+    setConfigOpen(false)
   }, [session?.id])
 
   if (!session || session.analytics_status !== 'ready' || !bundle) {
     return null
   }
 
+  const clinical =
+    clinicalSessionSummary(bundle.episodes, excluded) ?? bundle.session
+
   const activeSummary =
     scope === 'session'
-      ? bundle.session
-      : (bundle.episodes.find((ep) => ep.episodeIndex === scope) ?? bundle.session)
+      ? clinical
+      : (bundle.episodes.find((ep) => ep.episodeIndex === scope) ?? clinical)
+
+  const includedCount = bundle.episodes.filter(
+    (ep) => ep.episodeIndex != null && !excluded.has(ep.episodeIndex),
+  ).length
 
   const title =
     scope === 'session'
@@ -153,63 +178,103 @@ export function SessionAnalyticsSummaryCard({ session }: SessionAnalyticsSummary
       : t.workflow.episodeSummary(scope + 1)
 
   return (
-    <section
-      className={cn(
-        'rounded-2xl border border-slate-200 bg-white p-4',
-        'shadow-[0_12px_30px_rgb(15_23_42/0.04)]',
-      )}
-    >
-      <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h3 className="m-0 text-base font-extrabold text-slate-950">{title}</h3>
-          <p className="m-0 mt-1 text-xs font-semibold text-slate-500">
-            {t.workflow.sessionNumber(session.session_number ?? 0)}
-            {bundle.episodes.length > 0
-              ? ` · ${t.workflow.episodeCount(bundle.episodes.length)}`
-              : ''}
-            {activeSummary.durationS != null
-              ? ` · ${formatNum(activeSummary.durationS / 60, 1)} ${t.workflow.minutesShort}`
-              : ''}
-          </p>
+    <>
+      <section
+        className={cn(
+          'min-w-0 overflow-hidden rounded-2xl border border-slate-200 bg-white p-4',
+          'shadow-[0_12px_30px_rgb(15_23_42/0.04)]',
+        )}
+      >
+        <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0">
+            <div className="flex items-center gap-1.5">
+              <h3 className="m-0 text-base font-extrabold text-slate-950">{title}</h3>
+              <button
+                type="button"
+                className="inline-grid h-7 w-7 shrink-0 place-items-center rounded-lg text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700"
+                onClick={() => setConfigOpen(true)}
+                title={t.workflow.editAnalyticsConfig}
+                aria-label={t.workflow.editAnalyticsConfig}
+              >
+                <PencilIcon className="h-4 w-4" />
+              </button>
+            </div>
+            <p className="m-0 mt-1 text-xs font-semibold text-slate-500">
+              {t.workflow.sessionNumber(session.session_number ?? 0)}
+              {bundle.episodes.length > 0
+                ? ` · ${t.workflow.includedEpisodeCount(includedCount, bundle.episodes.length)}`
+                : ''}
+              {activeSummary.durationS != null
+                ? ` · ${formatNum(activeSummary.durationS / 60, 1)} ${t.workflow.minutesShort}`
+                : ''}
+            </p>
+          </div>
+
+          {bundle.episodes.length > 0 ? (
+            <div className="flex flex-wrap gap-1.5">
+              <button
+                type="button"
+                className={cn(
+                  'rounded-full border px-3 py-1.5 text-xs font-extrabold transition-colors',
+                  scope === 'session'
+                    ? 'border-slate-950 bg-slate-950 text-white'
+                    : 'border-slate-200 bg-white text-slate-700 hover:border-slate-400',
+                )}
+                onClick={() => setScope('session')}
+              >
+                {t.workflow.scopeSession}
+              </button>
+              {bundle.episodes.map((ep) => {
+                const index = ep.episodeIndex ?? 0
+                const selected = scope === index
+                const isExcluded = excluded.has(index)
+                return (
+                  <button
+                    key={index}
+                    type="button"
+                    className={cn(
+                      'rounded-full border px-3 py-1.5 text-xs font-extrabold transition-colors',
+                      selected
+                        ? 'border-slate-950 bg-slate-950 text-white'
+                        : isExcluded
+                          ? 'border-slate-200 bg-slate-50 text-slate-400 line-through'
+                          : 'border-slate-200 bg-white text-slate-700 hover:border-slate-400',
+                    )}
+                    onClick={() => setScope(index)}
+                  >
+                    {t.workflow.scopeEpisode(index + 1)}
+                  </button>
+                )
+              })}
+            </div>
+          ) : null}
         </div>
 
-        {bundle.episodes.length > 0 ? (
-          <div className="flex flex-wrap gap-1.5">
-            <button
-              type="button"
-              className={cn(
-                'rounded-full border px-3 py-1.5 text-xs font-extrabold transition-colors',
-                scope === 'session'
-                  ? 'border-slate-950 bg-slate-950 text-white'
-                  : 'border-slate-200 bg-white text-slate-700 hover:border-slate-400',
-              )}
-              onClick={() => setScope('session')}
-            >
-              {t.workflow.scopeSession}
-            </button>
-            {bundle.episodes.map((ep) => {
-              const index = ep.episodeIndex ?? 0
-              const selected = scope === index
-              return (
-                <button
-                  key={index}
-                  type="button"
-                  className={cn(
-                    'rounded-full border px-3 py-1.5 text-xs font-extrabold transition-colors',
-                    selected
-                      ? 'border-slate-950 bg-slate-950 text-white'
-                      : 'border-slate-200 bg-white text-slate-700 hover:border-slate-400',
-                  )}
-                  onClick={() => setScope(index)}
-                >
-                  {t.workflow.scopeEpisode(index + 1)}
-                </button>
-              )
-            })}
-          </div>
+        {scope === 'session' && includedCount === 0 ? (
+          <p className="m-0 text-sm font-semibold text-slate-500">
+            {t.workflow.noIncludedEpisodes}
+          </p>
+        ) : (
+          <SummaryBody summary={activeSummary} />
+        )}
+
+        {notes ? (
+          <p
+            className="m-0 mt-3 min-w-0 max-w-full break-all line-clamp-2 text-xs leading-relaxed text-slate-400"
+            title={notes}
+          >
+            <span className="font-semibold text-slate-500">{t.workflow.sessionNotes}: </span>
+            {notes}
+          </p>
         ) : null}
-      </div>
-      <SummaryBody summary={activeSummary} />
-    </section>
+      </section>
+
+      <SessionAnalyticsConfigDialog
+        session={session}
+        open={configOpen}
+        onClose={() => setConfigOpen(false)}
+        onSaved={(updated) => onSessionUpdated?.(updated)}
+      />
+    </>
   )
 }

@@ -74,4 +74,8 @@ class Session(Base, TimestampMixin):
     )
     analytics_metrics: Mapped[dict | None] = mapped_column(JSONB)
 
+    # Therapist-facing analytics knobs (e.g. excluded episode indexes). Separate from
+    # worker-produced analytics_metrics so recomputes do not wipe curation.
+    analytics_config: Mapped[dict | None] = mapped_column(JSONB)
+
     patient: Mapped["Patient"] = relationship(back_populates="sessions")

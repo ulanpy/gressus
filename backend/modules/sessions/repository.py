@@ -49,6 +49,10 @@ class SessionRepository:
     async def flush(self) -> None:
         await self._session.flush()
 
+    async def refresh(self, session_obj: Session) -> Session:
+        await self._session.refresh(session_obj)
+        return session_obj
+
     async def get_open_recording_session(self) -> Session | None:
         stmt = (
             select(Session)
