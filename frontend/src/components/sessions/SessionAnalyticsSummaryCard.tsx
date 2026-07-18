@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useI18n } from '../../i18n/context'
 import {
   clinicalSessionSummary,
@@ -9,6 +9,7 @@ import {
   type SessionAnalyticsSummary as Summary,
 } from '../../lib/analytics/sessionSummary'
 import { cn } from '../../lib/cn'
+import { updateEpisodeSelection } from '../../lib/api/sessions'
 import type { TherapySession } from '../../types/sessions'
 import { PencilIcon } from '../ui/IconButton'
 import { SessionAnalyticsConfigDialog } from './SessionAnalyticsConfigDialog'
@@ -136,9 +137,12 @@ export function SessionAnalyticsSummaryCard({
   onSessionUpdated,
 }: SessionAnalyticsSummaryProps) {
   const { t } = useI18n()
+  const [effectiveSession, setEffectiveSession] = useState(session)
+  const [updating, setUpdating] = useState(false)
+  const [updateError, setUpdateError] = useState<string | null>(null)
   const bundle = useMemo(
-    () => (session ? parseSessionAnalyticsBundle(session.analytics_metrics) : null),
-    [session],
+    () => (effectiveSession ? parseSessionAnalyticsBundle(effectiveSession.analytics_metrics) : null),
+    [effectiveSession],
   )
   const excluded = useMemo(
     () => excludedEpisodeIndexes(session?.analytics_config),
@@ -151,6 +155,7 @@ export function SessionAnalyticsSummaryCard({
   const [scope, setScope] = useState<Scope>('session')
   const [configOpen, setConfigOpen] = useState(false)
 
+<<<<<<< HEAD
   useEffect(() => {
     setScope('session')
     setConfigOpen(false)
@@ -162,6 +167,29 @@ export function SessionAnalyticsSummaryCard({
 
   const clinical =
     clinicalSessionSummary(bundle.episodes, excluded) ?? bundle.session
+=======
+  if (!effectiveSession || effectiveSession.analytics_status !== 'ready' || !bundle) {
+    return null
+  }
+
+  const changeExclusions = async (indices: number[]) => {
+    setUpdating(true)
+    setUpdateError(null)
+    try {
+      const updated = await updateEpisodeSelection(
+        effectiveSession.patient_id,
+        effectiveSession.id,
+        indices,
+      )
+      setEffectiveSession(updated)
+      setScope('session')
+    } catch (error) {
+      setUpdateError(error instanceof Error ? error.message : t.workflow.apiError)
+    } finally {
+      setUpdating(false)
+    }
+  }
+>>>>>>> c9f397c (feat: calculator rewritten to process only available data)
 
   const activeSummary =
     scope === 'session'
@@ -178,6 +206,7 @@ export function SessionAnalyticsSummaryCard({
       : t.workflow.episodeSummary(scope + 1)
 
   return (
+<<<<<<< HEAD
     <>
       <section
         className={cn(
@@ -248,6 +277,26 @@ export function SessionAnalyticsSummaryCard({
               })}
             </div>
           ) : null}
+=======
+    <section
+      className={cn(
+        'rounded-2xl border border-slate-200 bg-white p-4',
+        'shadow-[0_12px_30px_rgb(15_23_42/0.04)]',
+      )}
+    >
+      <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h3 className="m-0 text-base font-extrabold text-slate-950">{title}</h3>
+          <p className="m-0 mt-1 text-xs font-semibold text-slate-500">
+            {t.workflow.sessionNumber(effectiveSession.session_number ?? 0)}
+            {bundle.episodes.length > 0
+              ? ` · ${t.workflow.episodeCount(bundle.episodes.length)}`
+              : ''}
+            {activeSummary.durationS != null
+              ? ` · ${formatNum(activeSummary.durationS / 60, 1)} ${t.workflow.minutesShort}`
+              : ''}
+          </p>
+>>>>>>> c9f397c (feat: calculator rewritten to process only available data)
         </div>
 
         {scope === 'session' && includedCount === 0 ? (
@@ -267,6 +316,7 @@ export function SessionAnalyticsSummaryCard({
             {notes}
           </p>
         ) : null}
+<<<<<<< HEAD
       </section>
 
       <SessionAnalyticsConfigDialog
@@ -276,5 +326,36 @@ export function SessionAnalyticsSummaryCard({
         onSaved={(updated) => onSessionUpdated?.(updated)}
       />
     </>
+=======
+      </div>
+      {scope !== 'session' ? (
+        <button
+          type="button"
+          disabled={updating}
+          className="mb-3 rounded-lg border border-red-200 px-3 py-1.5 text-xs font-bold text-red-700 disabled:opacity-50"
+          onClick={() => changeExclusions([...bundle.excludedEpisodeIndices, scope])}
+        >
+          {updating ? t.workflow.updatingEpisodes : t.workflow.removeEpisode}
+        </button>
+      ) : null}
+      {bundle.excludedEpisodeIndices.length > 0 ? (
+        <div className="mb-3 flex flex-wrap items-center gap-2 text-xs text-slate-500">
+          {bundle.excludedEpisodeIndices.map((index) => (
+            <button
+              key={index}
+              type="button"
+              disabled={updating}
+              className="rounded-lg border border-slate-200 px-2 py-1 font-bold disabled:opacity-50"
+              onClick={() => changeExclusions(bundle.excludedEpisodeIndices.filter((i) => i !== index))}
+            >
+              {t.workflow.restoreEpisode(index + 1)}
+            </button>
+          ))}
+        </div>
+      ) : null}
+      {updateError ? <p className="mb-3 text-xs font-semibold text-red-700">{updateError}</p> : null}
+      <SummaryBody summary={activeSummary} />
+    </section>
+>>>>>>> c9f397c (feat: calculator rewritten to process only available data)
   )
 }

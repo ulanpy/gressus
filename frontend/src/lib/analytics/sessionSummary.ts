@@ -28,6 +28,7 @@ export type SessionAnalyticsSummary = {
 export type SessionAnalyticsBundle = {
   session: SessionAnalyticsSummary
   episodes: SessionAnalyticsSummary[]
+  excludedEpisodeIndices: number[]
 }
 
 /** Default CEMRR weights (mirror backend DEFAULT_PARAMETERS.weights). */
@@ -200,6 +201,11 @@ function parseSessionSummary(
 function parseEpisodeSummary(raw: unknown): SessionAnalyticsSummary | null {
   if (!isRecord(raw)) return null
 
+  // telemetry_only_calculator episodes use the same shape as its session object.
+  if (isRecord(raw.duration) || isRecord(raw.kinematics)) {
+    return parseTelemetrySummary(raw, 'episode', asNumber(raw.index), null)
+  }
+
   const timing = isRecord(raw.timing) ? raw.timing : {}
   const left = isRecord(timing.left) ? timing.left : {}
   const right = isRecord(timing.right) ? timing.right : {}
@@ -228,6 +234,35 @@ function parseEpisodeSummary(raw: unknown): SessionAnalyticsSummary | null {
   return hasSummarySignal(summary) ? summary : null
 }
 
+function parseTelemetrySummary(
+  raw: Record<string, unknown>,
+  labelKey: 'session' | 'episode',
+  episodeIndex: number | null,
+  episodeCount: number | null,
+): SessionAnalyticsSummary {
+  const duration = isRecord(raw.duration) ? raw.duration : {}
+  const controller = isRecord(raw.controller) ? raw.controller : {}
+  const kinematics = isRecord(raw.kinematics) ? raw.kinematics : {}
+  const stepLength = isRecord(kinematics.stepLength) ? kinematics.stepLength : {}
+  const symmetry = isRecord(raw.symmetry) ? raw.symmetry : {}
+  return {
+    labelKey,
+    episodeIndex: episodeIndex == null ? null : Math.trunc(episodeIndex),
+    durationS: asNumber(duration.recordedS) ?? asNumber(duration.wallClockS),
+    episodeCount,
+    cadenceStepsPerMin: asNumber(controller.commandedCadenceStepsMin),
+    strideTimeLeftS: null,
+    strideTimeRightS: null,
+    strideTimeSiPct: null,
+    stepLengthLeftM: asNumber(stepLength.leftM),
+    stepLengthRightM: asNumber(stepLength.rightM),
+    stepLengthSiPct: asNumber(symmetry.romSiHipPct),
+    strideLengthMeanM: null,
+    gri: null,
+    aspects: emptyAspects(),
+  }
+}
+
 /** Session aggregate + per-episode summaries from the analytics worker blob. */
 export function parseSessionAnalyticsBundle(
   analyticsMetrics: unknown,
@@ -243,7 +278,14 @@ export function parseSessionAnalyticsBundle(
     .sort((a, b) => (a.episodeIndex ?? 0) - (b.episodeIndex ?? 0))
 
   const session = sessionRoot
-    ? parseSessionSummary(sessionRoot, episodes.length || asNumber(sessionRoot.episodeCount))
+    ? (isRecord(sessionRoot.duration) || isRecord(sessionRoot.kinematics)
+      ? parseTelemetrySummary(
+          sessionRoot,
+          'session',
+          null,
+          asNumber(sessionRoot.episodeCount) ?? episodes.length,
+        )
+      : parseSessionSummary(sessionRoot, episodes.length || asNumber(sessionRoot.episodeCount)))
     : null
 
   if (!session && episodes.length === 0) return null
@@ -268,6 +310,12 @@ export function parseSessionAnalyticsBundle(
         aspects: emptyAspects(),
       } satisfies SessionAnalyticsSummary),
     episodes,
+    excludedEpisodeIndices: Array.isArray(root.excludedEpisodeIndices)
+      ? root.excludedEpisodeIndices
+          .map(asNumber)
+          .filter((value): value is number => value != null)
+          .map(Math.trunc)
+      : [],
   }
 }
 

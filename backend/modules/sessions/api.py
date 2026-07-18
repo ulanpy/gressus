@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends, Query, status
 
 from backend.modules.sessions.dependencies import get_session_service
 from backend.modules.sessions.schemas import (
+    EpisodeSelectionUpdate,
     SessionCreate,
     SessionRead,
     SessionStatusUpdate,
@@ -74,4 +75,20 @@ async def set_session_status(
 ) -> SessionRead:
     """Finish or abort: ``completed``, ``failed``, ``aborted``, or reopen ``active``."""
     session_obj = await service.set_status(patient_id, session_id, payload.status)
+    return SessionRead.model_validate(session_obj)
+
+
+@router.patch("/{session_id}/analytics/episodes", response_model=SessionRead)
+async def update_episode_selection(
+    patient_id: UUID,
+    session_id: UUID,
+    payload: EpisodeSelectionUpdate,
+    service: Annotated[SessionService, Depends(get_session_service)],
+) -> SessionRead:
+    """Exclude episodes and recalculate the whole-session aggregate."""
+    session_obj = await service.update_episode_selection(
+        patient_id,
+        session_id,
+        payload.excluded_episode_indices,
+    )
     return SessionRead.model_validate(session_obj)

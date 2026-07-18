@@ -88,3 +88,13 @@ export function updateSessionStatus(
     status,
   }).then(fromSessionDto)
 }
+
+export function updateEpisodeSelection(
+  patientId: string,
+  sessionId: string,
+  excludedEpisodeIndices: number[],
+): Promise<TherapySession> {
+  return apiPatch<SessionDto>(`/patients/${patientId}/sessions/${sessionId}/analytics/episodes`, {
+    excluded_episode_indices: excludedEpisodeIndices,
+  }).then(fromSessionDto)
+}

@@ -56,6 +56,12 @@ class SessionStatusUpdate(BaseModel):
     status: SessionStatus
 
 
+class EpisodeSelectionUpdate(BaseModel):
+    """Zero-based episode indices excluded from session analytics."""
+
+    excluded_episode_indices: list[int] = Field(default_factory=list)
+
+
 class SessionRead(SessionBase):
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 

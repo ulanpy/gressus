@@ -138,3 +138,22 @@ class SessionService:
         session_obj.analytics_status = AnalyticsStatus.FAILED
         session_obj.analytics_metrics = None
         await self._repo.flush()
+
+    async def update_episode_selection(
+        self,
+        patient_id: UUID,
+        session_id: UUID,
+        excluded_episode_indices: list[int],
+    ) -> Session:
+        """Recalculate and persist analytics without the selected episodes."""
+
+        from backend.modules.analytics.processor import import_rosbag_mcap
+
+        session_obj = await self.get_or_404(patient_id, session_id)
+        session_obj.analytics_metrics = import_rosbag_mcap(
+            session_obj,
+            excluded_episode_indices=excluded_episode_indices,
+        )
+        session_obj.analytics_status = AnalyticsStatus.READY
+        await self._repo.flush()
+        return session_obj

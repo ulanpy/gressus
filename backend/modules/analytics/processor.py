@@ -11,7 +11,7 @@ import struct
 from typing import Any
 
 from backend.core.configs.config import config
-from backend.modules.analytics.calculator import (
+from backend.modules.analytics.telemetry_only_calculator import (
     calculate_session_metrics,
     parameters_from_session,
 )
@@ -329,7 +329,10 @@ def _compute_analytics(rows: list[dict[str, Any]], metadata: dict[str, Any]) -> 
     }
 
 
-def import_rosbag_mcap(session: Session) -> dict[str, Any]:
+def import_rosbag_mcap(
+    session: Session,
+    excluded_episode_indices: list[int] | None = None,
+) -> dict[str, Any]:
     """Load the session rosbag/MCAP files and return metrics for DB storage."""
 
     recording = _resolve_rosbag_import(session)
@@ -354,6 +357,7 @@ def import_rosbag_mcap(session: Session) -> dict[str, Any]:
         "analytics": calculate_session_metrics(
             rows,
             parameters=parameters_from_session(session),
+            excluded_episode_indices=excluded_episode_indices,
         ),
     }
 
