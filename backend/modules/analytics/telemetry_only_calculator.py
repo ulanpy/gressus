@@ -1,23 +1,15 @@
-"""
-this code only uses telemetry supplied in .csv file
-additional requiremenets are listed in default_parameters 
-
-"""
+"""Calculate analytics from telemetry rows and session parameters."""
 
 from __future__ import annotations
 
 from collections import Counter
 from math import isfinite, pi, sin, sqrt
-from statistics import mean, median
+from statistics import mean
 from typing import Any, Callable
 
 Number = int | float
 
-DEFAULT_PARAMETERS: dict[str, Any] = {
-    "leg_length_left_m": 0.62,
-    "leg_length_right_m": 0.62,
-    "body_weight_kg": 60.0,
-}
+CONTINUITY_GAP_THRESHOLD_S = 30.0
 
 FORMULAS: dict[str, str] = {
     "commanded_cycle_period": "T_cycle = 1 / mean(cps)",
@@ -135,8 +127,7 @@ def _calculate_scope_metrics(
 ) -> dict[str, Any]:
     """Calculate metrics for one supplied scope without splitting it."""
 
-    supplied = parameters or {}
-    params = _merge_parameters(DEFAULT_PARAMETERS, supplied)
+    params = dict(parameters or {})
     missing = _missing_parameters(params)
 
     ordered = sorted(rows, key=_row_time_s)
@@ -171,7 +162,6 @@ def _calculate_scope_metrics(
         "formulas": FORMULAS,
         "parameters": params,
         "missingParameters": missing,
-        "defaultedParameters": _defaulted_parameters(DEFAULT_PARAMETERS, supplied),
         "dataScope": {
             "usedGaitRunningRows": bool(gait_rows),
             "inputSampleCount": len(rows),
@@ -252,33 +242,31 @@ def _split_episodes(rows: list[dict[str, Any]]) -> list[list[dict[str, Any]]]:
 
 
 def parameters_from_session(session: Any) -> dict[str, Any]:
-    """Extract the three supported patient parameters from a Session-like object."""
+    """Extract analytics parameters from the session's database anthropometrics."""
 
-    profile = getattr(session, "exo_profile", None) or {}
-    if not isinstance(profile, dict):
+    anthropometrics = getattr(session, "anthropometrics", None) or {}
+    if not isinstance(anthropometrics, dict):
         return {}
 
-    analytics = profile.get("analytics")
-    source = analytics if isinstance(analytics, dict) else profile
     params: dict[str, Any] = {}
 
     _copy_first(
         params,
         "leg_length_left_m",
-        source,
-        ("leg_length_left_m", "legLengthLeftM"),
+        anthropometrics,
+        ("leg_length_left",),
     )
     _copy_first(
         params,
         "leg_length_right_m",
-        source,
-        ("leg_length_right_m", "legLengthRightM"),
+        anthropometrics,
+        ("leg_length_right",),
     )
     _copy_first(
         params,
         "body_weight_kg",
-        source,
-        ("body_weight_kg", "bodyWeightKg", "weight_kg", "weightKg"),
+        anthropometrics,
+        ("bodyweight",),
     )
     return params
 
@@ -800,17 +788,9 @@ def _same_recording_segment(
 
 
 def _continuity_gap_limit_s(rows: list[dict[str, Any]]) -> float:
-    """Find a conservative dropout threshold from the normal sample interval."""
+    """Return the maximum gap allowed within one continuous episode."""
 
-    intervals = [
-        dt
-        for current, next_row in zip(rows, rows[1:])
-        if _same_recording_segment(current, next_row)
-        for dt in [_row_time_s(next_row) - _row_time_s(current)]
-        if dt > 0
-    ]
-    nominal_interval_s = median(intervals) if intervals else 0.0
-    return max(1.0, nominal_interval_s * 10.0)
+    return CONTINUITY_GAP_THRESHOLD_S
 
 
 def _rows_are_continuous(
@@ -822,7 +802,7 @@ def _rows_are_continuous(
     if not _same_recording_segment(current, next_row):
         return False
     dt = _row_time_s(next_row) - _row_time_s(current)
-    return 0.0 < dt <= max_gap_s
+    return 0.0 <= dt <= max_gap_s
 
 
 def _gait_rows_on_active_timeline(
@@ -956,15 +936,6 @@ def _clamp(
     return max(lower, min(upper, value))
 
 
-def _merge_parameters(
-    base: dict[str, Any],
-    override: dict[str, Any],
-) -> dict[str, Any]:
-    merged = dict(base)
-    merged.update(override)
-    return merged
-
-
 def _copy_first(
     out: dict[str, Any],
     target: str,
@@ -988,14 +959,3 @@ def _missing_parameters(params: dict[str, Any]) -> list[str]:
         if _as_float(params.get(key)) is None:
             missing.append(key)
     return missing
-
-
-def _defaulted_parameters(
-    defaults: dict[str, Any],
-    supplied: dict[str, Any],
-) -> list[str]:
-    return [
-        key
-        for key in defaults
-        if supplied.get(key) is None
-    ]

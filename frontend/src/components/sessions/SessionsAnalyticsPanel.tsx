@@ -84,14 +84,11 @@ export function SessionsAnalyticsPanel({
       <div ref={detailRef} className="min-w-0 scroll-mt-4">
         {selectedSession ? (
           <div className="grid gap-4">
-<<<<<<< HEAD
             <SessionAnalyticsSummaryCard
+              key={selectedSession.id}
               session={selectedSession}
               onSessionUpdated={handleSessionUpdated}
             />
-=======
-            <SessionAnalyticsSummaryCard key={selectedSession.id} session={selectedSession} />
->>>>>>> c9f397c (feat: calculator rewritten to process only available data)
             <AverageGaitCycleChart session={selectedSession} />
           </div>
         ) : (
