@@ -1,9 +1,10 @@
+import { memo } from 'react'
 import { useI18n } from '../../i18n/context'
 import type { PageTabsProps } from '../../types/components'
 import { cn } from '../../lib/cn'
 import { pillNav, pillNavButton, pillNavButtonActive } from '../../styles/ui'
 
-export function PageTabs({ activeView, setActiveView }: PageTabsProps) {
+export const PageTabs = memo(function PageTabs({ activeView, setActiveView }: PageTabsProps) {
   const { t } = useI18n()
 
   return (
@@ -46,4 +47,4 @@ export function PageTabs({ activeView, setActiveView }: PageTabsProps) {
       </button>
     </nav>
   )
-}
+})

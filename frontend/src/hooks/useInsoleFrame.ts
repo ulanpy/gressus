@@ -23,8 +23,10 @@ export function useInsoleFrame(
     message: PATIENT_WAITING_MESSAGE,
     stepCount: 0,
   })
+  const statusRef = useRef<string | null>(null)
 
   useEffect(() => {
+    statusRef.current = null
     if (!gateOpen) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setFrame(null)
@@ -39,16 +41,28 @@ export function useInsoleFrame(
       return
     }
 
+    const setStatusIfChanged = (next: string) => {
+      if (statusRef.current === next) return
+      statusRef.current = next
+      setStatus(next)
+    }
+
     if (source === 'mock') {
-      setStatus('подключено')
+      setStatusIfChanged('подключено')
       const startedAt = performance.now()
       let seq = 0
       let lastEmit = 0
       let rafId = 0
       const minIntervalMs = 1000 / MOCK_HZ
+      let visible = document.visibilityState === 'visible'
+
+      const onVisibility = () => {
+        visible = document.visibilityState === 'visible'
+      }
+      document.addEventListener('visibilitychange', onVisibility)
 
       const tick = (now: number) => {
-        if (now - lastEmit >= minIntervalMs) {
+        if (visible && now - lastEmit >= minIntervalMs) {
           lastEmit = now
           const nextFrame = createMockFrame(startedAt, seq)
           seq += 1
@@ -61,21 +75,25 @@ export function useInsoleFrame(
       }
       rafId = window.requestAnimationFrame(tick)
 
-      return () => window.cancelAnimationFrame(rafId)
+      return () => {
+        window.cancelAnimationFrame(rafId)
+        document.removeEventListener('visibilitychange', onVisibility)
+      }
     }
 
     const ws = new WebSocket(websocketUrl(size))
 
-    ws.onopen = () => setStatus('подключено')
+    ws.onopen = () => setStatusIfChanged('подключено')
     ws.onmessage = (event) => {
+      if (document.visibilityState !== 'visible') return
       const nextFrame = JSON.parse(event.data) as FramePayload
 
       setFrame(nextFrame)
       setPatientSuggestion(updatePatientSuggestion(patientSuggestionState.current, nextFrame))
-      setStatus('подключено')
+      setStatusIfChanged('подключено')
     }
-    ws.onerror = () => setStatus('ошибка сокета')
-    ws.onclose = () => setStatus('отключено')
+    ws.onerror = () => setStatusIfChanged('ошибка сокета')
+    ws.onclose = () => setStatusIfChanged('отключено')
 
     return () => ws.close()
   }, [setStatus, source, size, gateOpen])

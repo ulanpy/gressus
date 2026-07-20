@@ -1,6 +1,9 @@
-import { useEffect, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useState, type ReactNode } from 'react'
 import { useI18n } from '../i18n/context'
-import { useExoskeletonTelemetry } from '../hooks/useExoskeletonTelemetry'
+import {
+  useExoskeletonTelemetry,
+  type ExoskeletonControlFlags,
+} from '../hooks/useExoskeletonTelemetry'
 import { useRuntimeStatus } from '../hooks/useRuntimeStatus'
 import { listPatients } from '../lib/api/patients'
 import { getLatestAnthropometrics, getLatestExoProfile, type LatestExoProfile } from '../lib/api/sessions'
@@ -9,15 +12,14 @@ import {
   buildAnthropometricsPayload,
   DEFAULT_ANTHROPOMETRICS,
 } from '../components/sessions/SessionAnthropometricsLine'
+import { LiveJointTelemetryChart } from '../components/exoskeleton/LiveJointTelemetryChart'
 import {
   startRecordingSession,
   stopRecordingSession,
-  type PgearStatusSnapshot,
   type SessionActionResponse,
 } from '../lib/api/runtime'
 import { mapExoErrorDetail, resolveExoLinkStatus } from '../lib/exoskeleton/statusText'
 import { cn } from '../lib/cn'
-import type { ExoskeletonTelemetryFrame } from '../types/exoskeleton'
 import type { Patient } from '../types/patients'
 
 type SessionState =
@@ -211,13 +213,6 @@ const initialProgress: ProgressStep[] = [
   { id: 'stopped', label: 'Session stopped', status: 'idle' },
 ]
 
-const jointLabels: Record<string, string> = {
-  HR: 'Right Hip',
-  KR: 'Right Knee',
-  HL: 'Left Hip',
-  KL: 'Left Knee',
-}
-
 function Icon({ name, className }: { name: IconName; className?: string }) {
   const common = {
     className: cn('h-6 w-6', className),
@@ -341,40 +336,62 @@ function clampRatio(value: number) {
   return Math.max(0, Math.min(1, value))
 }
 
-function ClinicalGauge({
-  color,
-  label,
-  value,
+function formatPct01(value: number): string {
+  return `${Math.round(clampRatio(value) * 100)}%`
+}
+
+/** Side-by-side L/R level bars — easier to read than four identical dials. */
+function LevelPairCard({
+  title,
+  hint,
+  left,
+  right,
+  leftColor,
+  rightColor,
+  leftLabel,
+  rightLabel,
 }: {
-  color: string
-  label: string
-  value: number
+  title: string
+  hint: string
+  left: number
+  right: number
+  leftColor: string
+  rightColor: string
+  leftLabel: string
+  rightLabel: string
 }) {
-  const ratio = clampRatio(value)
-  const dash = 251
+  const rows = [
+    { label: leftLabel, value: left, color: leftColor },
+    { label: rightLabel, value: right, color: rightColor },
+  ] as const
 
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-5 text-center shadow-[0_12px_30px_rgb(15_23_42/0.04)]">
-      <div className="mb-3 text-[13px] font-extrabold text-slate-600">{label}</div>
-      <svg viewBox="0 0 112 112" className="mx-auto h-[112px] w-[112px] -rotate-90">
-        <circle cx="56" cy="56" r="40" fill="none" stroke="#e5e7eb" strokeWidth="9" />
-        <circle
-          cx="56"
-          cy="56"
-          r="40"
-          fill="none"
-          stroke={color}
-          strokeDasharray={`${dash * ratio} ${dash}`}
-          strokeLinecap="round"
-          strokeWidth="9"
-        />
-      </svg>
-      <div className="-mt-[70px] mb-8 text-[22px] font-extrabold text-slate-950">
-        {value.toFixed(2)}
+    <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-[0_12px_30px_rgb(15_23_42/0.04)]">
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <div className="text-[15px] font-extrabold text-slate-950">{title}</div>
+        <div className="text-[12px] font-semibold text-slate-500">{hint}</div>
       </div>
-      <div className="flex justify-between text-[12px] font-bold text-slate-500">
-        <span>0</span>
-        <span>1</span>
+      <div className="mt-4 grid gap-3">
+        {rows.map((row) => {
+          const pct = Math.round(clampRatio(row.value) * 100)
+          return (
+            <div key={row.label} className="grid grid-cols-[52px_minmax(0,1fr)_48px] items-center gap-3">
+              <span className="text-xs font-extrabold text-slate-600">{row.label}</span>
+              <div className="h-2.5 overflow-hidden rounded-full bg-slate-100">
+                <div
+                  className="h-full rounded-full transition-[width] duration-300 ease-out"
+                  style={{ width: `${pct}%`, background: row.color }}
+                />
+              </div>
+              <span
+                className="text-right text-sm font-extrabold tabular-nums"
+                style={{ color: row.color }}
+              >
+                {formatPct01(row.value)}
+              </span>
+            </div>
+          )
+        })}
       </div>
     </div>
   )
@@ -413,59 +430,6 @@ function InfoCard({
       <div className="text-[13px] font-extrabold text-slate-500">{label}</div>
       <div className="mt-3">{children}</div>
     </div>
-  )
-}
-
-function JointTable({ telemetry }: { telemetry: ExoskeletonTelemetryFrame | null }) {
-  const joints = telemetry?.joints ?? []
-
-  if (!joints.length) {
-    return (
-      <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-[0_12px_30px_rgb(15_23_42/0.04)]">
-        <h2 className="m-0 text-[18px] font-extrabold text-slate-950">Hip / Knee Overview</h2>
-        <p className="mt-2 mb-0 text-sm font-semibold text-slate-500">
-          Joint telemetry will appear when available.
-        </p>
-      </section>
-    )
-  }
-
-  return (
-    <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-[0_12px_30px_rgb(15_23_42/0.04)]">
-      <h2 className="m-0 text-[18px] font-extrabold text-slate-950">Hip / Knee Overview</h2>
-      <div className="mt-4 overflow-x-auto">
-        <table className="min-w-[760px] w-full border-collapse text-left text-[13px]">
-          <thead>
-            <tr className="border-b border-slate-200 text-[12px] font-extrabold text-slate-500">
-              <th className="py-3">Joint</th>
-              <th>Ref Pos</th>
-              <th>Pos</th>
-              <th>Vel</th>
-              <th>Torque</th>
-              <th>Iq</th>
-              <th>Effort</th>
-            </tr>
-          </thead>
-          <tbody>
-            {joints.slice(0, 4).map((joint) => (
-              <tr key={joint.name} className="border-b border-slate-100 last:border-b-0">
-                <td className="py-3 font-extrabold text-slate-950">
-                  {jointLabels[joint.name] ?? joint.name}
-                </td>
-                <td className="font-bold text-slate-700">{joint.refPos.toFixed(3)}</td>
-                <td className="font-bold text-slate-700">{joint.pos.toFixed(3)}</td>
-                <td className="font-bold text-slate-700">{joint.vel.toFixed(3)}</td>
-                <td className="font-bold text-slate-700">{joint.measTorque.toFixed(3)}</td>
-                <td className="font-bold text-slate-700">{joint.iq.toFixed(2)}</td>
-                <td className="font-bold text-slate-700">
-                  {Math.round((joint.motorEffort ?? 0) * 100)}%
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </section>
   )
 }
 
@@ -854,22 +818,27 @@ function ProfileDialog({
 }
 
 function SimplifiedTelemetry({
-  pgear,
+  onFlagsChange,
   progress,
   sessionState,
-  statusError,
-  statusLoading,
-  telemetry,
 }: {
-  pgear: PgearStatusSnapshot | null
+  onFlagsChange: (flags: ExoskeletonControlFlags) => void
   progress: ProgressStep[]
   sessionState: SessionState
-  statusError: string | null
-  statusLoading: boolean
-  telemetry: ExoskeletonTelemetryFrame | null
 }) {
   const { t } = useI18n()
   const exo = t.exoskeleton
+  const {
+    snapshot: runtime,
+    loading: statusLoading,
+    error: statusError,
+  } = useRuntimeStatus(true)
+  const { frame: telemetry, history, flags, windowSeconds } = useExoskeletonTelemetry(true)
+  const pgear = runtime?.pgear ?? null
+
+  useEffect(() => {
+    onFlagsChange(flags)
+  }, [flags, onFlagsChange])
 
   if (statusLoading && !pgear) {
     return <ConnectingTelemetry title={exo.connectingTitle} detail={exo.connectingDetail} />
@@ -955,15 +924,31 @@ function SimplifiedTelemetry({
         </InfoCard>
       </div>
 
-      <div className="mt-4 grid grid-cols-4 gap-4 max-[1180px]:grid-cols-2 max-[680px]:grid-cols-1">
-        <ClinicalGauge color="#0ea5e9" label="Assist Right" value={telemetry?.assistR ?? 0} />
-        <ClinicalGauge color="#7c3aed" label="Assist Left" value={telemetry?.assistL ?? 0} />
-        <ClinicalGauge color="#2563eb" label="Amplitude Right" value={telemetry?.ampR ?? 0} />
-        <ClinicalGauge color="#8b5cf6" label="Amplitude Left" value={telemetry?.ampL ?? 0} />
+      <div className="mt-4 grid grid-cols-2 gap-4 max-[680px]:grid-cols-1">
+        <LevelPairCard
+          title={exo.assistPairTitle}
+          hint={exo.assistPairHint}
+          leftLabel={exo.sideLeft}
+          rightLabel={exo.sideRight}
+          left={telemetry?.assistL ?? 0}
+          right={telemetry?.assistR ?? 0}
+          leftColor="#7c3aed"
+          rightColor="#0ea5e9"
+        />
+        <LevelPairCard
+          title={exo.amplitudePairTitle}
+          hint={exo.amplitudePairHint}
+          leftLabel={exo.sideLeft}
+          rightLabel={exo.sideRight}
+          left={telemetry?.ampL ?? 0}
+          right={telemetry?.ampR ?? 0}
+          leftColor="#8b5cf6"
+          rightColor="#2563eb"
+        />
       </div>
 
       <div className="mt-4">
-        <JointTable telemetry={telemetry} />
+        <LiveJointTelemetryChart history={history} windowSeconds={windowSeconds} />
       </div>
 
       <div className="mt-4">
@@ -989,13 +974,18 @@ export function ExoskeletonControl() {
   const [busy, setBusy] = useState(false)
   const [, setLastResponse] = useState<SessionActionResponse | null>(null)
   const [lastError, setLastError] = useState<string | null>(null)
-  const {
-    snapshot: runtime,
-    loading: statusLoading,
-    error: statusError,
-    refresh: refreshRuntime,
-  } = useRuntimeStatus(true)
-  const { frame: telemetry } = useExoskeletonTelemetry(true)
+  const [telemetryFlags, setTelemetryFlags] = useState<ExoskeletonControlFlags>({
+    estop: false,
+    running: false,
+    error: null,
+  })
+  const onTelemetryFlagsChange = useCallback((next: ExoskeletonControlFlags) => {
+    setTelemetryFlags((prev) =>
+      prev.estop === next.estop && prev.running === next.running && prev.error === next.error
+        ? prev
+        : next,
+    )
+  }, [])
 
   useEffect(() => {
     setPatientsLoading(true)
@@ -1021,7 +1011,6 @@ export function ExoskeletonControl() {
       throw new Error(payload.message || 'Request failed')
     }
     setLastResponse(payload)
-    refreshRuntime()
     return payload
   }
 
@@ -1139,11 +1128,11 @@ export function ExoskeletonControl() {
     setProgress(initialProgress)
   }
 
-  const workflowState: WorkflowState = telemetry?.estop
+  const workflowState: WorkflowState = telemetryFlags.estop
     ? 'estop'
     : lastError || sessionState === 'Error'
       ? 'error'
-      : sessionState === 'Running' || telemetry?.running
+      : sessionState === 'Running' || telemetryFlags.running
         ? 'running'
         : 'initial'
   const retryTitle = lastError?.toLowerCase().includes('connected') ? 'Resolve Error' : 'Retry'
@@ -1210,7 +1199,7 @@ export function ExoskeletonControl() {
 
             {workflowState === 'error' ? (
               <p className="m-0 mt-2 text-sm font-semibold leading-6 text-red-700">
-                {lastError ?? telemetry?.error ?? 'The system reported an error.'}
+                {lastError ?? telemetryFlags.error ?? 'The system reported an error.'}
               </p>
             ) : null}
 
@@ -1258,12 +1247,9 @@ export function ExoskeletonControl() {
       </section>
 
       <SimplifiedTelemetry
-        pgear={runtime?.pgear ?? null}
+        onFlagsChange={onTelemetryFlagsChange}
         progress={progress}
         sessionState={sessionState}
-        statusError={statusError}
-        statusLoading={statusLoading}
-        telemetry={telemetry}
       />
 
       {profileDialogOpen ? (
