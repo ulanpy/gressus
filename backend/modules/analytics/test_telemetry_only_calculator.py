@@ -2,8 +2,9 @@ from __future__ import annotations
 
 from copy import deepcopy
 from math import isclose, pi
+from types import SimpleNamespace
 
-from .telemetry_only_calculator import calculate_session_metrics
+from .telemetry_only_calculator import calculate_session_metrics, parameters_from_session
 
 
 def _row(
@@ -62,6 +63,26 @@ def _complete_row(time_s: float, segment: int, index: int) -> dict[str, object]:
     return row
 
 
+def _gait_cycle_rows(
+    offsets: tuple[float, ...],
+    *,
+    include_reference: bool = True,
+) -> list[dict[str, object]]:
+    rows: list[dict[str, object]] = []
+    sample_index = 0
+    for offset in offsets:
+        for step_idx in range(50):
+            row = _row(sample_index * 0.02, 0)
+            row["step_idx"] = step_idx
+            for joint in ("HR", "HL", "KR", "KL"):
+                row[f"{joint}_deg"] = float(step_idx) + offset
+                if include_reference:
+                    row[f"{joint}_ref_deg"] = float(step_idx)
+            rows.append(row)
+            sample_index += 1
+    return rows
+
+
 def test_split_session_excludes_break_from_active_time_and_work() -> None:
     rows = [
         _row(0.0, 0),
@@ -106,10 +127,8 @@ def test_excluded_episode_is_removed_from_session_aggregate() -> None:
 
 def test_fatigue_windows_use_active_gait_time() -> None:
     rows = [
-        _row(0.0, 0),
-        _row(30.0, 0),
-        _row(150.0, 1),
-        _row(180.0, 1),
+        *[_row(float(time_s), 0) for time_s in range(0, 61, 10)],
+        *[_row(float(time_s), 1) for time_s in range(180, 231, 10)],
     ]
 
     metrics = calculate_session_metrics(rows)
@@ -123,8 +142,8 @@ def test_large_timestamp_jump_inside_segment_is_a_break() -> None:
         _row(0.0, 0),
         _row(0.1, 0),
         _row(0.2, 0),
-        _row(5.2, 0),
-        _row(5.3, 0),
+        _row(31.2, 0),
+        _row(31.3, 0),
     ]
 
     metrics = calculate_session_metrics(rows)
@@ -133,16 +152,131 @@ def test_large_timestamp_jump_inside_segment_is_a_break() -> None:
 
     assert isclose(duration["recordedS"], 0.3)
     assert isclose(duration["gaitActiveS"], 0.3)
-    assert isclose(duration["breakS"], 5.0)
+    assert isclose(duration["breakS"], 31.0)
     assert isclose(patient_power["workJ"], 3.0 * pi)
+
+
+def test_thirty_second_gap_remains_in_same_episode() -> None:
+    rows = [
+        _row(0.0, 0),
+        _row(30.0, 0),
+        _row(60.0, 0),
+    ]
+
+    metrics = calculate_session_metrics(rows)
+
+    assert metrics["session"]["episodeCount"] == 1
+    assert metrics["session"]["duration"]["breakS"] == 0.0
+
+
+def test_equal_timestamps_remain_in_same_episode() -> None:
+    rows = [
+        _row(0.0, 0),
+        _row(0.0, 0),
+        _row(0.1, 0),
+    ]
+
+    metrics = calculate_session_metrics(rows)
+
+    assert metrics["session"]["episodeCount"] == 1
+    assert metrics["episodes"][0]["sampleCount"] == 3
+
+
+def test_parameters_come_from_session_database_anthropometrics() -> None:
+    session = SimpleNamespace(
+        anthropometrics={
+            "leg_length_left": 0.71,
+            "leg_length_right": 0.72,
+            "bodyweight": 68.5,
+        },
+        exo_profile={
+            "analytics": {
+                "leg_length_left_m": 9.0,
+                "leg_length_right_m": 9.0,
+                "body_weight_kg": 999.0,
+            }
+        },
+    )
+
+    assert parameters_from_session(session) == {
+        "leg_length_left_m": 0.71,
+        "leg_length_right_m": 0.72,
+        "body_weight_kg": 68.5,
+    }
+
+
+def test_missing_parameters_are_not_defaulted() -> None:
+    metrics = calculate_session_metrics([_row(0.0, 0)])
+
+    assert metrics["parameters"] == {}
+    assert metrics["missingParameters"] == [
+        "leg_length_left_m",
+        "leg_length_right_m",
+        "body_weight_kg",
+    ]
+    assert "defaultedParameters" not in metrics
+
+
+def test_average_gait_cycle_matches_frontend_contract() -> None:
+    metrics = calculate_session_metrics(_gait_cycle_rows((-1.0, 1.0, 100.0)))
+    average = metrics["session"]["tracking"]["averageGaitCycle"]
+    right_hip = average["joints"]["HR"]
+
+    assert average["cycleIntervalCount"] == 2
+    assert average["eventSource"] == "step_idx_wraparound"
+    assert average["quality"] == {
+        "detectedCycleCount": 2,
+        "acceptedCycleCount": 2,
+        "rejectedCycleCount": 0,
+        "rejectionCounts": {},
+        "phasePointCount": 101,
+    }
+    assert right_hip["cycleCount"] == 2
+    assert len(right_hip["points"]) == 101
+    assert right_hip["points"][50] == {
+        "phasePct": 50.0,
+        "refDeg": 24.5,
+        "actualDeg": 24.5,
+        "errorDeg": 0.0,
+    }
+    assert isclose(right_hip["summary"]["rmseDeg"], 1.0)
+    assert isclose(right_hip["summary"]["maeDeg"], 1.0)
+    assert isclose(right_hip["summary"]["maxErrorDeg"], 1.0)
+    assert isclose(right_hip["summary"]["compliance"], 1.0 - 1.0 / 49.0)
+
+
+def test_average_gait_cycle_keeps_actual_curve_without_reference() -> None:
+    metrics = calculate_session_metrics(
+        _gait_cycle_rows((0.0, 0.0), include_reference=False)
+    )
+    right_knee = metrics["session"]["tracking"]["averageGaitCycle"]["joints"]["KR"]
+
+    assert right_knee["cycleCount"] == 1
+    assert right_knee["points"][50]["actualDeg"] == 24.5
+    assert right_knee["points"][50]["refDeg"] is None
+    assert right_knee["points"][50]["errorDeg"] is None
+    assert right_knee["summary"] == {
+        "rmseDeg": None,
+        "maeDeg": None,
+        "maxErrorDeg": None,
+        "compliance": None,
+    }
+
+
+def test_average_gait_cycle_omits_empty_joint_curves() -> None:
+    metrics = calculate_session_metrics([_row(0.0, 0), _row(0.1, 0)])
+    average = metrics["session"]["tracking"]["averageGaitCycle"]
+
+    assert average["cycleIntervalCount"] == 0
+    assert average["joints"] == {}
 
 
 def test_adding_break_changes_no_non_duration_metric() -> None:
     no_break_rows = [
-        *[_complete_row(time_s, 0, index) for index, time_s in enumerate((0, 20, 40, 60))],
+        *[_complete_row(time_s, 0, index) for index, time_s in enumerate((0, 5, 10, 15))],
         *[
             _complete_row(time_s, 1, index)
-            for index, time_s in enumerate((60, 80, 100, 120), start=4)
+            for index, time_s in enumerate((15, 20, 25, 30), start=4)
         ],
     ]
     break_rows = deepcopy(no_break_rows)
@@ -152,8 +286,8 @@ def test_adding_break_changes_no_non_duration_metric() -> None:
     no_break = calculate_session_metrics(no_break_rows)
     with_break = calculate_session_metrics(break_rows)
 
-    assert no_break["session"]["duration"]["recordedS"] == 120.0
-    assert with_break["session"]["duration"]["recordedS"] == 120.0
+    assert no_break["session"]["duration"]["recordedS"] == 30.0
+    assert with_break["session"]["duration"]["recordedS"] == 30.0
     assert no_break["session"]["duration"]["breakS"] == 0.0
     assert with_break["session"]["duration"]["breakS"] == 120.0
 
@@ -161,6 +295,9 @@ def test_adding_break_changes_no_non_duration_metric() -> None:
         result["session"].pop("startS")
         result["session"].pop("endS")
         result["session"].pop("duration")
+        for episode in result["episodes"]:
+            episode.pop("startS")
+            episode.pop("endS")
     assert with_break == no_break
 
 

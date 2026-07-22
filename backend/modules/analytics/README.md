@@ -41,20 +41,16 @@ UDP LogPacket (pgear-нода, 100 Гц) — это **только экзоск�
 
 ### 2. Параметры сессии (`parameters`)
 
-Берутся из `Session.exo_profile.analytics` (или корня профиля). Если нет — **дефолты**
-из `DEFAULT_PARAMETERS` в `calculator.py` (значения из docx для примера пациента 32 кг).
+Берутся из сохранённого в базе `Session.anthropometrics`:
 
-| Параметр | Дефолт | В UDP? | Смысл |
-|----------|--------|--------|-------|
-| `leg_length_m` | 0.62 m | нет | длина ноги для кинематики шага |
-| `belt_speed_m_s` | 0.50 m/s | нет | скорость ленты дорожки |
-| `moment_arm_m` | 0.25 m | нет | плечо момента load cell |
-| `passive_force_n` | 5.1 / 4.6 / 4.0 / 3.7 N | нет | калибровка «пассивного» пациента |
-| `normal.*` | cadence 110, belt 0.9, stride 1.4 m, DSR 20% | нет | «здоровая» норма для E |
-| `baseline.*` | SI 20.54%, CV 4.2%, DSR 36% | нет | первая сессия пациента для S, V, B |
-| `weights` | 0.25/0.15/0.20/0.20/0.20 | нет | веса GRI |
+| Поле БД | Параметр калькулятора | Смысл |
+|---------|----------------------|-------|
+| `leg_length_left` | `leg_length_left_m` | длина левой ноги, м |
+| `leg_length_right` | `leg_length_right_m` | длина правой ноги, м |
+| `bodyweight` | `body_weight_kg` | масса тела, кг |
 
-Ответ API содержит `missingParameters` и `defaultedParameters` — что не задано в профиле.
+Дефолтных значений нет. Ответ API содержит `missingParameters` для отсутствующих
+значений; зависимые метрики в этом случае возвращают `null`.
 
 ### 3. Маппинг UDP → поля строки
 
@@ -339,7 +335,7 @@ Score = 0.25\,Tracking + 0.20\,Motion + 0.25\,Participation + 0.15\,Symmetry + 0
 - `normal.*` (для E)
 - `weights` (для GRI)
 
-Проверка: `calculate_session_metrics(...).["missingParameters"]` и `["defaultedParameters"]`.
+Проверка: `calculate_session_metrics(...)["missingParameters"]`.
 
 ---
 
