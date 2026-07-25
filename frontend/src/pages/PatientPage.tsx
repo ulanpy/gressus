@@ -1,8 +1,8 @@
 import { useI18n } from '../i18n/context'
 import type { PatientPageProps } from '../types/components'
-import { LiveInactiveCard } from '../components/session/LiveInactiveCard'
-import { AppleTreeGarden } from '../components/patient/AppleTreeGarden'
-import { cn } from '../lib/cn'
+import { LiveInactiveCard } from '@/widgets/live/LiveInactiveCard'
+import { AppleTreeGarden } from '@/widgets/patient/AppleTreeGarden'
+import { cn } from '@/shared/lib/utils'
 import { container } from '../styles/ui'
 
 

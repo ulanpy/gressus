@@ -1,6 +1,5 @@
 import type { FootFrame, FootSide, FramePayload, FootSilhouette, FootDashboard } from './insole'
 import type { SourceMode } from './insole'
-import type { ViewMode } from './navigation'
 import type { Language } from './i18n'
 import type { PatientSessionWorkflow } from '../hooks/usePatientSessionWorkflow'
 
@@ -34,11 +33,6 @@ export type DashboardControlsProps = {
   setSource: (source: SourceMode) => void
   showSensors: boolean
   source: SourceMode
-}
-
-export type PageTabsProps = {
-  activeView: ViewMode
-  setActiveView: (view: ViewMode) => void
 }
 
 export type LanguageToggleProps = {

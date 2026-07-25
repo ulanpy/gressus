@@ -1,6 +1,6 @@
 import type { Translation } from '../i18n/translations'
 import type { PatientMessageKey } from '../types/i18n'
-import type { TherapyRecommendation } from '../progressAnalytics'
+import type { TherapyRecommendation } from '@/lib/progressAnalytics'
 import type { Language } from '../types/i18n'
 
 

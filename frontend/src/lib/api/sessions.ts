@@ -32,7 +32,7 @@ export async function getLatestAnthropometrics(
   const sessions = await listPatientSessions(patientId)
   const withAnthro = sessions.filter((s) => {
     const a = s.anthropometrics
-    return a != null && Object.values(a).some((v) => v != null && v !== '')
+    return a != null && Object.values(a).some((v) => v != null && (typeof v === 'number' || v !== ''))
   })
   if (!withAnthro.length) return null
   const latest = withAnthro.reduce((a, b) =>

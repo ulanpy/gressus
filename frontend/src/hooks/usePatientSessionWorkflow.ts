@@ -55,7 +55,7 @@ export type PatientSessionWorkflow = {
   updatePatient: (patientId: string, data: PatientUpdate) => Promise<Patient>
   archivePatient: (patientId: string) => Promise<void>
   refreshSessions: () => Promise<void>
-  startSession: (data?: SessionCreateBody) => Promise<TherapySession>
+  startSession: (data?: SessionCreateBody, patientId?: string) => Promise<TherapySession>
   endSession: (status?: Exclude<SessionStatus, 'active'>) => Promise<TherapySession>
   refreshAssessments: () => Promise<void>
   createAssessment: (data: AssessmentCreate) => Promise<Assessment>
@@ -256,21 +256,30 @@ export function usePatientSessionWorkflow(): PatientSessionWorkflow {
   )
 
   const startSession = useCallback(
-    async (data: SessionCreateBody = {}) => {
-      if (!selectedPatientId) {
+    async (data: SessionCreateBody = {}, forPatientId?: string) => {
+      const patientId = forPatientId ?? selectedPatientId
+      if (!patientId) {
         throw new Error('Пациент не выбран')
       }
-      if (activeSession) {
-        throw new Error('У пациента уже есть активная сессия')
-      }
+
       setPendingAction(true)
       setError(null)
       try {
-        const created = await sessionsApi.createSession(selectedPatientId, {
+        if (forPatientId && forPatientId !== selectedPatientId) {
+          selectPatient(forPatientId)
+        }
+
+        const existing = await sessionsApi.listPatientSessions(patientId)
+        if (findActiveSession(existing)) {
+          throw new Error('У пациента уже есть активная сессия')
+        }
+
+        const created = await sessionsApi.createSession(patientId, {
           session_date: data.session_date ?? todayIsoDate(),
           ...data,
         })
-        await refreshSessions()
+        const next = await sessionsApi.listPatientSessions(patientId)
+        setSessions(next)
         return created
       } catch (err) {
         handleError(err, 'Не удалось начать сессию')
@@ -279,7 +288,7 @@ export function usePatientSessionWorkflow(): PatientSessionWorkflow {
         setPendingAction(false)
       }
     },
-    [selectedPatientId, activeSession, refreshSessions, handleError],
+    [selectedPatientId, selectPatient, handleError],
   )
 
   const endSession = useCallback(

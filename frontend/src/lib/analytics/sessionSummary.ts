@@ -318,10 +318,3 @@ export function parseSessionAnalyticsBundle(
       : [],
   }
 }
-
-/** @deprecated Prefer parseSessionAnalyticsBundle */
-export function parseSessionAnalyticsSummary(
-  analyticsMetrics: unknown,
-): SessionAnalyticsSummary | null {
-  return parseSessionAnalyticsBundle(analyticsMetrics)?.session ?? null
-}

@@ -1,94 +1,19 @@
-import { cn } from '../lib/cn'
+import { cn } from '@/shared/lib/utils'
 
 /** Shared Tailwind class fragments for the Gressus design system. */
 
 export const container = 'w-full max-w-[1280px] mx-auto'
 
 export const panel =
-  'border border-panel-border bg-panel shadow-panel backdrop-blur-[18px]'
+  'border border-border bg-card shadow-panel'
 
-export const eyebrow =
-  'm-0 mb-2.5 text-brand text-xs font-bold tracking-[0.18em] uppercase'
+export const eyebrow = 'page-eyebrow mb-2.5'
 
-export const pillNav =
-  'inline-flex gap-1.5 border border-panel-border rounded-full bg-white/72 p-1.5 shadow-panel backdrop-blur-[18px]'
+export const progressCard = cn(panel, 'rounded-2xl p-6')
 
-export const pillNavButton =
-  'min-w-[84px] sm:min-w-[96px] md:min-w-[104px] rounded-full border-0 px-3.5 py-2.5 text-text-strong bg-transparent cursor-pointer [font:inherit] whitespace-nowrap'
-
-export const pillNavButtonActive =
-  '!text-white !bg-slate-900 shadow-[0_10px_26px_rgb(15_23_42/0.22)]'
-
-export const ghostButton =
-  'rounded-full border-0 px-3.5 py-2.5 text-sm text-text-strong bg-white shadow-[0_8px_24px_rgb(15_23_42/0.08)] cursor-pointer [font:inherit] whitespace-nowrap'
-
-export const progressCard = cn(panel, 'rounded-[28px] p-6')
-
-export const workflowStep = cn(
-  panel,
-  'rounded-3xl bg-white/82 p-6',
-)
-
-export const workflowBtn =
-  'rounded-full border-0 px-[18px] py-[11px] [font:inherit] font-bold cursor-pointer disabled:opacity-45 disabled:cursor-not-allowed'
-
-export const workflowStepHead = 'mt-1.5 mb-0 text-[1.35rem]'
-
-export const workflowStepActions = 'flex flex-wrap gap-2.5 mt-4'
-
-export const workflowField = 'grid gap-2 mt-3'
-
-export const workflowFieldLabel = 'text-[13px] font-bold text-muted'
-
-export const workflowFieldInput = 'ui-input [font:inherit]'
-
-export const workflowDateInput = 'ui-date [font:inherit]'
-
-export const uiSelect = 'ui-select [font:inherit]'
-
-export const uiSelectTrigger = cn(
-  workflowBtn,
-  'inline-flex items-center gap-2 border border-panel-border bg-white px-3.5 py-2.5 text-sm font-semibold text-text-strong shadow-[0_4px_14px_rgb(15_23_42/0.06)] hover:border-cyan-400 disabled:shadow-none',
-)
-
-export const iconBtn =
-  'inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border shadow-[0_4px_14px_rgb(15_23_42/0.06)] transition-[border-color,background,color] duration-150 disabled:cursor-not-allowed disabled:opacity-45'
-
-export const iconBtnDefault = cn(
-  iconBtn,
-  'border-panel-border bg-white text-text-strong hover:border-cyan-400',
-)
-
-export const iconBtnPrimary = cn(
-  iconBtn,
-  'border-slate-900 bg-slate-900 text-white hover:border-slate-700 hover:bg-slate-800',
-)
-
-export const iconBtnDanger = cn(
-  iconBtn,
-  'border-panel-border bg-white text-red-600 hover:border-red-400 hover:bg-red-50',
-)
-
-export const workflowBtnPrimary = cn(workflowBtn, 'text-white bg-slate-900')
-
-export const workflowBtnSecondary = cn(workflowBtn, 'text-slate-900 bg-slate-100')
-
-export const workflowBtnDanger = cn(workflowBtn, 'text-white bg-red-600')
+export const workflowStep = cn(panel, 'rounded-2xl bg-card p-6')
 
 export const workflowMuted = 'text-muted mt-3 mb-0'
-
-export const workflowModal =
-  'fixed inset-0 z-50 grid place-items-center p-6'
-
-export const workflowModalBackdrop =
-  'absolute inset-0 bg-slate-900/45 backdrop-blur-[2px]'
-
-export const workflowModalPanel = cn(
-  panel,
-  'relative z-10 w-full max-w-[480px] rounded-3xl bg-white p-6 grid gap-3 shadow-panel',
-)
-
-export const workflowModalActions = 'flex justify-end gap-2.5 mt-2'
 
 export const sessionCard =
   'flex justify-between gap-4 items-start mt-3 p-4 rounded-[18px] bg-slate-50'
@@ -132,12 +57,6 @@ export const cemrrUploadDropSub = 'text-muted text-xs'
 export const cemrrUploadActions = 'flex flex-wrap items-center gap-2.5'
 
 export const cemrrUploadCount = 'text-[13px] text-muted [&_strong]:text-text-strong [&_strong]:tabular-nums'
-
-export const cemrrUploadClear =
-  'px-3 py-1.5 rounded-full text-xs border border-panel-border bg-white text-text-strong hover:border-red-400 hover:text-red-600'
-
-export const cemrrUploadExample =
-  'px-3.5 py-2 rounded-full text-[13px] font-semibold border border-panel-border bg-white text-text-strong hover:border-cyan-400 hover:text-cyan-700'
 
 export const cemrrUploadError =
   'm-0 px-3.5 py-2.5 rounded-[14px] bg-red-100/70 text-red-800 text-[13px]'
@@ -312,28 +231,11 @@ export const cemrrHistoryChartTitle =
 
 export const cemrrHistoryChartShell = 'relative w-full h-60 min-w-0'
 
-export const cemrrHistoryPills = 'flex gap-1.5 flex-wrap'
-
-export const cemrrHistoryPill =
-  'inline-flex flex-col items-start gap-0.5 py-2 px-3.5 rounded-[14px] border border-panel-border bg-white text-text-strong text-xs font-semibold [&_span]:text-[10px] [&_span]:text-muted [&_span]:tabular-nums'
-
-export const cemrrHistoryPillActive =
-  'border-cyan-400 bg-cyan-50 text-cyan-700'
-
 export const controls = cn(
   container,
   panel,
   'mt-8 rounded-[28px] p-3.5 grid grid-cols-[auto_auto_minmax(0,1fr)] items-center gap-3 max-[980px]:grid-cols-1',
 )
-
-export const buttonGroup =
-  'inline-flex gap-1.5 rounded-full bg-slate-200/65 p-1'
-
-export const buttonGroupItem =
-  'rounded-full border-0 px-4 py-2.5 text-text-strong bg-transparent cursor-pointer'
-
-export const buttonGroupItemActive =
-  '!bg-slate-900 !text-white shadow-[0_10px_26px_rgb(15_23_42/0.18)]'
 
 export const frameMeta =
   'justify-self-end text-right max-[980px]:justify-self-start max-[980px]:text-left text-muted text-xs tracking-[0.08em] uppercase break-words'

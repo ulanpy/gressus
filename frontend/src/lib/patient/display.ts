@@ -42,3 +42,11 @@ export function formatPatientDateOfBirth(dateOfBirth: string, language: Language
     year: 'numeric',
   }).format(new Date(dateOfBirth))
 }
+
+export function formatPatientDateLong(dateOfBirth: string, language: Language): string {
+  return new Intl.DateTimeFormat(dateLocale(language), {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  }).format(new Date(dateOfBirth))
+}

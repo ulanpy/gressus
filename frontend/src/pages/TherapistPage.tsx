@@ -1,10 +1,10 @@
 import { MAX_KPA } from '../constants/insole'
 import { useI18n } from '../i18n/context'
 import type { TherapistPageProps } from '../types/components'
-import { DashboardControls } from '../components/feet/DashboardControls'
-import { LiveInactiveCard } from '../components/session/LiveInactiveCard'
-import { FeetPressurePanel } from '../components/feet/FeetPressurePanel'
-import { cn } from '../lib/cn'
+import { DashboardControls } from '@/widgets/feet/DashboardControls'
+import { LiveInactiveCard } from '@/widgets/live/LiveInactiveCard'
+import { FeetPressurePanel } from '@/widgets/feet/FeetPressurePanel'
+import { cn } from '@/shared/lib/utils'
 import { container, eyebrow, panel } from '../styles/ui'
 
 const pressureGradient =

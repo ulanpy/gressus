@@ -9,13 +9,12 @@ import { useGeometry } from '../hooks/useGeometry'
 import { useInsoleFrame } from '../hooks/useInsoleFrame'
 import { usePatientSessionWorkflow } from '../hooks/usePatientSessionWorkflow'
 import { useFootDashboard } from '../hooks/useFootDashboard'
-import { PageTabs } from '../components/layout/PageTabs'
-import { LanguageToggle } from '../components/layout/LanguageToggle'
+import { AppNavigation } from '@/shared/layout/AppNavigation'
+import { LanguageToggle } from '@/shared/layout/LanguageToggle'
+import type { PatientWorkspaceView } from '@/widgets/patients/PatientViewMenu'
 import { TherapistPage } from '../pages/TherapistPage'
 import { ControlPage } from '../pages/ControlPage'
 import { ExoskeletonControl } from '../pages/ExoskeletonControl'
-import { container } from '../styles/ui'
-import { cn } from '../lib/cn'
 
 type DashboardShellProps = {
   language: Language
@@ -25,6 +24,7 @@ type DashboardShellProps = {
 function DashboardShell({ language, setLanguage }: DashboardShellProps) {
   const { t } = useI18n()
   const [activeView, setActiveView] = useState<ViewMode>('therapist')
+  const [workspaceView, setWorkspaceView] = useState<PatientWorkspaceView>('sessions')
   const [source, setSource] = useState<SourceMode>('mock')
   const [showSensors, setShowSensors] = useState(true)
   const workflow = usePatientSessionWorkflow()
@@ -35,43 +35,52 @@ function DashboardShell({ language, setLanguage }: DashboardShellProps) {
   const dashboard = useFootDashboard(geometry, frame)
 
   return (
-    <main className="min-h-screen px-6 py-12 max-[980px]:px-4 max-[980px]:py-8">
-      <div
-        className={cn(
-          container,
-          'mb-7 flex items-center justify-between gap-3 max-sm:grid',
-        )}
-      >
-        <PageTabs activeView={activeView} setActiveView={setActiveView} />
-        <div className="flex items-center gap-3">
-          {workflow.selectedPatient && workflow.activeSession && (
-            <span className="rounded-full bg-slate-900 px-3.5 py-2 text-[13px] font-bold whitespace-nowrap text-white">
-              {t.workflow.contextBadge(
-                workflow.selectedPatient.display_name,
-                workflow.activeSession.session_number ?? 0,
-              )}
-            </span>
-          )}
-          <LanguageToggle language={language} setLanguage={setLanguage} />
+    <main className="min-h-screen bg-background">
+      <div className="page-shell">
+        <div className="page-header">
+          <AppNavigation
+            activeView={activeView}
+            setActiveView={setActiveView}
+            workflow={workflow}
+            workspaceView={workspaceView}
+            onWorkspaceViewChange={setWorkspaceView}
+          />
+          <div className="flex items-center gap-3">
+            {workflow.selectedPatient && workflow.activeSession && activeView !== 'control' && (
+              <span className="rounded-xl border border-border bg-white px-3 py-1.5 text-[13px] font-semibold whitespace-nowrap text-slate-800 shadow-panel">
+                {t.workflow.contextBadge(
+                  workflow.selectedPatient.display_name,
+                  workflow.activeSession.session_number ?? 0,
+                )}
+              </span>
+            )}
+            <LanguageToggle language={language} setLanguage={setLanguage} />
+          </div>
         </div>
+
+        {activeView === 'therapist' && (
+          <TherapistPage
+            dashboard={dashboard}
+            frame={frame}
+            liveInactive={liveInactive}
+            setShowSensors={setShowSensors}
+            setSource={setSource}
+            showSensors={showSensors}
+            source={source}
+            status={status}
+          />
+        )}
+
+        {activeView === 'control' && (
+          <ControlPage
+            workflow={workflow}
+            workspaceView={workspaceView}
+            onWorkspaceViewChange={setWorkspaceView}
+          />
+        )}
+
+        {activeView === 'exoskeleton' && <ExoskeletonControl />}
       </div>
-
-      {activeView === 'therapist' && (
-        <TherapistPage
-          dashboard={dashboard}
-          frame={frame}
-          liveInactive={liveInactive}
-          setShowSensors={setShowSensors}
-          setSource={setSource}
-          showSensors={showSensors}
-          source={source}
-          status={status}
-        />
-      )}
-
-      {activeView === 'control' && <ControlPage workflow={workflow} />}
-
-      {activeView === 'exoskeleton' && <ExoskeletonControl />}
     </main>
   )
 }
