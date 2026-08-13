@@ -16,6 +16,9 @@ from backend.modules.runtime.schemas import (
     RuntimeSnapshot,
     SessionActionResponse,
     SessionRosbagStartPayload,
+    StackActionResponse,
+    StackStartRequest,
+    StackStopRequest,
 )
 
 logger = logging.getLogger(__name__)
@@ -59,6 +62,12 @@ class RuntimeService:
     async def snapshot(self) -> RuntimeSnapshot:
         body = await self._call(self._session_manager.get_status)
         return body.runtime
+
+    async def start_stack(self, payload: StackStartRequest) -> StackActionResponse:
+        return await self._call(lambda: self._session_manager.stack_start(payload))
+
+    async def stop_stack(self, payload: StackStopRequest) -> StackActionResponse:
+        return await self._call(lambda: self._session_manager.stack_stop(payload))
 
     async def start_session(
         self,

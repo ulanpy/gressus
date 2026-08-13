@@ -1,4 +1,5 @@
 import { apiGet, apiPost } from './client'
+import type { GameLaunchParams } from '../../types/runtime'
 
 export type SessionActionResponse = {
   ok: boolean
@@ -47,4 +48,16 @@ export function startRecordingSession(body: SessionStartBody): Promise<SessionAc
 
 export function stopRecordingSession(): Promise<SessionActionResponse> {
   return apiPost<SessionActionResponse>('/runtime/session/stop')
+}
+
+export function startGame(params: GameLaunchParams): Promise<unknown> {
+  return apiPost('/runtime/stack/start', { job: 'game', ...params })
+}
+
+export function startCameraCalibration(outputRotation = 270): Promise<unknown> {
+  return apiPost('/runtime/stack/start', { job: 'calibrate_apriltag', outputRotation })
+}
+
+export function stopRuntimeStack(): Promise<unknown> {
+  return apiPost('/runtime/stack/stop', { timeoutS: 3 })
 }

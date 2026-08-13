@@ -14,11 +14,36 @@ from typing import Any
 from urllib.parse import urlparse
 
 from gressus_session.pgear_ros_client import get_pgear_probe
+from gressus_session.process_manager import LaunchProcessManager
 from gressus_session.rosbag_recorder import RosbagRecorder
 from gressus_session.runtime_status import build_runtime_snapshot, probe_pgear_status
 from gressus_session.session_context import ClinicalSessionContext
 
 _ROSBAG = RosbagRecorder()
+_LAUNCH = LaunchProcessManager()
+
+
+def _boolish(value: Any) -> bool:
+    return value if isinstance(value, bool) else str(value).lower() in {"1", "true", "yes", "on"}
+
+
+def _launch_command(payload: dict[str, Any]) -> tuple[str, list[str]]:
+    job = str(payload.get("job", "game"))
+    rotation = payload.get("outputRotation", 270)
+    if job == "calibrate_apriltag":
+        return job, ["ros2", "launch", "gressus_bringup", "calibrate.launch.py", f"output_rotation:={rotation}"]
+    demo = _boolish(payload.get("demo", False))
+    no_insole = _boolish(payload.get("noInsole", False)) or demo
+    launch_file = "game.launch.py" if demo else "game_camera.launch.py" if no_insole else "session.launch.py"
+    args = [
+        f"output_rotation:={rotation}",
+        f"insole_thresh_kpa:={payload.get('insoleThresholdKpa', 8)}",
+        f"speed:={payload.get('speed', .35)}", f"step_time_s:={payload.get('stepTimeS', 2.5)}",
+        f"demo:={str(demo).lower()}", f"no_insole:={str(no_insole).lower()}",
+    ]
+    if payload.get("display") is not None:
+        args.append(f"display:={payload['display']}")
+    return job, ["ros2", "launch", "gressus_bringup", launch_file, *args]
 
 
 def _rosbag_target_dir(ctx: ClinicalSessionContext) -> str:
@@ -57,9 +82,9 @@ def _read_json(handler: BaseHTTPRequestHandler) -> dict[str, Any]:
 
 
 def _runtime_snapshot() -> dict[str, Any]:
-    rosbag = _ROSBAG.snapshot()
+    launch = _LAUNCH.snapshot()
     pgear = probe_pgear_status(get_pgear_probe())
-    return build_runtime_snapshot(rosbag=rosbag, pgear=pgear)
+    return build_runtime_snapshot(rosbag=launch, pgear=pgear)
 
 
 class SessionHandler(BaseHTTPRequestHandler):
@@ -86,10 +111,32 @@ class SessionHandler(BaseHTTPRequestHandler):
         if path == "/session/rosbag/start":
             self._handle_rosbag_start(payload)
             return
+        if path == "/session/start":
+            self._handle_start(payload)
+            return
+        if path == "/session/stop":
+            self._handle_stop(payload)
+            return
         if path == "/session/rosbag/stop":
             self._handle_rosbag_stop(payload)
             return
         _json_response(self, HTTPStatus.NOT_FOUND, {"ok": False, "error": "not found"})
+
+    def _handle_start(self, payload: dict[str, Any]) -> None:
+        try:
+            job, command = _launch_command(payload)
+            started = _LAUNCH.start(job, command, {"QT_QPA_PLATFORM": os.environ.get("QT_QPA_PLATFORM", "xcb")})
+        except RuntimeError as exc:
+            _json_response(self, HTTPStatus.CONFLICT, {"ok": False, "error": str(exc)})
+            return
+        if not _LAUNCH.wait_briefly(.3):
+            _json_response(self, HTTPStatus.INTERNAL_SERVER_ERROR, {"ok": False, "error": f"{job} exited immediately"})
+            return
+        _json_response(self, HTTPStatus.OK, {"ok": True, "started": started, "runtime": _runtime_snapshot()})
+
+    def _handle_stop(self, payload: dict[str, Any]) -> None:
+        stopped = _LAUNCH.stop(float(payload.get("timeoutS", 3)))
+        _json_response(self, HTTPStatus.OK, {"ok": True, "stopped": stopped, "runtime": _runtime_snapshot()})
 
     def _handle_rosbag_start(self, payload: dict[str, Any]) -> None:
         ctx = ClinicalSessionContext.from_payload(payload)
@@ -145,6 +192,7 @@ def main(args: list[str] | None = None) -> None:
     finally:
         server.shutdown()
         _ROSBAG.stop(timeout_s=2.0)
+        _LAUNCH.stop(timeout_s=2.0)
 
 
 if __name__ == "__main__":

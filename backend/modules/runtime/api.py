@@ -11,10 +11,23 @@ from backend.modules.runtime.schemas import (
     RuntimeSnapshot,
     SessionActionResponse,
     SessionStartRequest,
+    StackActionResponse,
+    StackStartRequest,
+    StackStopRequest,
 )
 from backend.modules.runtime.service import RuntimeService
 
 router = APIRouter(prefix="/api/runtime", tags=["runtime"])
+
+
+@router.post("/stack/start", response_model=StackActionResponse)
+async def stack_start(payload: StackStartRequest, service: Annotated[RuntimeService, Depends(get_runtime_service)]) -> StackActionResponse:
+    return await service.start_stack(payload)
+
+
+@router.post("/stack/stop", response_model=StackActionResponse)
+async def stack_stop(payload: StackStopRequest, service: Annotated[RuntimeService, Depends(get_runtime_service)]) -> StackActionResponse:
+    return await service.stop_stack(payload)
 
 
 @router.get("/status", response_model=RuntimeSnapshot)

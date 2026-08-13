@@ -35,6 +35,21 @@ class SessionStartRequest(BaseModel):
     anthropometrics: SessionAnthropometrics | None = None
 
 
+class StackStartRequest(BaseModel):
+    job: Literal["game", "calibrate_apriltag"]
+    display: int | None = None
+    outputRotation: Literal[0, 90, 180, 270] = 270
+    insoleThresholdKpa: float = Field(8.0, ge=0)
+    noInsole: bool = False
+    demo: bool = False
+    speed: float = Field(0.35, ge=0.05, le=1.5)
+    stepTimeS: float = Field(2.5, ge=0.2, le=2.8)
+
+
+class StackStopRequest(BaseModel):
+    timeoutS: float = Field(3.0, ge=0.5, le=15)
+
+
 class SessionRosbagStartPayload(BaseModel):
     """JSON body for ``POST /session/rosbag/start`` on session_manager."""
 
@@ -82,6 +97,13 @@ class RuntimeSnapshot(BaseModel):
     state: Literal["idle", "running"]
     activeJob: ActiveJobSnapshot | None = None
     pgear: PgearStatusSnapshot = Field(default_factory=PgearStatusSnapshot)
+
+
+class StackActionResponse(BaseModel):
+    model_config = ConfigDict(extra="allow")
+    ok: bool
+    stopped: bool | None = None
+    runtime: RuntimeSnapshot | None = None
 
 
 class SessionStatusResponse(BaseModel):

@@ -10,6 +10,9 @@ from pydantic import BaseModel, ValidationError
 from backend.core.configs.config import Config
 from backend.modules.runtime.schemas import (
     RosbagResponse,
+    StackActionResponse,
+    StackStartRequest,
+    StackStopRequest,
     SessionRosbagStartPayload,
     SessionStatusResponse,
 )
@@ -100,3 +103,9 @@ class SessionManagerClient:
             None,
             response_model=RosbagResponse,
         )
+
+    async def stack_start(self, payload: StackStartRequest) -> StackActionResponse:
+        return await self._request("POST", "/session/start", payload, response_model=StackActionResponse)
+
+    async def stack_stop(self, payload: StackStopRequest) -> StackActionResponse:
+        return await self._request("POST", "/session/stop", payload, response_model=StackActionResponse)

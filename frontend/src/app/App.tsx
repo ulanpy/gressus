@@ -14,6 +14,7 @@ import { LanguageToggle } from '../components/layout/LanguageToggle'
 import { TherapistPage } from '../pages/TherapistPage'
 import { ControlPage } from '../pages/ControlPage'
 import { ExoskeletonControl } from '../pages/ExoskeletonControl'
+import { GamePage } from '../pages/GamePage'
 import { container } from '../styles/ui'
 import { cn } from '../lib/cn'
 
@@ -70,6 +71,8 @@ function DashboardShell({ language, setLanguage }: DashboardShellProps) {
       )}
 
       {activeView === 'control' && <ControlPage workflow={workflow} />}
+
+      {activeView === 'game' && <GamePage />}
 
       {activeView === 'exoskeleton' && <ExoskeletonControl />}
     </main>

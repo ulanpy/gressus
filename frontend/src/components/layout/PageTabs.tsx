@@ -9,9 +9,16 @@ export const PageTabs = memo(function PageTabs({ activeView, setActiveView }: Pa
 
   return (
     <nav
-      className={cn(pillNav, 'm-0 max-sm:grid max-sm:grid-cols-3')}
+      className={cn(pillNav, 'm-0 max-sm:grid max-sm:grid-cols-2')}
       aria-label="Page view"
     >
+      <button
+        type="button"
+        className={cn(pillNavButton, 'max-sm:min-w-0', activeView === 'game' && pillNavButtonActive)}
+        onClick={() => setActiveView('game')}
+      >
+        {t.tabs.game}
+      </button>
       <button
         type="button"
         className={cn(
