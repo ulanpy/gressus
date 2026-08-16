@@ -1,4 +1,6 @@
 import type { ReactNode } from 'react'
+import { ArrowLeft } from 'lucide-react'
+import { useI18n } from '@/i18n/context'
 import type { PatientSessionWorkflow } from '@/hooks/usePatientSessionWorkflow'
 import { AssessmentSection } from '@/widgets/assessments/AssessmentSection'
 import {
@@ -8,6 +10,7 @@ import {
 import { SessionsAnalyticsPanel } from '@/widgets/sessions/SessionsAnalyticsPanel'
 import { cn } from '@/shared/lib/utils'
 import { Card, CardContent } from '@/shared/ui/card'
+import { Button } from '@/shared/ui/button'
 import { PatientHeader } from './PatientHeader'
 import { PatientProfilePanel } from './PatientProfilePanel'
 import { PatientSidebar } from './PatientSidebar'
@@ -52,6 +55,7 @@ export function PatientWorkspace({
   embedded = false,
   className,
 }: PatientWorkspaceProps) {
+  const { t } = useI18n()
   const patient = workflow.selectedPatient
   const [selectedSessionId, setSelectedSessionId] = useSelectedSessionId(
     workflow.sessions,
@@ -125,9 +129,22 @@ export function PatientWorkspace({
     </div>
   )
 
-  if (embedded) {
-    return <div className="mt-4">{content}</div>
-  }
+  if (embedded) return <div className="mt-4">{content}</div>
 
-  return content
+  return (
+    <div className="relative">
+      <Button
+        type="button"
+        variant="outline"
+        size="icon"
+        className="mb-3 size-9 rounded-full bg-white shadow-panel sm:absolute sm:top-12 sm:-left-12 sm:mb-0"
+        title={t.workflow.switchPatient}
+        aria-label={t.workflow.switchPatient}
+        onClick={() => workflow.selectPatient(null)}
+      >
+        <ArrowLeft className="size-4" />
+      </Button>
+      {content}
+    </div>
+  )
 }

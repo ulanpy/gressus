@@ -64,7 +64,6 @@ export function PatientSidebar({ patient, className }: PatientSidebarProps) {
   const hasNotes = Boolean(
     comorbidities ||
       contraindications ||
-      patient.consent_date ||
       patient.enrollment_date,
   )
 
@@ -100,14 +99,7 @@ export function PatientSidebar({ patient, className }: PatientSidebarProps) {
             iconClass="bg-amber-50 text-amber-600"
             label={t.workflow.affectedSide}
           >
-            <LateralityIndicator mode="affected" affectedSide={patient.affected_side} variant="single" />
-          </KeyRow>
-          <KeyRow
-            icon={<UserRound className="h-3.5 w-3.5" />}
-            iconClass="bg-sky-50 text-sky-600"
-            label={t.workflow.dominantSide}
-          >
-            <LateralityIndicator mode="dominant" dominantSide={patient.dominant_side} variant="single" />
+            <LateralityIndicator affectedSide={patient.affected_side} variant="single" />
           </KeyRow>
           <KeyRow
             icon={<Calendar className="h-3.5 w-3.5" />}
@@ -136,12 +128,6 @@ export function PatientSidebar({ patient, className }: PatientSidebarProps) {
             ) : null}
             {contraindications ? (
               <NoteBlock label={t.workflow.contraindications} value={contraindications} />
-            ) : null}
-            {patient.consent_date ? (
-              <NoteBlock
-                label={t.workflow.consentDate}
-                value={formatPatientDateLong(patient.consent_date, language)}
-              />
             ) : null}
             {patient.enrollment_date ? (
               <NoteBlock

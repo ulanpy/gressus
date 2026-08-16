@@ -49,10 +49,10 @@ function optionOrExisting(value: string, options: readonly string[]) {
   return OTHER_OPTION
 }
 
-const sectionClass = 'm-0 border-0 p-0 pt-6'
-const dividedSectionClass = cn(sectionClass, 'mt-6 border-t border-slate-200/80')
-const sectionTitleClass = 'mb-1 text-[11px] font-bold uppercase tracking-[0.14em] text-brand'
-const fieldClass = 'mt-4 grid gap-1.5'
+const sectionClass = 'm-0 border-0 p-0 pt-4'
+const dividedSectionClass = cn(sectionClass, 'mt-4 border-t border-slate-200/80')
+const sectionTitleClass = 'mb-1 text-xs font-bold uppercase tracking-[0.14em] text-brand'
+const fieldClass = 'mt-3 grid gap-1.5'
 
 function FormSelect({
   label,
@@ -69,7 +69,7 @@ function FormSelect({
 }) {
   return (
     <div className={fieldClass}>
-      <Label className="text-xs font-semibold tracking-[0.01em] text-slate-500">{label}</Label>
+      <Label className="text-sm font-semibold tracking-[0.01em] text-slate-700">{label}</Label>
       <Select value={value || undefined} onValueChange={onValueChange}>
         <SelectTrigger>
           <SelectValue placeholder={placeholder} />
@@ -89,7 +89,6 @@ export function PatientForm({ open, mode, initial, pending, onClose, onSubmit }:
   const [cpTypeOther, setCpTypeOther] = useState('')
   const [affectedSide, setAffectedSide] = useState('')
   const [gmfcsCurrent, setGmfcsCurrent] = useState('')
-  const [dominantSide, setDominantSide] = useState('')
   const [comorbidities, setComorbidities] = useState('')
   const [contraindications, setContraindications] = useState('')
   const [consentOnFile, setConsentOnFile] = useState(false)
@@ -105,12 +104,10 @@ export function PatientForm({ open, mode, initial, pending, onClose, onSubmit }:
     const initialCpType = initial?.cp_type ?? ''
     const initialAffectedSide = initial?.affected_side?.toLowerCase() ?? ''
     const initialGmfcs = initial?.gmfcs_current?.toUpperCase() ?? ''
-    const initialDominantSide = initial?.dominant_side?.toLowerCase() ?? ''
     setCpType(optionOrExisting(initialCpType, CP_TYPE_OPTIONS))
     setCpTypeOther(CP_TYPE_OPTIONS.includes(initialCpType as (typeof CP_TYPE_OPTIONS)[number]) ? '' : initialCpType)
     setAffectedSide(optionOrExisting(initialAffectedSide, SIDE_OPTIONS))
     setGmfcsCurrent(optionOrExisting(initialGmfcs, GMFCS_OPTIONS))
-    setDominantSide(optionOrExisting(initialDominantSide, SIDE_OPTIONS))
     setComorbidities(initial?.comorbidities ?? '')
     setContraindications(initial?.contraindications ?? '')
     setConsentOnFile(initial?.consent_on_file ?? false)
@@ -142,7 +139,6 @@ export function PatientForm({ open, mode, initial, pending, onClose, onSubmit }:
       cp_type: (cpType === OTHER_OPTION ? cpTypeOther : cpType).trim() || null,
       affected_side: (affectedSide === OTHER_OPTION ? initial?.affected_side ?? '' : affectedSide).trim() || null,
       gmfcs_current: (gmfcsCurrent === OTHER_OPTION ? initial?.gmfcs_current ?? '' : gmfcsCurrent).trim() || null,
-      dominant_side: (dominantSide === OTHER_OPTION ? initial?.dominant_side ?? '' : dominantSide).trim() || null,
       comorbidities: comorbidities.trim() || null,
       contraindications: contraindications.trim() || null,
       consent_on_file: consentOnFile,
@@ -171,7 +167,7 @@ export function PatientForm({ open, mode, initial, pending, onClose, onSubmit }:
             <legend className={sectionTitleClass}>{t.workflow.sectionBasic}</legend>
 
             <div className={fieldClass}>
-              <Label className="text-xs font-semibold tracking-[0.01em] text-slate-500">
+              <Label className="text-sm font-semibold tracking-[0.01em] text-slate-700">
                 {t.workflow.displayName}
               </Label>
               <Input
@@ -184,7 +180,7 @@ export function PatientForm({ open, mode, initial, pending, onClose, onSubmit }:
             </div>
 
             <div className={fieldClass}>
-              <Label className="text-xs font-semibold tracking-[0.01em] text-slate-500">
+              <Label className="text-sm font-semibold tracking-[0.01em] text-slate-700">
                 {t.workflow.dateOfBirth}
               </Label>
               <DatePicker value={dateOfBirth} onChange={setDateOfBirth} />
@@ -218,7 +214,7 @@ export function PatientForm({ open, mode, initial, pending, onClose, onSubmit }:
 
             {cpType === OTHER_OPTION ? (
               <div className={fieldClass}>
-                <Label className="text-xs font-semibold tracking-[0.01em] text-slate-500">
+                <Label className="text-sm font-semibold tracking-[0.01em] text-slate-700">
                   {t.workflow.otherCpType}
                 </Label>
                 <Input type="text" value={cpTypeOther} onChange={(e) => setCpTypeOther(e.target.value)} />
@@ -254,28 +250,15 @@ export function PatientForm({ open, mode, initial, pending, onClose, onSubmit }:
               ) : null}
             </FormSelect>
 
-            <FormSelect
-              label={t.workflow.dominantSide}
-              value={dominantSide}
-              onValueChange={setDominantSide}
-              placeholder={t.workflow.selectOption}
-            >
-              <SelectItem value="left">{t.workflow.sideLeft}</SelectItem>
-              <SelectItem value="right">{t.workflow.sideRight}</SelectItem>
-              {dominantSide === OTHER_OPTION && initial?.dominant_side ? (
-                <SelectItem value={OTHER_OPTION}>{initial.dominant_side}</SelectItem>
-              ) : null}
-            </FormSelect>
-
             <div className={fieldClass}>
-              <Label className="text-xs font-semibold tracking-[0.01em] text-slate-500">
+              <Label className="text-sm font-semibold tracking-[0.01em] text-slate-700">
                 {t.workflow.comorbidities}
               </Label>
               <Textarea value={comorbidities} onChange={(e) => setComorbidities(e.target.value)} rows={2} />
             </div>
 
             <div className={fieldClass}>
-              <Label className="text-xs font-semibold tracking-[0.01em] text-slate-500">
+              <Label className="text-sm font-semibold tracking-[0.01em] text-slate-700">
                 {t.workflow.contraindications}
               </Label>
               <Textarea
@@ -301,28 +284,28 @@ export function PatientForm({ open, mode, initial, pending, onClose, onSubmit }:
             </div>
 
             <div className={fieldClass}>
-              <Label className="text-xs font-semibold tracking-[0.01em] text-slate-500">
+              <Label className="text-sm font-semibold tracking-[0.01em] text-slate-700">
                 {t.workflow.consentDate}
               </Label>
               <DatePicker value={consentDate} onChange={setConsentDate} />
             </div>
 
             <div className={fieldClass}>
-              <Label className="text-xs font-semibold tracking-[0.01em] text-slate-500">
+              <Label className="text-sm font-semibold tracking-[0.01em] text-slate-700">
                 {t.workflow.guardianContact}
               </Label>
               <Input type="text" value={guardianContact} onChange={(e) => setGuardianContact(e.target.value)} />
             </div>
 
             <div className={fieldClass}>
-              <Label className="text-xs font-semibold tracking-[0.01em] text-slate-500">
+              <Label className="text-sm font-semibold tracking-[0.01em] text-slate-700">
                 {t.workflow.enrollmentDate}
               </Label>
               <DatePicker value={enrollmentDate} onChange={setEnrollmentDate} />
             </div>
           </fieldset>
 
-          <DialogFooter className="mt-6 border-t border-slate-200/80 pt-5">
+          <DialogFooter className="mt-4 border-t border-slate-200/80 pt-4">
             <Button type="button" variant="outline" onClick={onClose} disabled={pending}>
               {t.workflow.cancel}
             </Button>

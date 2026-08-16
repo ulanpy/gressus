@@ -45,11 +45,6 @@ export function PatientProfilePanel({ patient, className }: PatientProfilePanelP
       <section>
         <h2 className="section-title mb-1">{t.workflow.sectionConsent}</h2>
         <dl className="m-0">
-          <Field label={t.workflow.consentDate}>
-            {patient.consent_date
-              ? formatPatientDateLong(patient.consent_date, language)
-              : valueOrDash(null, dash)}
-          </Field>
           <Field label={t.workflow.enrollmentDate}>
             {patient.enrollment_date
               ? formatPatientDateLong(patient.enrollment_date, language)

@@ -1,9 +1,16 @@
 import { useState } from 'react'
+import { ClipboardPlus, Plus } from 'lucide-react'
 import { useI18n } from '@/i18n/context'
 import type { PatientSessionWorkflow } from '@/hooks/usePatientSessionWorkflow'
 import type { Assessment } from '@/types/assessments'
 import { formatDateTime } from '@/lib/format'
 import { Button } from '@/shared/ui/button'
+import {
+  Empty,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from '@/shared/ui/empty'
 import { AssessmentModal } from './AssessmentModal'
 
 type AssessmentSectionProps = {
@@ -25,10 +32,35 @@ export function AssessmentSection({ workflow, embedded = false }: AssessmentSect
     setModalOpen(true)
   }
 
+  const openCreate = () => {
+    setModalMode('create')
+    setSelectedAssessment(null)
+    setModalOpen(true)
+  }
+
   const content = (
     <>
+      <div className="mb-3 flex items-center justify-end">
+        <Button
+          type="button"
+          size="sm"
+          className="h-9 gap-1.5"
+          onClick={openCreate}
+          disabled={workflow.pendingAction}
+        >
+          <Plus className="size-4" strokeWidth={2.5} />
+          {t.assessment.add}
+        </Button>
+      </div>
       {workflow.assessments.length === 0 ? (
-        <p className="m-0 text-sm text-muted-foreground">{t.assessment.empty}</p>
+        <Empty>
+          <EmptyHeader>
+            <EmptyMedia className="bg-slate-600 text-white">
+              <ClipboardPlus className="size-5 text-white" strokeWidth={2.25} />
+            </EmptyMedia>
+            <EmptyTitle>{t.assessment.empty}</EmptyTitle>
+          </EmptyHeader>
+        </Empty>
       ) : (
         <ul className="m-0 grid list-none gap-0 divide-y divide-border p-0">
           {workflow.assessments.map((assessment) => (

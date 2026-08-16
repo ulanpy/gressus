@@ -50,7 +50,7 @@ export function PatientStatsStrip({
   return (
     <div
       className={cn(
-        'grid grid-cols-2 divide-y divide-border border-t border-border sm:grid-cols-4 sm:divide-y-0 sm:divide-x sm:divide-border',
+        'grid grid-cols-2 divide-y divide-border border-t border-border sm:grid-cols-3 sm:divide-y-0 sm:divide-x sm:divide-border',
         className,
       )}
     >
@@ -75,18 +75,6 @@ export function PatientStatsStrip({
         iconClass="bg-violet-50 text-violet-600"
         label={t.workflow.statsLastSession}
         value={lastDate ? formatDateOnly(lastDate, language) : t.workflow.notSpecified}
-      />
-      <StatCell
-        icon={
-          <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z" />
-          </svg>
-        }
-        iconClass="bg-amber-50 text-amber-600"
-        label={t.workflow.statsConsentStatus}
-        value={
-          patient.consent_on_file ? t.workflow.consentActive : t.workflow.consentMissing
-        }
       />
       <StatCell
         icon={

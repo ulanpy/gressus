@@ -233,6 +233,7 @@ export const translations = {
       legLengthRightShort: 'R нога',
       bodyweightShort: 'Масса',
       selectSessionForAnalytics: 'Выберите сеанс, чтобы увидеть средний цикл походки.',
+      noSessionsYet: 'Сеансов пока нет.',
       averageGaitCycle: 'Средний цикл походки',
       analyticsReadyShort: 'аналитика',
       analyticsPendingShort: 'считается',
@@ -283,6 +284,7 @@ export const translations = {
     assessment: {
       title: 'Клинические оценки',
       create: 'Новая оценка',
+      add: 'Добавить оценку',
       edit: 'Редактировать оценку',
       open: 'Открыть',
       empty: 'Оценок пока нет.',
@@ -753,6 +755,7 @@ export const translations = {
       legLengthRightShort: 'R leg',
       bodyweightShort: 'Weight',
       selectSessionForAnalytics: 'Select a session to view the average gait cycle.',
+      noSessionsYet: 'No sessions yet.',
       averageGaitCycle: 'Average gait cycle',
       analyticsReadyShort: 'analytics',
       analyticsPendingShort: 'computing',
@@ -802,6 +805,7 @@ export const translations = {
     assessment: {
       title: 'Clinical assessments',
       create: 'New assessment',
+      add: 'Add new assessment',
       edit: 'Edit assessment',
       open: 'Open',
       empty: 'No assessments yet.',
@@ -1272,6 +1276,7 @@ export const translations = {
       legLengthRightShort: 'Оң аяқ',
       bodyweightShort: 'Салмақ',
       selectSessionForAnalytics: 'Орташа жүріс циклін көру үшін сеансты таңдаңыз.',
+      noSessionsYet: 'Сеанстар әлі жоқ.',
       averageGaitCycle: 'Орташа жүріс циклі',
       analyticsReadyShort: 'аналитика',
       analyticsPendingShort: 'есептелуде',
@@ -1321,6 +1326,7 @@ export const translations = {
     assessment: {
       title: 'Клиникалық бағалаулар',
       create: 'Жаңа бағалау',
+      add: 'Бағалауды қосу',
       edit: 'Бағалауды өңдеу',
       open: 'Ашу',
       empty: 'Бағалаулар жоқ.',

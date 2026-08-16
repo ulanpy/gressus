@@ -2,11 +2,7 @@ import { useI18n } from '@/i18n/context'
 import { cn } from '@/shared/lib/utils'
 import { normalizePatientSide } from '@/lib/patient/side'
 
-type LateralityMode = 'affected' | 'dominant'
-
 type LateralityIndicatorProps = {
-  mode: LateralityMode
-  dominantSide?: string | null
   affectedSide?: string | null
   /** pair = L+R chips; single = only active side (sidebar) */
   variant?: 'pair' | 'single'
@@ -16,12 +12,10 @@ type LateralityIndicatorProps = {
 function Chip({
   short,
   active,
-  mode,
   title,
 }: {
   short: 'L' | 'R'
   active: boolean
-  mode: LateralityMode
   title: string
 }) {
   return (
@@ -31,12 +25,7 @@ function Chip({
       className={cn(
         'inline-flex h-7 w-7 items-center justify-center rounded-md text-xs font-bold',
         !active && 'border border-slate-200 bg-slate-50 text-slate-300',
-        active &&
-          mode === 'affected' &&
-          'border border-amber-500 bg-amber-400 text-white',
-        active &&
-          mode === 'dominant' &&
-          'border-2 border-sky-500 bg-white text-sky-700',
+        active && 'border border-amber-500 bg-amber-400 text-white',
       )}
     >
       {short}
@@ -45,8 +34,6 @@ function Chip({
 }
 
 export function LateralityIndicator({
-  mode,
-  dominantSide,
   affectedSide,
   variant = 'pair',
   className,
@@ -54,21 +41,18 @@ export function LateralityIndicator({
   const { t } = useI18n()
   const labels = t.workflow
 
-  const side =
-    mode === 'affected'
-      ? normalizePatientSide(affectedSide, labels)
-      : normalizePatientSide(dominantSide, labels)
+  const side = normalizePatientSide(affectedSide, labels)
 
   if (!side) {
     return <span className={cn('text-slate-400', className)}>{labels.notSpecified}</span>
   }
 
-  const roleLabel = mode === 'affected' ? labels.affectedSide : labels.dominantSide
+  const roleLabel = labels.affectedSide
   const short = side === 'left' ? 'L' : 'R'
 
   if (variant === 'single') {
     return (
-      <Chip short={short} active mode={mode} title={roleLabel} />
+      <Chip short={short} active title={roleLabel} />
     )
   }
 
@@ -77,13 +61,11 @@ export function LateralityIndicator({
       <Chip
         short="L"
         active={side === 'left'}
-        mode={mode}
         title={side === 'left' ? roleLabel : labels.sideLeft}
       />
       <Chip
         short="R"
         active={side === 'right'}
-        mode={mode}
         title={side === 'right' ? roleLabel : labels.sideRight}
       />
     </span>

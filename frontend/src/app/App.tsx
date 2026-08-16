@@ -42,8 +42,6 @@ function DashboardShell({ language, setLanguage }: DashboardShellProps) {
             activeView={activeView}
             setActiveView={setActiveView}
             workflow={workflow}
-            workspaceView={workspaceView}
-            onWorkspaceViewChange={setWorkspaceView}
           />
           <div className="flex items-center gap-3">
             {workflow.selectedPatient && workflow.activeSession && activeView !== 'control' && (
