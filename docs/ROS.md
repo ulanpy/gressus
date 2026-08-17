@@ -33,24 +33,6 @@ ros2 run gressus_session session_manager -- --host 127.0.0.1 --port 9090
 
 The backend proxies these via `/api/runtime/*` — see [BACKEND.md](BACKEND.md).
 
-## Primary stack — clinical feedback
-
-Started from the web Control panel or backend with `job: "feedback"`:
-
-```bash
-ros2 launch gressus_bringup feedback.launch.py esp_host:=<ESP32_IP>
-```
-
-Includes insole bridge, RealSense camera, and `pgear_device_node`.
-
-Optional launch arguments:
-
-```bash
-ros2 launch gressus_bringup feedback.launch.py \
-  esp_host:=192.168.1.100 \
-  insole_thresh_kpa:=8.0
-```
-
 ## P.GEAR node (standalone)
 
 ```bash
@@ -69,22 +51,30 @@ Full protocol and profile format: [../ros2_ws/src/gressus_pgear/README.md](../ro
 
 ```bash
 ros2 launch gressus_bringup insole.launch.py
-ros2 launch gressus_bringup camera.launch.py
 ros2 launch gressus_bringup pgear.launch.py esp_host:=<ESP32_IP>
-ros2 launch gressus_bringup game.launch.py
-ros2 launch gressus_bringup game_camera.launch.py
+ros2 launch gressus_bringup tile_game.launch.py mode:=camera
 ros2 launch gressus_bringup calibrate.launch.py
-ros2 launch gressus_bringup session.launch.py speed:=0.35 step_time_s:=2.5
 ```
+
+### RealSense preview
+
+For a quick visual check of the RealSense colour and aligned depth streams,
+run this instead of a launch that already owns the camera:
+
+```bash
+python3 /gressus/ros2_ws/tools/realsense_depth_preview.py --align-to-color
+```
+
+The preview prints the active profile, FPS, and USB mode. Press `Q` or `Esc`
+to close it.
 
 ### Backend / UI launch mapping
 
 | Trigger | Launch file |
 |---------|-------------|
-| `job: feedback` | `feedback.launch.py` |
-| Demo mode | `game.launch.py` |
-| No insoles | `game_camera.launch.py` |
-| Default game session | `session.launch.py` |
+| Full: camera + insoles | `tile_game.launch.py mode:=full` |
+| Camera only | `tile_game.launch.py mode:=camera` |
+| Demo: no sensors | `tile_game.launch.py mode:=demo` |
 | Calibrate from Control | `calibrate.launch.py` |
 
 ## Calibration (AprilTag)
@@ -108,7 +98,7 @@ ros2 run gressus_calibration calibrate_apriltag -- --help
 Projector lanes with depth + insole hit gate (**D AND R AND P**). Theory and setup: [occlusion-and-treadmill.md](occlusion-and-treadmill.md).
 
 ```bash
-ros2 launch gressus_bringup game.launch.py \
+ros2 launch gressus_bringup tile_game.launch.py \
   output_rotation:=270 \
   insole_thresh_kpa:=8 \
   speed:=0.35 \

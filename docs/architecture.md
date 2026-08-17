@@ -54,8 +54,8 @@ Launch composition, individual nodes, and CLI commands: [ROS.md](ROS.md).
 |-----------|---------|------|---------------------|
 | P.GEAR exoskeleton | `gressus_pgear` | Device control, telemetry | **Active** — core path |
 | Session manager | `gressus_session` | Launch orchestration, P.GEAR proxy | **Active** |
-| Insole bridge | `gressus_insole` | TCP ingest, ROS topic, WebSocket | In `feedback.launch.py`; wiring to session recording in progress |
-| RealSense camera | `gressus_realsense` | Depth/RGB for feedback and game | In `feedback.launch.py` |
+| Insole bridge | `gressus_insole` | TCP ingest, ROS topic, WebSocket | Started by `tile_game.launch.py mode:=full` |
+| RealSense camera | `gressus_realsense` | Depth/RGB for the tile game | Started by `tile_game.launch.py mode:=camera|full` |
 | AprilTag calibration | `gressus_calibration` | Camera–projector homography | Standalone; used by tile game |
 | Tile game | `gressus_game` | Projector visual feedback | Legacy launch modes; optional |
 | Video recording | `gressus_video` | Session video capture | Planned |

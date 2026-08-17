@@ -36,9 +36,10 @@ DEPTH_FILL_THRESH = 0.15
 RGB_FILL_THRESH = 0.20
 RGB_LIT_DELTA = 22
 # Temporary hit-gate debug: "both" | "depth" | "rgb"
-HIT_GATE_DEBUG = "depth"
+HIT_GATE_DEBUG = "both"
 HIT_COOLDOWN_S = 0.18
 INSOLE_MAX_AGE_S = 0.40
+GAME_MODES = ("full", "camera", "demo")
 
 TILE_HEIGHT_FRAC = 0.42
 FLOOR_CAPTURE_FRAMES = 45
@@ -151,11 +152,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p.add_argument("-d", "--display", type=int, default=None)
     p.add_argument("--output-rotation", type=int, choices=(0, 90, 180, 270), default=270)
     p.add_argument(
-        "--demo",
-        action="store_true",
-        help="Run visual demo mode without camera topics.",
+        "--mode",
+        choices=GAME_MODES,
+        default="full",
+        help="full: camera + insoles; camera: camera only; demo: no sensors.",
     )
-    p.add_argument("--no-insole", action="store_true")
     p.add_argument("--insole-thresh-kpa", type=float, default=8.0)
     p.add_argument(
         "-S",
@@ -181,32 +182,37 @@ def run_tile_game(
     if os.environ.get("WAYLAND_DISPLAY") and not os.environ.get("QT_QPA_PLATFORM"):
         os.environ["QT_QPA_PLATFORM"] = "xcb"
 
-    insole_enabled = not args.no_insole
+    demo_mode = args.mode == "demo"
+    camera_enabled = args.mode in {"full", "camera"}
+    insole_enabled = args.mode == "full"
 
-    if not args.demo and camera_feed is None:
-        raise RuntimeError("camera_feed is required unless --demo is set")
+    if camera_enabled and camera_feed is None:
+        raise RuntimeError("camera_feed is required for --mode full or --mode camera")
 
-    cal: CameraCalibration = load_calibration(CALIBRATION_JSON)
-    if args.output_rotation != cal.output_rotation:
-        raise RuntimeError(
-            f"output_rotation mismatch: requested {args.output_rotation}°, "
-            f"calibration was recorded at {cal.output_rotation}°. "
-            f"Either start the game with --output-rotation {cal.output_rotation}, "
-            f"or re-run calibration with --output-rotation {args.output_rotation}."
-        )
+    cal: CameraCalibration | None = None
+    if camera_enabled:
+        cal = load_calibration(CALIBRATION_JSON)
+        if args.output_rotation != cal.output_rotation:
+            raise RuntimeError(
+                f"output_rotation mismatch: requested {args.output_rotation}°, "
+                f"calibration was recorded at {cal.output_rotation}°. "
+                f"Either start the game with --output-rotation {cal.output_rotation}, "
+                f"or re-run calibration with --output-rotation {args.output_rotation}."
+            )
     rot = args.output_rotation
 
     screen, scr_w, scr_h, _ = open_fullscreen(args.display, "Treadmill tile rhythm")
     cw, ch = output_canvas_size(scr_w, scr_h, rot)
-    cal_cw, cal_ch = cal.canvas_resolution
-    if (cw, ch) != (cal_cw, cal_ch):
-        raise RuntimeError(
-            f"canvas size {cw}x{ch} (screen {scr_w}x{scr_h} rot={rot}) does not match "
-            f"calibration canvas {cal_cw}x{cal_ch}. Re-run calibration on the same display."
-        )
+    if cal is not None:
+        cal_cw, cal_ch = cal.canvas_resolution
+        if (cw, ch) != (cal_cw, cal_ch):
+            raise RuntimeError(
+                f"canvas size {cw}x{ch} (screen {scr_w}x{scr_h} rot={rot}) does not match "
+                f"calibration canvas {cal_cw}x{cal_ch}. Re-run calibration on the same display."
+            )
     audio = GameAudio(assets_dir=default_assets_dir())
 
-    state = "play" if args.demo else "wait_floor"
+    state = "play" if demo_mode else "wait_floor"
     floor_mm: np.ndarray | None = None
     baseline_gray: np.ndarray | None = None
     score = 0
@@ -312,7 +318,7 @@ def run_tile_game(
                     if not t.hit:
                         t.y += tile_speed_px_s * dt
 
-                if args.demo:
+                if demo_mode:
                     for i, t in enumerate(tiles):
                         if t.hit:
                             continue
@@ -354,18 +360,15 @@ def run_tile_game(
                     for i, t in enumerate(tiles):
                         if t.hit:
                             continue
-                        dy = abs((t.y + t.h * 0.5) - hit_y)
-                        if dy > hit_window:
-                            continue
                         d_val = tile_d.get(i, 0.0)
                         r_val = tile_r.get(i, 0.0)
                         p_val = tile_p.get(
                             i, pressure_ok(t.lane, insole_snap, insole_enabled),
                         )
-                        gate_key = f"{i}:{d_val:.2f}:{r_val:.2f}:{p_val}:{int(dy)}"
+                        gate_key = f"{i}:{d_val:.2f}:{r_val:.2f}:{p_val}"
                         if (now - last_gate_log_t) >= 0.4 or gate_key != last_gate_key:
                             _info(
-                                f"gate lane={LANE_NAMES[t.lane]} dy={dy:.0f}px "
+                                f"gate lane={LANE_NAMES[t.lane]} "
                                 f"D={d_val:.0%} R={r_val:.0%} "
                                 f"P={'Y' if p_val else 'N'} ({hit_need_label()})"
                             )
@@ -382,12 +385,6 @@ def run_tile_game(
                 if (now - last_hit_t) >= HIT_COOLDOWN_S:
                     for i, t in enumerate(tiles):
                         if t.hit or i not in tile_p:
-                            continue
-                        # Only register a hit when the tile is visually at the
-                        # hit line. Without this, a tile half-way through the
-                        # play band could fire on any stray foot in its polygon.
-                        dy = abs((t.y + t.h * 0.5) - hit_y)
-                        if dy > hit_window:
                             continue
                         if (
                             foot_hit_ok(tile_d.get(i, 0.0), tile_r.get(i, 0.0))
@@ -465,9 +462,9 @@ def run_tile_game(
                     f"lift: [{LIFT_MM_MIN:.0f}..{LIFT_MM_MAX:.0f}]mm  {hit_need_label()}  Δlit:{RGB_LIT_DELTA}",
                     shift_str + "   arrows tune (Shift=x5)",
                     insole_hud_line(insole_snap, args.insole_thresh_kpa, INSOLE_MAX_AGE_S)
-                    if insole_enabled else "insole: --no-insole (P=True)",
-                    "DEMO: no camera  H: debug  R: reset score  ESC/Q: quit"
-                    if args.demo else "SPACE: capture floor  H: debug  S: save shift  R: reset score  ESC/Q: quit",
+                    if insole_enabled else "insole: disabled (P=True)",
+                    "DEMO: no sensors  H: debug  R: reset score  ESC/Q: quit"
+                    if demo_mode else "SPACE: capture floor  H: debug  S: save shift  R: reset score  ESC/Q: quit",
                 ]
                 hud = hud_surface(hud_lines, fg_color=FG_COLOR)
                 frame.blit(hud, (12, 12))
@@ -476,7 +473,7 @@ def run_tile_game(
             screen.fill(BG_COLOR)
             screen.blit(frame, ((scr_w - frame.get_width()) // 2, (scr_h - frame.get_height()) // 2))
 
-            if not args.demo and state == "wait_floor" and camera_feed is not None:
+            if not demo_mode and state == "wait_floor" and camera_feed is not None:
                 if camera_feed.has_aligned_frames():
                     prompt = "SPACE: capture floor baseline (stand off the mat)"
                 else:
@@ -499,7 +496,7 @@ def run_tile_game(
                         audio.play_intro_end()
                         running = False
                     elif e.key == pygame.K_SPACE:
-                        if not args.demo and camera_feed is not None:
+                        if not demo_mode and camera_feed is not None:
                             new_floor, new_gray = camera_feed.capture_floor(FLOOR_CAPTURE_FRAMES)
                             if new_floor is not None:
                                 floor_mm = new_floor

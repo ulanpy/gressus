@@ -28,10 +28,10 @@ def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Preview Intel RealSense color + depth.")
     p.add_argument("--depth-width", type=int, default=640)
     p.add_argument("--depth-height", type=int, default=480)
-    p.add_argument("--depth-fps", type=int, default=15)
+    p.add_argument("--depth-fps", type=int, default=30)
     p.add_argument("--color-width", type=int, default=640)
     p.add_argument("--color-height", type=int, default=480)
-    p.add_argument("--color-fps", type=int, default=15)
+    p.add_argument("--color-fps", type=int, default=30)
     p.add_argument(
         "--align-to-color",
         action="store_true",

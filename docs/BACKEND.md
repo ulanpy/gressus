@@ -34,8 +34,6 @@ Proxied to session manager (`SESSION_MANAGER_URL`, default `http://127.0.0.1:909
 | Endpoint | Purpose |
 |----------|---------|
 | `GET /api/runtime/status` | Session manager snapshot |
-| `POST /api/runtime/stack/start` | Launch ROS stack (`job`: `feedback`, `game`, `calibrate_apriltag`) |
-| `POST /api/runtime/stack/stop` | Stop active launch |
 | `POST /api/runtime/pgear/load-profile` | Load P.GEAR exo profile JSON |
 | `POST /api/runtime/pgear/arm` | Arm exoskeleton |
 | `POST /api/runtime/pgear/disarm` | Disarm |
@@ -45,7 +43,6 @@ Proxied to session manager (`SESSION_MANAGER_URL`, default `http://127.0.0.1:909
 | `POST /api/runtime/pgear/estop-reset` | Clear faults after E-STOP |
 | `POST /api/runtime/pgear/full-cal` | ODrive FULL CAL (DISARM only) |
 | `POST /api/runtime/pgear/calibrate-baseline` | Empty-exo baseline fit (~30 s, ARM+RUN) |
-| `POST /api/runtime/start` | Legacy alias → stack start (game modes) |
 | `POST /api/runtime/stop` | Legacy alias → stack stop |
 
 `sessionId` and `patientId` on stack start are forwarded to session manager and exported as ROS env vars — see [architecture.md](architecture.md).

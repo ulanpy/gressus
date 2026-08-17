@@ -58,7 +58,6 @@ ros2 launch gressus_bringup pgear.launch.py
 ros2 launch gressus_bringup pgear.launch.py esp_host:=192.168.1.50
 
 # клинический стек (insole + camera + exo), без игры
-ros2 launch gressus_bringup feedback.launch.py esp_host:=192.168.1.50
 
 # через backend / session_manager
 POST /api/runtime/start  {"job":"feedback","espHost":"192.168.1.50", ...}
