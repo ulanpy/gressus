@@ -227,8 +227,8 @@ def run_tile_game(
     hit_window = max(60, int(play_h * 0.15))
     # hit_y sits below play_bottom when tile center aligns — keep overlap checks loose.
 
-    tile_speed_mps = float(np.clip(args.tile_speed_mps, 0.05, 1.5))
-    tile_speed_px_s = float(np.clip(tile_speed_mps * 420.0, 45.0, 620.0))
+    tile_speed_mps = float(np.clip(args.tile_speed_mps, 0.05, 4.5))
+    tile_speed_px_s = float(np.clip(tile_speed_mps * 420.0, 45.0, 1860.0))
     step_time_s = float(np.clip(args.step_time_s, 0.2, 2.8))
     tile_h = int(play_h * TILE_HEIGHT_FRAC)
     tiles: list[FallingTile] = []
