@@ -1,0 +1,46 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.14.36310.24 d17.14
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "WaveX.Example.NET", "WaveX.Example\WaveX.Example.NET.csproj", "{6143D038-73CF-45EF-995D-2BB42621BDF0}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Debug|x64 = Debug|x64
+		Debug|x86 = Debug|x86
+		Internal|Any CPU = Internal|Any CPU
+		Internal|x64 = Internal|x64
+		Internal|x86 = Internal|x86
+		Release|Any CPU = Release|Any CPU
+		Release|x64 = Release|x64
+		Release|x86 = Release|x86
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{6143D038-73CF-45EF-995D-2BB42621BDF0}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{6143D038-73CF-45EF-995D-2BB42621BDF0}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{6143D038-73CF-45EF-995D-2BB42621BDF0}.Debug|x64.ActiveCfg = Debug|x64
+		{6143D038-73CF-45EF-995D-2BB42621BDF0}.Debug|x64.Build.0 = Debug|x64
+		{6143D038-73CF-45EF-995D-2BB42621BDF0}.Debug|x86.ActiveCfg = Debug|x86
+		{6143D038-73CF-45EF-995D-2BB42621BDF0}.Debug|x86.Build.0 = Debug|x86
+		{6143D038-73CF-45EF-995D-2BB42621BDF0}.Internal|Any CPU.ActiveCfg = Internal|Any CPU
+		{6143D038-73CF-45EF-995D-2BB42621BDF0}.Internal|Any CPU.Build.0 = Internal|Any CPU
+		{6143D038-73CF-45EF-995D-2BB42621BDF0}.Internal|x64.ActiveCfg = Internal|x64
+		{6143D038-73CF-45EF-995D-2BB42621BDF0}.Internal|x64.Build.0 = Internal|x64
+		{6143D038-73CF-45EF-995D-2BB42621BDF0}.Internal|x86.ActiveCfg = Internal|x86
+		{6143D038-73CF-45EF-995D-2BB42621BDF0}.Internal|x86.Build.0 = Internal|x86
+		{6143D038-73CF-45EF-995D-2BB42621BDF0}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{6143D038-73CF-45EF-995D-2BB42621BDF0}.Release|Any CPU.Build.0 = Release|Any CPU
+		{6143D038-73CF-45EF-995D-2BB42621BDF0}.Release|x64.ActiveCfg = Release|x64
+		{6143D038-73CF-45EF-995D-2BB42621BDF0}.Release|x64.Build.0 = Release|x64
+		{6143D038-73CF-45EF-995D-2BB42621BDF0}.Release|x86.ActiveCfg = Release|x86
+		{6143D038-73CF-45EF-995D-2BB42621BDF0}.Release|x86.Build.0 = Release|x86
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {316DB27F-510B-4A7F-A957-E98CC5577ADB}
+	EndGlobalSection
+EndGlobal

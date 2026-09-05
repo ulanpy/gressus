@@ -1,0 +1,7 @@
+<!-- Cometa EMG & Motion USB receiver: VID 04b4, PID 4720. -->
+<hostdev mode='subsystem' type='usb' managed='yes'>
+  <source>
+    <vendor id='0x04b4'/>
+    <product id='0x4720'/>
+  </source>
+</hostdev>

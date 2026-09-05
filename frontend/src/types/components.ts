@@ -48,13 +48,6 @@ export type StatusSummaryProps = {
 
 export type TherapistPageProps = {
   dashboard: FootDashboard
-  frame: FramePayload | null
-  liveInactive: boolean
-  setShowSensors: (update: (value: boolean) => boolean) => void
-  setSource: (source: SourceMode) => void
-  showSensors: boolean
-  source: SourceMode
-  status: string
 }
 
 export type ControlPageProps = {

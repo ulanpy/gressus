@@ -94,6 +94,7 @@ export function PatientWorkspace({
               inert={workspaceView !== 'sessions' || undefined}
             >
               <SessionHistoryDrawer
+                patientId={patient.id}
                 sessions={workflow.sessions}
                 activeSessionId={workflow.activeSession?.id ?? null}
                 selectedSessionId={selectedSessionId}

@@ -14,6 +14,8 @@ from backend.modules.runtime.client import SessionManagerClient, SessionManagerE
 from backend.modules.runtime.interface import SessionRecording
 from backend.modules.runtime.schemas import (
     RuntimeSnapshot,
+    RuntimeActivityResponse,
+    RuntimeActivityStartRequest,
     SessionActionResponse,
     SessionRosbagStartPayload,
 )
@@ -82,6 +84,9 @@ class RuntimeService:
         )
 
     async def stop_session(self) -> SessionActionResponse:
+        open_session = await self._sessions.get_open_recording_session()
+        if open_session is not None:
+            await self._try_stop_session_activity(str(open_session.id))
         session_obj = await self._sessions.stop_recording_session()
         if session_obj is None:
             return SessionActionResponse(
@@ -99,6 +104,12 @@ class RuntimeService:
             sessionId=session_obj.id,
         )
 
+    async def start_activity(self, payload: RuntimeActivityStartRequest) -> RuntimeActivityResponse:
+        return await self._call(lambda: self._session_manager.activity_start(payload))
+
+    async def stop_activity(self) -> RuntimeActivityResponse:
+        return await self._call(self._session_manager.activity_stop)
+
     async def _try_start_rosbag(self, session_id: UUID, patient_id: UUID) -> None:
         payload = SessionRosbagStartPayload(sessionId=str(session_id), patientId=str(patient_id))
         try:
@@ -113,3 +124,12 @@ class RuntimeService:
             await self._session_manager.rosbag_stop()
         except Exception as exc:  # noqa: BLE001
             logger.warning("rosbag stop failed: %s", exc)
+
+    async def _try_stop_session_activity(self, session_id: str) -> None:
+        try:
+            snapshot = await self._session_manager.get_status()
+            job = snapshot.runtime.activity.activeJob
+            if job is not None and job.ownerSessionId == session_id:
+                await self._session_manager.activity_stop()
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("runtime activity stop failed: %s", exc)

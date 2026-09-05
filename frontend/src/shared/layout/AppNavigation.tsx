@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { PersonStanding, Shield, Users } from 'lucide-react'
+import { ClipboardPlus, Compass, Users } from 'lucide-react'
 import { useI18n } from '@/i18n/context'
 import type { PatientSessionWorkflow } from '@/hooks/usePatientSessionWorkflow'
 import type { ViewMode } from '@/types/navigation'
@@ -63,7 +63,7 @@ export function AppNavigation({
             active={activeView === 'therapist'}
             onSelect={() => setActiveView('therapist')}
           >
-            <PersonStanding className="size-4" />
+            <Compass className="size-4" />
             {t.tabs.therapist}
           </ViewLink>
         </NavigationMenuItem>
@@ -77,11 +77,11 @@ export function AppNavigation({
 
         <NavigationMenuItem>
           <ViewLink
-            active={activeView === 'exoskeleton'}
-            onSelect={() => setActiveView('exoskeleton')}
+            active={activeView === 'sessions'}
+            onSelect={() => setActiveView('sessions')}
           >
-            <Shield className="size-4" />
-            {t.tabs.exoskeleton}
+            <ClipboardPlus className="size-4" />
+            {t.tabs.sessions}
           </ViewLink>
         </NavigationMenuItem>
       </NavigationMenuList>

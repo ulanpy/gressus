@@ -15,10 +15,12 @@ from urllib.parse import urlparse
 
 from gressus_session.pgear_ros_client import get_pgear_probe
 from gressus_session.rosbag_recorder import RosbagRecorder
+from gressus_session.runtime_jobs import RuntimeJobManager
 from gressus_session.runtime_status import build_runtime_snapshot, probe_pgear_status
 from gressus_session.session_context import ClinicalSessionContext
 
 _ROSBAG = RosbagRecorder()
+_RUNTIME_JOB = RuntimeJobManager()
 
 
 def _rosbag_target_dir(ctx: ClinicalSessionContext) -> str:
@@ -59,7 +61,7 @@ def _read_json(handler: BaseHTTPRequestHandler) -> dict[str, Any]:
 def _runtime_snapshot() -> dict[str, Any]:
     rosbag = _ROSBAG.snapshot()
     pgear = probe_pgear_status(get_pgear_probe())
-    return build_runtime_snapshot(rosbag=rosbag, pgear=pgear)
+    return build_runtime_snapshot(rosbag=rosbag, activity=_RUNTIME_JOB.snapshot(), pgear=pgear)
 
 
 class SessionHandler(BaseHTTPRequestHandler):
@@ -88,6 +90,12 @@ class SessionHandler(BaseHTTPRequestHandler):
             return
         if path == "/session/rosbag/stop":
             self._handle_rosbag_stop(payload)
+            return
+        if path == "/runtime/activity/start":
+            self._handle_runtime_start(payload)
+            return
+        if path == "/runtime/activity/stop":
+            self._handle_runtime_stop(payload)
             return
         _json_response(self, HTTPStatus.NOT_FOUND, {"ok": False, "error": "not found"})
 
@@ -125,6 +133,26 @@ class SessionHandler(BaseHTTPRequestHandler):
         stopped = _ROSBAG.stop(timeout_s=timeout_s)
         _json_response(self, HTTPStatus.OK, {"ok": True, "stopped": stopped})
 
+    def _handle_runtime_start(self, payload: dict[str, Any]) -> None:
+        kind = payload.get("kind")
+        params = payload.get("params")
+        if kind not in {"calibration", "game"} or not isinstance(params, dict):
+            _json_response(self, HTTPStatus.BAD_REQUEST, {"ok": False, "error": "kind and params required"})
+            return
+        try:
+            owner_session_id = payload.get("ownerSessionId")
+            if owner_session_id is not None and not isinstance(owner_session_id, str):
+                _json_response(self, HTTPStatus.BAD_REQUEST, {"ok": False, "error": "ownerSessionId must be a string"})
+                return
+            started = _RUNTIME_JOB.start(kind=kind, params=params, owner_session_id=owner_session_id)
+        except (RuntimeError, ValueError, KeyError) as exc:
+            _json_response(self, HTTPStatus.CONFLICT, {"ok": False, "error": str(exc)})
+            return
+        _json_response(self, HTTPStatus.OK, {"ok": True, "pid": started.pid, "kind": kind})
+
+    def _handle_runtime_stop(self, payload: dict[str, Any]) -> None:
+        _json_response(self, HTTPStatus.OK, {"ok": True, "stopped": _RUNTIME_JOB.stop()})
+
 
 def main(args: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description="Gressus HTTP session manager")
@@ -144,6 +172,7 @@ def main(args: list[str] | None = None) -> None:
         pass
     finally:
         server.shutdown()
+        _RUNTIME_JOB.stop(timeout_s=2.0)
         _ROSBAG.stop(timeout_s=2.0)
 
 

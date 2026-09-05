@@ -8,6 +8,10 @@ import type {
   TherapySession,
 } from '../../types/sessions'
 
+export function sessionRosbagDownloadUrl(patientId: string, sessionId: string): string {
+  return `/api/patients/${encodeURIComponent(patientId)}/sessions/${encodeURIComponent(sessionId)}/rosbag.zip`
+}
+
 function fromSessionDto(dto: SessionDto): TherapySession {
   const { session_id, ...rest } = dto
   return { id: session_id, ...rest }

@@ -9,6 +9,8 @@ from fastapi import APIRouter, Depends
 from backend.modules.runtime.dependencies import get_runtime_service
 from backend.modules.runtime.schemas import (
     RuntimeSnapshot,
+    RuntimeActivityResponse,
+    RuntimeActivityStartRequest,
     SessionActionResponse,
     SessionStartRequest,
 )
@@ -49,3 +51,20 @@ async def session_stop(
 ) -> SessionActionResponse:
     """Close the open session and stop rosbag recording."""
     return await service.stop_session()
+
+
+@router.post("/activity/start", response_model=RuntimeActivityResponse)
+async def activity_start(
+    payload: RuntimeActivityStartRequest,
+    service: Annotated[RuntimeService, Depends(get_runtime_service)],
+) -> RuntimeActivityResponse:
+    """Launch a calibration or tile-game runtime job."""
+    return await service.start_activity(payload)
+
+
+@router.post("/activity/stop", response_model=RuntimeActivityResponse)
+async def activity_stop(
+    service: Annotated[RuntimeService, Depends(get_runtime_service)],
+) -> RuntimeActivityResponse:
+    """Stop the currently managed calibration or game process."""
+    return await service.stop_activity()

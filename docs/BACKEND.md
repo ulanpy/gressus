@@ -34,6 +34,10 @@ Proxied to session manager (`SESSION_MANAGER_URL`, default `http://127.0.0.1:909
 | Endpoint | Purpose |
 |----------|---------|
 | `GET /api/runtime/status` | Session manager snapshot |
+| `POST /api/runtime/session/start` | Create patient session and start one complete rosbag recording |
+| `POST /api/runtime/session/stop` | Close patient session, stop its owned game, and close rosbag |
+| `POST /api/runtime/activity/start` | Start calibration or a tile game; an optional session owner is tracked |
+| `POST /api/runtime/activity/stop` | Stop the managed calibration or tile game |
 | `POST /api/runtime/pgear/load-profile` | Load P.GEAR exo profile JSON |
 | `POST /api/runtime/pgear/arm` | Arm exoskeleton |
 | `POST /api/runtime/pgear/disarm` | Disarm |

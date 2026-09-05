@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Pencil, Plus } from 'lucide-react'
+import { Pencil } from 'lucide-react'
 import { useI18n } from '@/i18n/context'
 import type { PatientSessionWorkflow } from '@/hooks/usePatientSessionWorkflow'
 import type { Patient, PatientCreate } from '@/types/patients'
@@ -39,11 +39,6 @@ export function PatientHeader({
   const handleEditSubmit = async (data: PatientCreate) => {
     await workflow.updatePatient(patient.id, data)
     setEditOpen(false)
-  }
-
-  const handleNewSession = async () => {
-    if (workflow.activeSession) return
-    await workflow.startSession()
   }
 
   return (
@@ -95,16 +90,6 @@ export function PatientHeader({
           >
             <Pencil className="size-4" />
             {t.workflow.editPatient}
-          </Button>
-          <Button
-            type="button"
-            size="sm"
-            className="h-9 gap-1.5"
-            disabled={disabled || Boolean(workflow.activeSession)}
-            onClick={() => void handleNewSession()}
-          >
-            <Plus className="size-4" strokeWidth={2.5} />
-            {t.workflow.newSession}
           </Button>
         </div>
       </div>

@@ -13,6 +13,7 @@ import type { TherapySession } from '@/types/sessions'
 import { SessionHistoryList } from './SessionHistoryList'
 
 type SessionHistoryDrawerProps = {
+  patientId: string
   sessions: TherapySession[]
   activeSessionId: string | null
   selectedSessionId: string | null
@@ -21,6 +22,7 @@ type SessionHistoryDrawerProps = {
 }
 
 export function SessionHistoryDrawer({
+  patientId,
   sessions,
   activeSessionId,
   selectedSessionId,
@@ -58,6 +60,7 @@ export function SessionHistoryDrawer({
         </DrawerHeader>
         <div className="scrollbar-hide min-h-0 flex-1 overflow-y-auto p-3">
           <SessionHistoryList
+            patientId={patientId}
             sessions={sessions}
             activeSessionId={activeSessionId}
             selectedSessionId={selectedSessionId}

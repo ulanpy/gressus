@@ -19,6 +19,7 @@ def test_build_runtime_snapshot_idle_without_pgear_node() -> None:
     )
     assert payload["state"] == "idle"
     assert payload["activeJob"] is None
+    assert payload["activity"] == {"state": "idle", "activeJob": None}
     assert payload["pgear"]["nodeAvailable"] is False
 
 
@@ -46,3 +47,14 @@ def test_build_runtime_snapshot_recording_with_live_telemetry() -> None:
     assert payload["activeJob"]["pid"] == 1234
     assert payload["pgear"]["connected"] is True
     assert payload["pgear"]["telemetryAgeS"] == 0.04
+
+
+def test_build_runtime_snapshot_exposes_projector_activity() -> None:
+    payload = build_runtime_snapshot(
+        rosbag={"state": "running", "activeJob": None},
+        activity={
+            "state": "running",
+            "activeJob": {"name": "game", "command": ["ros2", "launch"], "pid": 42, "uptimeS": 2.0},
+        },
+    )
+    assert payload["activity"]["activeJob"]["name"] == "game"

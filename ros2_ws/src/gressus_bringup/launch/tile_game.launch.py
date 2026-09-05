@@ -78,7 +78,7 @@ def generate_launch_description() -> LaunchDescription:
                 'publish_hz': 30.0,
             }],
             condition=IfCondition(PythonExpression([
-                "'", LaunchConfiguration('mode'), "' in ['full', 'camera']",
+                "'", LaunchConfiguration('mode'), "' in ['full', 'camera', 'existing_insole']",
             ])),
         ),
         IncludeLaunchDescription(

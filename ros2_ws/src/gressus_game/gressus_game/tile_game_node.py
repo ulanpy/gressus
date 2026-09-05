@@ -109,8 +109,8 @@ def main(args=None) -> None:
     game_args = parse_args(game_argv)
 
     try:
-        insole_feed = node.insole_feed if game_args.mode == "full" else None
-        camera_feed = node.camera_feed if game_args.mode in {"full", "camera"} else None
+        insole_feed = node.insole_feed if game_args.mode in {"full", "existing_insole"} else None
+        camera_feed = node.camera_feed if game_args.mode in {"full", "camera", "existing_insole"} else None
         run_tile_game(
             game_args,
             insole_feed=insole_feed,

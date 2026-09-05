@@ -10,6 +10,8 @@ from pydantic import BaseModel, ValidationError
 from backend.core.configs.config import Config
 from backend.modules.runtime.schemas import (
     RosbagResponse,
+    RuntimeActivityResponse,
+    RuntimeActivityStartRequest,
     SessionRosbagStartPayload,
     SessionStatusResponse,
 )
@@ -99,4 +101,14 @@ class SessionManagerClient:
             "/session/rosbag/stop",
             None,
             response_model=RosbagResponse,
+        )
+
+    async def activity_start(self, payload: RuntimeActivityStartRequest) -> RuntimeActivityResponse:
+        return await self._request(
+            "POST", "/runtime/activity/start", payload, response_model=RuntimeActivityResponse
+        )
+
+    async def activity_stop(self) -> RuntimeActivityResponse:
+        return await self._request(
+            "POST", "/runtime/activity/stop", None, response_model=RuntimeActivityResponse
         )

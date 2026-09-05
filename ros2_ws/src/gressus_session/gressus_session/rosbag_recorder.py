@@ -20,8 +20,9 @@ class RecordingInfo:
     started_at: float
 
 
-def _record_command(out_dir: str) -> list[str]:
-    topics = os.environ.get("GRESSUS_ROSBAG_TOPICS", "").split()
+def _record_command(out_dir: str, topics: list[str] | None = None) -> list[str]:
+    # A clinical session is a complete runtime record.  Explicit topics remain
+    # available only for low-level callers; the UI always uses ``-a``.
     record_args = topics if topics else ["-a"]
     return ["ros2", "bag", "record", "-o", out_dir, *record_args]
 
@@ -34,8 +35,8 @@ class RosbagRecorder:
         self._proc: subprocess.Popen[str] | None = None
         self._recording: RecordingInfo | None = None
 
-    def start(self, *, out_dir: str, session_id: str) -> RecordingInfo:
-        command = _record_command(out_dir)
+    def start(self, *, out_dir: str, session_id: str, topics: list[str] | None = None) -> RecordingInfo:
+        command = _record_command(out_dir, topics)
         with self._lock:
             self._refresh_locked()
             if self._proc is not None and self._recording is not None:

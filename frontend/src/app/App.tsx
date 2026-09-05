@@ -1,5 +1,4 @@
 import { useMemo, useState } from 'react'
-import type { SourceMode } from '../types/insole'
 import type { ViewMode } from '../types/navigation'
 import type { Language } from '../types/i18n'
 import { INSOLE_SIZE } from '../constants/insole'
@@ -12,9 +11,9 @@ import { useFootDashboard } from '../hooks/useFootDashboard'
 import { AppNavigation } from '@/shared/layout/AppNavigation'
 import { LanguageToggle } from '@/shared/layout/LanguageToggle'
 import type { PatientWorkspaceView } from '@/widgets/patients/PatientViewMenu'
-import { TherapistPage } from '../pages/TherapistPage'
+import { OverviewPage } from '../pages/OverviewPage'
 import { ControlPage } from '../pages/ControlPage'
-import { ExoskeletonControl } from '../pages/ExoskeletonControl'
+import { SessionsControlPanel } from '@/widgets/sessions/SessionsControlPanel'
 
 type DashboardShellProps = {
   language: Language
@@ -25,13 +24,10 @@ function DashboardShell({ language, setLanguage }: DashboardShellProps) {
   const { t } = useI18n()
   const [activeView, setActiveView] = useState<ViewMode>('therapist')
   const [workspaceView, setWorkspaceView] = useState<PatientWorkspaceView>('sessions')
-  const [source, setSource] = useState<SourceMode>('mock')
-  const [showSensors, setShowSensors] = useState(true)
   const workflow = usePatientSessionWorkflow()
   const liveGateOpen = activeView === 'therapist'
-  const liveInactive = false
-  const { geometry, setStatus, status } = useGeometry(INSOLE_SIZE)
-  const { frame } = useInsoleFrame(source, INSOLE_SIZE, setStatus, liveGateOpen)
+  const { geometry, setStatus } = useGeometry(INSOLE_SIZE)
+  const { frame } = useInsoleFrame('mock', INSOLE_SIZE, setStatus, liveGateOpen)
   const dashboard = useFootDashboard(geometry, frame)
 
   return (
@@ -57,16 +53,7 @@ function DashboardShell({ language, setLanguage }: DashboardShellProps) {
         </div>
 
         {activeView === 'therapist' && (
-          <TherapistPage
-            dashboard={dashboard}
-            frame={frame}
-            liveInactive={liveInactive}
-            setShowSensors={setShowSensors}
-            setSource={setSource}
-            showSensors={showSensors}
-            source={source}
-            status={status}
-          />
+          <OverviewPage dashboard={dashboard} onOpenSessions={() => setActiveView('sessions')} />
         )}
 
         {activeView === 'control' && (
@@ -77,7 +64,7 @@ function DashboardShell({ language, setLanguage }: DashboardShellProps) {
           />
         )}
 
-        {activeView === 'exoskeleton' && <ExoskeletonControl />}
+        {activeView === 'sessions' && <SessionsControlPanel workflow={workflow} />}
       </div>
     </main>
   )

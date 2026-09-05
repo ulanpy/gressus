@@ -1,4 +1,5 @@
 import { formatDateOnly, formatDateTime } from '../../lib/format'
+import { sessionRosbagDownloadUrl } from '../../lib/api/sessions'
 import { useI18n } from '../../i18n/context'
 import { cn } from '@/shared/lib/utils'
 import { Button } from '@/shared/ui/button'
@@ -6,8 +7,10 @@ import type { TherapySession } from '../../types/sessions'
 import { HistoryIcon } from '@/widgets/patients/PatientFieldIcons'
 import { SessionAnthropometricsLine } from './SessionAnthropometricsLine'
 import { SessionStatusIcon } from './SessionStatusIcon'
+import { Download } from 'lucide-react'
 
 type SessionHistoryListProps = {
+  patientId: string
   sessions: TherapySession[]
   activeSessionId: string | null
   selectedSessionId?: string | null
@@ -16,6 +19,7 @@ type SessionHistoryListProps = {
 }
 
 export function SessionHistoryList({
+  patientId,
   sessions,
   activeSessionId,
   selectedSessionId = null,
@@ -54,12 +58,12 @@ export function SessionHistoryList({
             : ''
 
         return (
-          <li key={session.id}>
+          <li key={session.id} className="flex items-stretch gap-1.5">
             <Button
               type="button"
               variant="ghost"
               className={cn(
-                'h-auto w-full flex-col items-stretch gap-1 rounded-xl border px-3 py-2.5 text-left font-normal whitespace-normal shadow-none',
+                'h-auto min-w-0 flex-1 flex-col items-stretch gap-1 rounded-xl border px-3 py-2.5 text-left font-normal whitespace-normal shadow-none',
                 interactive ? 'cursor-pointer' : 'cursor-default',
                 selected
                   ? 'border-slate-900 bg-white shadow-[0_8px_20px_rgb(15_23_42/0.06)] hover:bg-white'
@@ -79,6 +83,24 @@ export function SessionHistoryList({
                 anthropometrics={session.anthropometrics}
                 className="block text-xs text-slate-500"
               />
+            </Button>
+            <Button
+              asChild
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="mt-1 shrink-0 rounded-xl text-slate-500 hover:bg-slate-100 hover:text-slate-900"
+              title={t.workflow.downloadRosbag}
+            >
+              <a
+                href={sessionRosbagDownloadUrl(patientId, session.id)}
+                download
+                aria-label={t.workflow.downloadRosbag}
+                onClick={(event) => event.stopPropagation()}
+              >
+                <Download className="size-4" />
+                {t.workflow.downloadRosbagShort}
+              </a>
             </Button>
           </li>
         )

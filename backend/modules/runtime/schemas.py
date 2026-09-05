@@ -62,6 +62,7 @@ class ActiveJobSnapshot(BaseModel):
     pid: int
     uptimeS: float = Field(ge=0.0)
     dir: str | None = None
+    ownerSessionId: str | None = None
 
 
 class PgearStatusSnapshot(BaseModel):
@@ -81,7 +82,33 @@ class RuntimeSnapshot(BaseModel):
 
     state: Literal["idle", "running"]
     activeJob: ActiveJobSnapshot | None = None
+    activity: "RuntimeActivitySnapshot" = Field(default_factory=lambda: RuntimeActivitySnapshot())
     pgear: PgearStatusSnapshot = Field(default_factory=PgearStatusSnapshot)
+
+
+class RuntimeActivitySnapshot(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    state: Literal["idle", "running"] = "idle"
+    activeJob: ActiveJobSnapshot | None = None
+
+
+class RuntimeActivityStartRequest(BaseModel):
+    """Validated, allowlisted arguments for calibration or the tile game."""
+
+    kind: Literal["calibration", "game"]
+    params: dict[str, str | int | float]
+    ownerSessionId: str | None = None
+
+
+class RuntimeActivityResponse(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    ok: bool
+    stopped: bool | None = None
+    pid: int | None = None
+    kind: str | None = None
+    error: str | None = None
 
 
 class SessionStatusResponse(BaseModel):

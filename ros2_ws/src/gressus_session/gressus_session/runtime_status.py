@@ -16,12 +16,15 @@ def _default_pgear_status(*, error: str | None = None) -> dict[str, Any]:
     }
 
 
-def build_runtime_snapshot(*, rosbag: dict[str, Any], pgear: dict[str, Any] | None = None) -> dict[str, Any]:
+def build_runtime_snapshot(
+    *, rosbag: dict[str, Any], activity: dict[str, Any] | None = None, pgear: dict[str, Any] | None = None
+) -> dict[str, Any]:
     """Merge rosbag process state with P.GEAR device probes."""
     bag_state = rosbag.get("state", "idle")
     return {
         "state": bag_state if bag_state in ("idle", "running") else "idle",
         "activeJob": rosbag.get("activeJob"),
+        "activity": activity or {"state": "idle", "activeJob": None},
         "pgear": pgear if pgear is not None else _default_pgear_status(),
     }
 

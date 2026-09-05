@@ -1,0 +1,13 @@
+[Unit]
+Description=Recover Cometa USB receiver after runtime replug
+After=virtqemud.socket
+Wants=virtqemud.socket
+
+[Service]
+Type=simple
+ExecStart=/home/ulan/gressus/third_party/insolex_server/wavex_bridge/cometa-runtime-watchdog.sh --apply
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,16 @@
+[Unit]
+Description=Allow libvirt default-network forwarding through Docker firewall
+Requires=docker.service
+After=docker.service
+PartOf=docker.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/bin/sh -c '/usr/bin/iptables -C FORWARD -i virbr0 ! -o virbr0 -j ACCEPT || /usr/bin/iptables -I FORWARD 1 -i virbr0 ! -o virbr0 -j ACCEPT'
+ExecStart=/usr/bin/sh -c '/usr/bin/iptables -C FORWARD ! -i virbr0 -o virbr0 -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT || /usr/bin/iptables -I FORWARD 2 ! -i virbr0 -o virbr0 -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT'
+ExecStop=/usr/bin/sh -c '/usr/bin/iptables -D FORWARD -i virbr0 ! -o virbr0 -j ACCEPT || true'
+ExecStop=/usr/bin/sh -c '/usr/bin/iptables -D FORWARD ! -i virbr0 -o virbr0 -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT || true'
+
+[Install]
+WantedBy=docker.service

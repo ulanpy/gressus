@@ -39,7 +39,7 @@ RGB_LIT_DELTA = 22
 HIT_GATE_DEBUG = "both"
 HIT_COOLDOWN_S = 0.18
 INSOLE_MAX_AGE_S = 0.40
-GAME_MODES = ("full", "camera", "demo")
+GAME_MODES = ("full", "camera", "existing_insole", "demo")
 
 TILE_HEIGHT_FRAC = 0.42
 FLOOR_CAPTURE_FRAMES = 45
@@ -155,7 +155,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--mode",
         choices=GAME_MODES,
         default="full",
-        help="full: camera + insoles; camera: camera only; demo: no sensors.",
+        help="full: start camera + insole bridge; existing_insole: start camera and use existing /insole/pressure; camera: camera only; demo: no sensors.",
     )
     p.add_argument("--insole-thresh-kpa", type=float, default=8.0)
     p.add_argument(
@@ -183,11 +183,11 @@ def run_tile_game(
         os.environ["QT_QPA_PLATFORM"] = "xcb"
 
     demo_mode = args.mode == "demo"
-    camera_enabled = args.mode in {"full", "camera"}
-    insole_enabled = args.mode == "full"
+    camera_enabled = args.mode in {"full", "camera", "existing_insole"}
+    insole_enabled = args.mode in {"full", "existing_insole"}
 
     if camera_enabled and camera_feed is None:
-        raise RuntimeError("camera_feed is required for --mode full or --mode camera")
+        raise RuntimeError("camera_feed is required for a camera-based game mode")
 
     cal: CameraCalibration | None = None
     if camera_enabled:

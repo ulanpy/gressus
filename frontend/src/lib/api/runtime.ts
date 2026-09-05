@@ -23,6 +23,7 @@ export type ActiveJobSnapshot = {
   pid: number
   uptimeS: number
   dir?: string | null
+  ownerSessionId?: string | null
 }
 
 export type PgearStatusSnapshot = {
@@ -34,7 +35,27 @@ export type PgearStatusSnapshot = {
 export type RuntimeSnapshot = {
   state: 'idle' | 'running'
   activeJob: ActiveJobSnapshot | null
+  activity: {
+    state: 'idle' | 'running'
+    activeJob: ActiveJobSnapshot | null
+  }
   pgear: PgearStatusSnapshot
+}
+
+export type RuntimeActivityKind = 'calibration' | 'game'
+
+export type RuntimeActivityStartBody = {
+  kind: RuntimeActivityKind
+  params: Record<string, string | number>
+  ownerSessionId?: string | null
+}
+
+export type RuntimeActivityResponse = {
+  ok: boolean
+  stopped?: boolean | null
+  pid?: number | null
+  kind?: string | null
+  error?: string | null
 }
 
 export function getRuntimeStatus(): Promise<RuntimeSnapshot> {
@@ -47,4 +68,12 @@ export function startRecordingSession(body: SessionStartBody): Promise<SessionAc
 
 export function stopRecordingSession(): Promise<SessionActionResponse> {
   return apiPost<SessionActionResponse>('/runtime/session/stop')
+}
+
+export function startRuntimeActivity(body: RuntimeActivityStartBody): Promise<RuntimeActivityResponse> {
+  return apiPost<RuntimeActivityResponse>('/runtime/activity/start', body)
+}
+
+export function stopRuntimeActivity(): Promise<RuntimeActivityResponse> {
+  return apiPost<RuntimeActivityResponse>('/runtime/activity/stop')
 }
