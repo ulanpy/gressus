@@ -90,9 +90,10 @@ export function useSelectedSessionId(
     if (selectedSessionId && sessions.some((s) => s.id === selectedSessionId)) {
       return
     }
-    const candidates = sessions.filter(
-      (s) => s.id !== activeSessionId && s.analytics_status === 'ready',
-    )
+    // A completed raw recording is useful even when no product analytics exists
+    // for its sources yet.  Do not make analytics status a prerequisite for
+    // opening the newest clinical session.
+    const candidates = sessions.filter((s) => s.id !== activeSessionId)
     if (!candidates.length) {
       setSelectedSessionId(null)
       return

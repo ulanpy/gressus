@@ -11,7 +11,7 @@ from backend.modules.analytics.processor import MCAP_MAGIC, process_session
 from backend.modules.sessions.models import Session
 
 
-def _write_bag(bag_dir: Path, *, payload: bytes = b"records") -> None:
+def _write_bag(bag_dir: Path, *, payload: bytes = b"") -> None:
     bag_dir.mkdir(parents=True)
     (bag_dir / "metadata.yaml").write_text(
         "\n".join(

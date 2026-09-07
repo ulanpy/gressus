@@ -768,17 +768,41 @@ def _double_support_samples(
     toe_offs_left: list[float],
     toe_offs_right: list[float],
 ) -> list[float]:
+    """Return total double-support time for each complete left gait cycle.
+
+    Event streams are deliberately phase-shifted: the ``i``-th left heel
+    strike is not contemporaneous with the ``i``-th right heel strike.  Do
+    not zip the four streams by index.  Instead, intersect the actual left
+    stance interval with all right stance intervals within that left cycle.
+    """
+
+    right_stances = _stance_intervals(heel_strikes_right, toe_offs_right)
     samples: list[float] = []
-    for hs_left, hs_right, to_left, to_right in zip(
-        heel_strikes_left,
-        heel_strikes_right,
-        toe_offs_left,
-        toe_offs_right,
-    ):
-        duration = min(to_left, to_right) - max(hs_left, hs_right)
-        if duration >= 0:
-            samples.append(duration)
+    for hs_left, next_hs_left in zip(heel_strikes_left, heel_strikes_left[1:]):
+        to_left = next(
+            (time_s for time_s in toe_offs_left if hs_left < time_s < next_hs_left),
+            None,
+        )
+        if to_left is None:
+            continue
+        duration = sum(
+            max(0.0, min(to_left, to_right) - max(hs_left, hs_right))
+            for hs_right, to_right in right_stances
+            if hs_right < to_left and to_right > hs_left
+        )
+        samples.append(duration)
     return samples
+
+
+def _stance_intervals(
+    heel_strikes: list[float], toe_offs: list[float]
+) -> list[tuple[float, float]]:
+    return [
+        (heel_strike, toe_off)
+        for heel_strike in heel_strikes
+        if (toe_off := next((time_s for time_s in toe_offs if time_s > heel_strike), None))
+        is not None
+    ]
 
 
 def _coefficient_of_variation_pct(values: list[float]) -> float | None:

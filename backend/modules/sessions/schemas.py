@@ -33,6 +33,17 @@ class SessionAnalyticsConfig(BaseModel):
     notes: str | None = Field(default=None, max_length=250)
 
 
+class RecordingSourceRead(BaseModel):
+    """One known clinical source found in the session's rosbag."""
+
+    id: str
+    label: str
+    topic: str
+    ros_type: str
+    message_count: int = Field(ge=1)
+    status: str = "recorded"
+
+
 class SessionBase(BaseModel):
     session_date: date | None = None
     exo_profile: dict[str, Any] | None = None
@@ -74,5 +85,6 @@ class SessionRead(SessionBase):
     analytics_status: AnalyticsStatus | None = None
     analytics_metrics: dict[str, Any] | None = None
     analytics_config: SessionAnalyticsConfig | None = None
+    recording_sources: list[RecordingSourceRead] = Field(default_factory=list)
     created_at: datetime
     updated_at: datetime

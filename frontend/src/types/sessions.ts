@@ -16,6 +16,15 @@ export type SessionAnalyticsConfig = {
   [key: string]: unknown
 }
 
+export type RecordingSource = {
+  id: string
+  label: string
+  topic: string
+  ros_type: string
+  message_count: number
+  status: 'recorded'
+}
+
 export const SESSION_NOTES_MAX_LENGTH = 250
 
 /** Normalized session (API `session_id` mapped to `id`). Mirrors backend `SessionRead`. */
@@ -30,6 +39,7 @@ export type TherapySession = {
   analytics_status: AnalyticsStatus | null
   analytics_metrics: Record<string, unknown> | null
   analytics_config: SessionAnalyticsConfig | null
+  recording_sources: RecordingSource[]
   started_at: string | null
   ended_at: string | null
   created_at: string

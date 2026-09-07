@@ -4,6 +4,8 @@ import { Calendar } from 'lucide-react'
 import { AverageGaitCycleChart } from './AverageGaitCycleChart'
 import { SessionAnalyticsSkeleton } from './SessionAnalyticsSkeleton'
 import { SessionAnalyticsSummaryCard } from './SessionAnalyticsSummaryCard'
+import { SessionRecordingSourcesCard } from './SessionRecordingSourcesCard'
+import { hasPressureGaitAnalysis, PressureGaitSummaryCard } from './PressureGaitSummaryCard'
 import {
   Empty,
   EmptyHeader,
@@ -43,15 +45,24 @@ export function SessionsAnalyticsPanel({
     return <SessionAnalyticsSkeleton compact />
   }
 
+  const hasPgearRecording = selectedSession.recording_sources?.some((source) => source.id === 'pgear')
+  const hasPressureAnalysis = hasPressureGaitAnalysis(selectedSession)
+
   return (
     <div className="grid gap-2.5">
-      <SessionAnalyticsSummaryCard
-        key={selectedSession.id}
-        session={selectedSession}
-        onSessionUpdated={onSessionUpdated}
-        compact
-      />
-      <AverageGaitCycleChart session={selectedSession} compact />
+      <SessionRecordingSourcesCard session={selectedSession} compact />
+      {hasPressureAnalysis ? <PressureGaitSummaryCard session={selectedSession} compact /> : null}
+      {hasPgearRecording ? (
+        <>
+          <SessionAnalyticsSummaryCard
+            key={selectedSession.id}
+            session={selectedSession}
+            onSessionUpdated={onSessionUpdated}
+            compact
+          />
+          <AverageGaitCycleChart session={selectedSession} compact />
+        </>
+      ) : null}
     </div>
   )
 }

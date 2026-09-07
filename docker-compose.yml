@@ -36,7 +36,7 @@ services:
       - session_data:/data/sessions
     working_dir: /gressus/ros2_ws
     entrypoint: ["/gressus/docker/entrypoint.sh"]
-    command: bash
+    command: ["ros2", "launch", "gressus_session", "runtime.launch.py"]
 
   backend:
     image: gressus-backend

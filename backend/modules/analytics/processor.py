@@ -15,10 +15,13 @@ from backend.modules.analytics.telemetry_only_calculator import (
     calculate_session_metrics,
     parameters_from_session,
 )
+from backend.modules.analytics.pressure_phase import pressure_rows
 from backend.modules.sessions.models import Session
 
 MCAP_MAGIC = b"\x89MCAP0\r\n"
 OP_MESSAGE = 0x05
+OP_CHANNEL = 0x04
+OP_CHUNK = 0x06
 
 
 @dataclass(frozen=True)
@@ -137,43 +140,131 @@ def _read_metadata(path: Path) -> dict[str, Any]:
     }
 
 
+def _read_mcap_string(payload: bytes, offset: int) -> tuple[str, int]:
+    if offset + 4 > len(payload):
+        raise ValueError("truncated MCAP string")
+    length = struct.unpack_from("<I", payload, offset)[0]
+    start, end = offset + 4, offset + 4 + length
+    if end > len(payload):
+        raise ValueError("truncated MCAP string data")
+    return payload[start:end].decode("utf-8"), end
+
+
+def _channel_topic(payload: bytes) -> tuple[int, str] | None:
+    if len(payload) < 4:
+        return None
+    channel_id = struct.unpack_from("<H", payload, 0)[0]
+    try:
+        topic, _ = _read_mcap_string(payload, 4)
+    except (UnicodeDecodeError, ValueError):
+        return None
+    return channel_id, topic
+
+
+def _iter_mcap_records(data: bytes):
+    offset = 0
+    while offset < len(data):
+        if data[offset : offset + len(MCAP_MAGIC)] == MCAP_MAGIC:
+            return
+        if offset + 9 > len(data):
+            raise ValueError("truncated MCAP record header")
+        opcode = data[offset]
+        length = struct.unpack_from("<Q", data, offset + 1)[0]
+        start, end = offset + 9, offset + 9 + length
+        if end > len(data):
+            raise ValueError("truncated MCAP record payload")
+        yield opcode, data[start:end]
+        offset = end
+
+
+def _chunk_records(payload: bytes) -> bytes | None:
+    # MCAP Chunk: time range (16 B), uncompressed size (8 B), CRC (4 B),
+    # compression string, uint64 records length, then inner records. rosbag currently writes
+    # uncompressed chunks; fail closed for a future compressed recording.
+    if len(payload) < 32:
+        return None
+    try:
+        compression, offset = _read_mcap_string(payload, 28)
+    except (UnicodeDecodeError, ValueError):
+        return None
+    if compression != "" or offset + 8 > len(payload):
+        return None
+    records_length = struct.unpack_from("<Q", payload, offset)[0]
+    start, end = offset + 8, offset + 8 + records_length
+    return payload[start:end] if end <= len(payload) else None
+
+
 def _iter_mcap_messages(path: Path):
-    with path.open("rb") as file:
-        if file.read(len(MCAP_MAGIC)) != MCAP_MAGIC:
-            raise ValueError(f"invalid MCAP header magic: {path}")
+    channels: dict[int, str] = {}
 
-        while True:
-            opcode = file.read(1)
-            if not opcode:
-                return
-            if opcode == MCAP_MAGIC[:1]:
-                rest = file.read(len(MCAP_MAGIC) - 1)
-                if opcode + rest == MCAP_MAGIC:
-                    return
-                raise ValueError(f"unexpected bytes at end of MCAP file: {path}")
-
-            length_bytes = file.read(8)
-            if len(length_bytes) != 8:
-                raise ValueError(f"truncated MCAP record header: {path}")
-            length = struct.unpack("<Q", length_bytes)[0]
-            payload = file.read(length)
-            if len(payload) != length:
-                raise ValueError(f"truncated MCAP record payload: {path}")
-
-            if opcode[0] != OP_MESSAGE:
+    def consume(records: bytes):
+        for opcode, payload in _iter_mcap_records(records):
+            if opcode == OP_CHANNEL:
+                channel = _channel_topic(payload)
+                if channel:
+                    channels[channel[0]] = channel[1]
                 continue
-            if len(payload) < 22:
+            if opcode == OP_CHUNK:
+                nested = _chunk_records(payload)
+                if nested is not None:
+                    yield from consume(nested)
                 continue
-
+            if opcode != OP_MESSAGE or len(payload) < 22:
+                continue
             channel_id, sequence = struct.unpack_from("<HI", payload, 0)
             log_time, publish_time = struct.unpack_from("<QQ", payload, 6)
             yield {
                 "channelId": channel_id,
+                "topic": channels.get(channel_id),
                 "sequence": sequence,
                 "logTimeNs": log_time,
                 "publishTimeNs": publish_time,
                 "data": payload[22:],
             }
+
+    with path.open("rb") as file:
+        if file.read(len(MCAP_MAGIC)) != MCAP_MAGIC:
+            raise ValueError(f"invalid MCAP header magic: {path}")
+        data = file.read()
+    yield from consume(data)
+
+
+def _cdr_align(offset: int, alignment: int) -> int:
+    return (offset + alignment - 1) & ~(alignment - 1)
+
+
+def _decode_insole_pressure_cdr(data: bytes) -> tuple[list[float], list[float]] | None:
+    """Decode the two fixed-size pressure arrays from ``InsolePressure`` CDR."""
+
+    # ROS 2 CDR encapsulation header is four bytes.  The bridge emits CDR_LE.
+    if len(data) < 4 or data[:2] != b"\x00\x01":
+        return None
+    offset = 4
+    try:
+        offset = _cdr_align(offset, 4)
+        _sec, _nanosec = struct.unpack_from("<iI", data, offset)
+        offset += 8
+        frame_id_size = struct.unpack_from("<I", data, offset)[0]
+        offset += 4 + frame_id_size
+        offset = _cdr_align(offset, 4)
+        values = struct.unpack_from("<128f", data, offset)
+    except struct.error:
+        return None
+    return list(values[:64]), list(values[64:])
+
+
+def _decode_insole_frames(paths: tuple[Path, ...]) -> list[tuple[float, list[float], list[float]]]:
+    frames: list[tuple[float, list[float], list[float]]] = []
+    for path in paths:
+        for message in _iter_mcap_messages(path):
+            if message.get("topic") != "/insole/pressure":
+                continue
+            decoded = _decode_insole_pressure_cdr(message["data"])
+            if decoded is None:
+                continue
+            left, right = decoded
+            frames.append((int(message["logTimeNs"]) / 1_000_000_000, left, right))
+    return sorted(frames, key=lambda frame: frame[0])
 
 
 def _decode_json_rows(paths: tuple[Path, ...]) -> list[dict[str, Any]]:
@@ -339,6 +430,22 @@ def import_rosbag_mcap(
     files = [_validate_mcap_file(path) for path in recording.mcap_paths]
     metadata = _read_metadata(recording.metadata_path)
     rows = _decode_json_rows(recording.mcap_paths)
+    insole_frames = _decode_insole_frames(recording.mcap_paths)
+    insole_rows, pressure_phase = pressure_rows(insole_frames)
+    # Raw pressure is the authoritative source when present.  Existing JSON
+    # telemetry remains the fallback for historical P.GEAR/CSV imports.
+    analytics_rows = insole_rows if insole_rows else rows
+    analytics = calculate_session_metrics(
+        analytics_rows,
+        parameters=parameters_from_session(session),
+        excluded_episode_indices=excluded_episode_indices,
+    )
+    if insole_rows:
+        analytics["session"]["insole"] = {
+            **analytics["session"]["insole"],
+            **pressure_phase,
+            "reason": None if pressure_phase["available"] else "insufficient_pressure_events",
+        }
 
     return {
         "source": {
@@ -354,11 +461,7 @@ def import_rosbag_mcap(
             "fileCount": len(files),
             "totalBytes": sum(file["bytes"] for file in files),
         },
-        "analytics": calculate_session_metrics(
-            rows,
-            parameters=parameters_from_session(session),
-            excluded_episode_indices=excluded_episode_indices,
-        ),
+        "analytics": analytics,
     }
 
 

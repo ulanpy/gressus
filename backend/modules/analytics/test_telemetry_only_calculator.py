@@ -4,7 +4,25 @@ from copy import deepcopy
 from math import isclose, pi
 from types import SimpleNamespace
 
-from .telemetry_only_calculator import calculate_session_metrics, parameters_from_session
+from .telemetry_only_calculator import (
+    _double_support_samples,
+    calculate_session_metrics,
+    parameters_from_session,
+)
+
+
+def test_double_support_uses_phase_aligned_stance_intervals() -> None:
+    # In one left cycle there are two support overlaps: 0.2s at initial
+    # contact and 0.1s before left toe-off.  The right streams intentionally
+    # begin half a step earlier, which is normal gait timing.
+    values = _double_support_samples(
+        heel_strikes_left=[0.0, 1.0],
+        heel_strikes_right=[-0.5, 0.5, 1.5],
+        toe_offs_left=[0.6, 1.6],
+        toe_offs_right=[0.2, 1.2, 2.2],
+    )
+
+    assert values == [0.3]
 
 
 def _row(

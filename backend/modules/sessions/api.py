@@ -21,9 +21,17 @@ from backend.modules.sessions.schemas import (
     SessionStatusUpdate,
     SessionUpdate,
 )
+from backend.modules.sessions.recording_sources import inspect_session_sources
 from backend.modules.sessions.service import SessionService
 
 router = APIRouter(prefix="/api/patients/{patient_id}/sessions", tags=["sessions"])
+
+
+def _session_read(session_obj: object) -> SessionRead:
+    """Serialize a session plus the clinical sources actually present in its bag."""
+
+    payload = SessionRead.model_validate(session_obj)
+    return payload.model_copy(update={"recording_sources": inspect_session_sources(session_obj)})
 
 
 def _build_rosbag_archive(session_id: UUID, patient_id: UUID) -> Path:
@@ -63,7 +71,7 @@ async def list_sessions(
 ) -> list[SessionRead]:
     """Session history for the selected patient."""
     sessions = await service.list_for_patient(patient_id, limit=limit, offset=offset)
-    return [SessionRead.model_validate(s) for s in sessions]
+    return [_session_read(session_obj) for session_obj in sessions]
 
 
 @router.post("", response_model=SessionRead, status_code=status.HTTP_201_CREATED)
@@ -74,7 +82,7 @@ async def create_session(
 ) -> SessionRead:
     """Open a session (``status=active``, auto ``session_number``)."""
     session_obj = await service.create(patient_id, payload)
-    return SessionRead.model_validate(session_obj)
+    return _session_read(session_obj)
 
 
 @router.get("/{session_id}", response_model=SessionRead)
@@ -85,7 +93,7 @@ async def get_session(
 ) -> SessionRead:
     """One session; 404 if it does not belong to this patient."""
     session_obj = await service.get_or_404(patient_id, session_id)
-    return SessionRead.model_validate(session_obj)
+    return _session_read(session_obj)
 
 
 @router.get("/{session_id}/rosbag.zip", response_class=FileResponse)
@@ -121,7 +129,7 @@ async def update_session(
 ) -> SessionRead:
     """Edit metadata (date, baselines, calibration flags). Not for status changes."""
     session_obj = await service.update(patient_id, session_id, payload)
-    return SessionRead.model_validate(session_obj)
+    return _session_read(session_obj)
 
 
 @router.patch("/{session_id}/status", response_model=SessionRead)
@@ -133,7 +141,7 @@ async def set_session_status(
 ) -> SessionRead:
     """Finish or abort: ``completed``, ``failed``, ``aborted``, or reopen ``active``."""
     session_obj = await service.set_status(patient_id, session_id, payload.status)
-    return SessionRead.model_validate(session_obj)
+    return _session_read(session_obj)
 
 
 @router.patch("/{session_id}/analytics/episodes", response_model=SessionRead)
@@ -149,4 +157,4 @@ async def update_episode_selection(
         session_id,
         payload.excluded_episode_indices,
     )
-    return SessionRead.model_validate(session_obj)
+    return _session_read(session_obj)

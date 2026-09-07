@@ -12,6 +12,8 @@ def generate_launch_description() -> LaunchDescription:
             executable='insole_bridge_node',
             name='insole_bridge_node',
             output='screen',
+            respawn=True,
+            respawn_delay=2.0,
             parameters=[{
                 'threshold_kpa': LaunchConfiguration('threshold_kpa'),
             }],
