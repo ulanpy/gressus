@@ -12,6 +12,7 @@ function FootHeatmapInner({
   showSensors,
   silhouette,
   title,
+  compact = false,
 }: FootHeatmapProps) {
   const clipId = `${idPrefix}-foot-clip`
   const gradientId = `${idPrefix}-foot-depth`
@@ -28,7 +29,13 @@ function FootHeatmapInner({
         </linearGradient>
       </defs>
 
-      <path className={outlineClass} d={silhouette.path} fill={`url(#${gradientId})`} />
+      <path
+        className={outlineClass}
+        d={silhouette.path}
+        fill={compact ? 'rgb(226 232 240)' : `url(#${gradientId})`}
+        stroke={compact ? 'rgb(100 116 139)' : undefined}
+        strokeWidth={compact ? 1.5 : undefined}
+      />
       <g clipPath={`url(#${clipId})`}>
         <rect x="0" y="0" width="100" height="102" fill="rgb(248 250 252 / 0.36)" />
         {frame.points.map((point) => {

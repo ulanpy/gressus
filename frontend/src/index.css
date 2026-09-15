@@ -184,6 +184,11 @@
     stroke-width: 1.1;
   }
 
+  .session-foot-outline {
+    stroke: rgb(100 116 139 / 0.72);
+    stroke-width: 1.2;
+  }
+
   .patient-form-scroll {
     scrollbar-color: rgb(148 163 184 / 0.7) transparent;
     scrollbar-gutter: stable;

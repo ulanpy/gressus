@@ -9,10 +9,12 @@ from fastapi import APIRouter
 from backend.modules.assessments.api import router as assessments_router
 from backend.modules.patients.api import router as patients_router
 from backend.modules.runtime.api import router as runtime_router
+from backend.modules.sessions.active_api import router as active_sessions_router
 from backend.modules.sessions.api import router as sessions_router
 
 routers: List[APIRouter] = [
     patients_router,
+    active_sessions_router,
     sessions_router,
     assessments_router,
     runtime_router,

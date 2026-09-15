@@ -1,4 +1,4 @@
-import { apiGet, apiPatch, apiPost } from './client'
+import { ApiError, apiGet, apiPatch, apiPost } from './client'
 import type {
   SessionAnthropometrics,
   SessionCreateBody,
@@ -21,6 +21,16 @@ export function listPatientSessions(patientId: string): Promise<TherapySession[]
   return apiGet<SessionDto[]>(`/patients/${patientId}/sessions`).then((rows) =>
     rows.map(fromSessionDto),
   )
+}
+
+/** The single session currently recording, regardless of the selected patient. */
+export async function getActiveRecordingSession(): Promise<TherapySession | null> {
+  try {
+    return fromSessionDto(await apiGet<SessionDto>('/sessions/active'))
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 404) return null
+    throw error
+  }
 }
 
 export type LatestExoProfile = {

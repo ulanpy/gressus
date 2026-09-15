@@ -44,6 +44,7 @@ export type PatientSessionWorkflow = {
   sessions: TherapySession[]
   assessments: Assessment[]
   activeSession: TherapySession | null
+  activeRecordingSession: TherapySession | null
   loading: boolean
   pendingAction: boolean
   error: string | null
@@ -55,6 +56,7 @@ export type PatientSessionWorkflow = {
   updatePatient: (patientId: string, data: PatientUpdate) => Promise<Patient>
   archivePatient: (patientId: string) => Promise<void>
   refreshSessions: () => Promise<void>
+  refreshActiveRecordingSession: () => Promise<void>
   startSession: (data?: SessionCreateBody, patientId?: string) => Promise<TherapySession>
   endSession: (status?: Exclude<SessionStatus, 'active'>) => Promise<TherapySession>
   refreshAssessments: () => Promise<void>
@@ -71,6 +73,7 @@ export function usePatientSessionWorkflow(): PatientSessionWorkflow {
   const [patients, setPatients] = useState<Patient[]>([])
   const [selectedPatientId, setSelectedPatientId] = useState<string | null>(readStoredPatientId)
   const [sessions, setSessions] = useState<TherapySession[]>([])
+  const [activeRecordingSession, setActiveRecordingSession] = useState<TherapySession | null>(null)
   const [assessments, setAssessments] = useState<Assessment[]>([])
   const [loading, setLoading] = useState(true)
   const [pendingAction, setPendingAction] = useState(false)
@@ -119,6 +122,10 @@ export function usePatientSessionWorkflow(): PatientSessionWorkflow {
     setSessions(list)
   }, [selectedPatientId])
 
+  const refreshActiveRecordingSession = useCallback(async () => {
+    setActiveRecordingSession(await sessionsApi.getActiveRecordingSession())
+  }, [])
+
   const refreshAssessments = useCallback(async () => {
     if (!selectedPatientId) {
       setAssessments([])
@@ -134,7 +141,7 @@ export function usePatientSessionWorkflow(): PatientSessionWorkflow {
       setLoading(true)
       setError(null)
       try {
-        await refreshPatients()
+        await Promise.all([refreshPatients(), refreshActiveRecordingSession()])
       } catch (err) {
         if (!cancelled) {
           handleError(err, 'Не удалось загрузить пациентов')
@@ -149,7 +156,7 @@ export function usePatientSessionWorkflow(): PatientSessionWorkflow {
     return () => {
       cancelled = true
     }
-  }, [refreshPatients, handleError])
+  }, [refreshPatients, refreshActiveRecordingSession, handleError])
 
   useEffect(() => {
     if (!selectedPatientId) {
@@ -398,6 +405,7 @@ export function usePatientSessionWorkflow(): PatientSessionWorkflow {
       sessions,
       assessments,
       activeSession,
+      activeRecordingSession,
       loading,
       pendingAction,
       error,
@@ -409,6 +417,7 @@ export function usePatientSessionWorkflow(): PatientSessionWorkflow {
       updatePatient,
       archivePatient,
       refreshSessions,
+      refreshActiveRecordingSession,
       startSession,
       endSession,
       refreshAssessments,
@@ -427,6 +436,7 @@ export function usePatientSessionWorkflow(): PatientSessionWorkflow {
       sessions,
       assessments,
       activeSession,
+      activeRecordingSession,
       loading,
       pendingAction,
       error,
@@ -438,6 +448,7 @@ export function usePatientSessionWorkflow(): PatientSessionWorkflow {
       updatePatient,
       archivePatient,
       refreshSessions,
+      refreshActiveRecordingSession,
       startSession,
       endSession,
       refreshAssessments,
