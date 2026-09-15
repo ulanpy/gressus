@@ -38,6 +38,8 @@ export type InsoleStatusSnapshot = {
   error?: string | null
 }
 
+export type EmgStatusSnapshot = InsoleStatusSnapshot
+
 export type RuntimeSnapshot = {
   state: 'idle' | 'running'
   activeJob: ActiveJobSnapshot | null
@@ -47,6 +49,7 @@ export type RuntimeSnapshot = {
   }
   pgear: PgearStatusSnapshot
   insoles: InsoleStatusSnapshot
+  emg: EmgStatusSnapshot
 }
 
 export type RuntimeActivityKind = 'calibration' | 'game'

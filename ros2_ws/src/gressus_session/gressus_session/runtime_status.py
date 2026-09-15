@@ -24,12 +24,21 @@ def _default_insole_status(*, error: str | None = None) -> dict[str, Any]:
     }
 
 
+def _default_emg_status(*, error: str | None = None) -> dict[str, Any]:
+    return {
+        "nodeAvailable": False,
+        "connected": False,
+        "error": error,
+    }
+
+
 def build_runtime_snapshot(
     *,
     rosbag: dict[str, Any],
     activity: dict[str, Any] | None = None,
     pgear: dict[str, Any] | None = None,
     insoles: dict[str, Any] | None = None,
+    emg: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Merge rosbag process state with live device probes."""
     bag_state = rosbag.get("state", "idle")
@@ -39,6 +48,7 @@ def build_runtime_snapshot(
         "activity": activity or {"state": "idle", "activeJob": None},
         "pgear": pgear if pgear is not None else _default_pgear_status(),
         "insoles": insoles if insoles is not None else _default_insole_status(),
+        "emg": emg if emg is not None else _default_emg_status(),
     }
 
 
@@ -56,3 +66,11 @@ def probe_insole_status(probe: Any) -> dict[str, Any]:
         return probe.device_status()
     except Exception as exc:  # noqa: BLE001 — status endpoint must stay available
         return _default_insole_status(error=str(exc))
+
+
+def probe_emg_status(probe: Any) -> dict[str, Any]:
+    """Call ``device_status`` on the raw EMG probe; never raise."""
+    try:
+        return probe.device_status()
+    except Exception as exc:  # noqa: BLE001 — status endpoint must stay available
+        return _default_emg_status(error=str(exc))

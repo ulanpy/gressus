@@ -22,6 +22,7 @@ def test_build_runtime_snapshot_idle_without_pgear_node() -> None:
     assert payload["activity"] == {"state": "idle", "activeJob": None}
     assert payload["pgear"]["nodeAvailable"] is False
     assert payload["insoles"]["connected"] is False
+    assert payload["emg"]["connected"] is False
 
 
 def test_build_runtime_snapshot_recording_with_live_telemetry() -> None:
@@ -44,12 +45,14 @@ def test_build_runtime_snapshot_recording_with_live_telemetry() -> None:
             "error": None,
         },
         insoles={"nodeAvailable": True, "connected": True, "error": None},
+        emg={"nodeAvailable": True, "connected": True, "error": None},
     )
     assert payload["state"] == "running"
     assert payload["activeJob"]["pid"] == 1234
     assert payload["pgear"]["connected"] is True
     assert payload["pgear"]["telemetryAgeS"] == 0.04
     assert payload["insoles"]["connected"] is True
+    assert payload["emg"]["connected"] is True
 
 
 def test_build_runtime_snapshot_exposes_projector_activity() -> None:

@@ -13,11 +13,11 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
 from urllib.parse import urlparse
 
-from gressus_session.insole_ros_client import get_insole_probe
+from gressus_session.insole_ros_client import get_emg_probe, get_insole_probe
 from gressus_session.pgear_ros_client import get_pgear_probe
 from gressus_session.rosbag_recorder import RosbagRecorder
 from gressus_session.runtime_jobs import RuntimeJobManager
-from gressus_session.runtime_status import build_runtime_snapshot, probe_insole_status, probe_pgear_status
+from gressus_session.runtime_status import build_runtime_snapshot, probe_emg_status, probe_insole_status, probe_pgear_status
 from gressus_session.session_context import ClinicalSessionContext
 
 _ROSBAG = RosbagRecorder()
@@ -63,11 +63,13 @@ def _runtime_snapshot() -> dict[str, Any]:
     rosbag = _ROSBAG.snapshot()
     pgear = probe_pgear_status(get_pgear_probe())
     insoles = probe_insole_status(get_insole_probe())
+    emg = probe_emg_status(get_emg_probe())
     return build_runtime_snapshot(
         rosbag=rosbag,
         activity=_RUNTIME_JOB.snapshot(),
         pgear=pgear,
         insoles=insoles,
+        emg=emg,
     )
 
 

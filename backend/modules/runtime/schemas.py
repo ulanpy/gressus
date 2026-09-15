@@ -85,6 +85,16 @@ class InsoleStatusSnapshot(BaseModel):
     error: str | None = None
 
 
+class EmgStatusSnapshot(BaseModel):
+    """Raw EMG telemetry probe from session_manager."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    nodeAvailable: bool = False
+    connected: bool = False
+    error: str | None = None
+
+
 class RuntimeSnapshot(BaseModel):
     """Runtime state returned by ``GET /session/status`` → ``runtime``."""
 
@@ -95,6 +105,7 @@ class RuntimeSnapshot(BaseModel):
     activity: "RuntimeActivitySnapshot" = Field(default_factory=lambda: RuntimeActivitySnapshot())
     pgear: PgearStatusSnapshot = Field(default_factory=PgearStatusSnapshot)
     insoles: InsoleStatusSnapshot = Field(default_factory=InsoleStatusSnapshot)
+    emg: EmgStatusSnapshot = Field(default_factory=EmgStatusSnapshot)
 
 
 class RuntimeActivitySnapshot(BaseModel):
