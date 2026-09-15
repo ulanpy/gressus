@@ -19,6 +19,10 @@ export default defineConfig({
         target: 'ws://127.0.0.1:8765',
         ws: true,
       },
+      '/ws/emg': {
+        target: 'ws://127.0.0.1:8767',
+        ws: true,
+      },
       '/ws/exoskeleton': {
         target: 'ws://127.0.0.1:8766',
         ws: true,

@@ -60,6 +60,7 @@ class EmgTcpReceiver:
         self._connected = False
         self._error: str | None = None
         self._dropped_frames = 0
+        self._latest_frame: EmgFrame | None = None
 
     def start(self) -> None:
         if self._thread is not None:
@@ -92,6 +93,11 @@ class EmgTcpReceiver:
     def status(self) -> tuple[bool, str | None, int]:
         with self._lock:
             return self._connected, self._error, self._dropped_frames
+
+    def latest_frame(self) -> EmgFrame | None:
+        """Return the newest complete frame without consuming the ROS queue."""
+        with self._lock:
+            return self._latest_frame
 
     def _run(self) -> None:
         try:
@@ -189,6 +195,8 @@ class EmgTcpReceiver:
         return b"".join(chunks)
 
     def _put_frame(self, frame: EmgFrame) -> None:
+        with self._lock:
+            self._latest_frame = frame
         try:
             self._frames.put_nowait(frame)
         except queue.Full:

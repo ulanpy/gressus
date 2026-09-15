@@ -16,6 +16,11 @@ class EmgBridgeNode(Node):
         self.declare_parameter("topic", "/emg/raw")
         self.declare_parameter("drain_hz", 100.0)
         self.declare_parameter("max_frames_per_tick", 16)
+        self.declare_parameter("serve_ws", True)
+        self.declare_parameter("ws_host", "0.0.0.0")
+        self.declare_parameter("ws_port", 8767)
+        self.declare_parameter("ws_path", "/ws/emg")
+        self.declare_parameter("ws_hz", 10.0)
 
         host = str(self.get_parameter("host").value)
         port = int(self.get_parameter("port").value)
@@ -27,6 +32,18 @@ class EmgBridgeNode(Node):
 
         self._receiver = EmgTcpReceiver(host, port)
         self._receiver.start()
+        self._ws_server = None
+        if bool(self.get_parameter("serve_ws").value):
+            from gressus_insole.emg_ws_server import EmgWsServer
+
+            self._ws_server = EmgWsServer(
+                self._receiver,
+                host=str(self.get_parameter("ws_host").value),
+                port=int(self.get_parameter("ws_port").value),
+                path=str(self.get_parameter("ws_path").value),
+                default_hz=float(self.get_parameter("ws_hz").value),
+            )
+            self._ws_server.start()
         self._publisher = self.create_publisher(EmgFrame, topic, 256)
         self._last_dropped = 0
         self._last_error: str | None = None
@@ -60,6 +77,8 @@ class EmgBridgeNode(Node):
             self._last_dropped = dropped
 
     def destroy_node(self) -> bool:
+        if self._ws_server is not None:
+            self._ws_server.stop()
         self._receiver.stop()
         return super().destroy_node()
 
