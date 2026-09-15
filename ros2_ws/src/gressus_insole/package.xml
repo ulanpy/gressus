@@ -3,7 +3,7 @@
 <package format="3">
   <name>gressus_insole</name>
   <version>0.0.0</version>
-  <description>Insole TCP ingest and ROS bridge nodes</description>
+  <description>Cometa insole and raw EMG TCP ingest and ROS bridge nodes</description>
   <maintainer email="ulan.sharipov@nu.edu.kz">root</maintainer>
   <license>Apache-2.0</license>
 

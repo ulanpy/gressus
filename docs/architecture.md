@@ -54,7 +54,7 @@ Launch composition, individual nodes, and CLI commands: [ROS.md](ROS.md).
 |-----------|---------|------|---------------------|
 | P.GEAR exoskeleton | `gressus_pgear` | Device control, telemetry | **Active** — core path |
 | Session manager | `gressus_session` | Launch orchestration, P.GEAR proxy | **Active** |
-| Insole bridge | `gressus_insole` | TCP ingest, ROS topic, WebSocket | Started by `tile_game.launch.py mode:=full` |
+| Insole / EMG bridge | `gressus_insole` | Pressure TCP + raw EMG TCP ingest, ROS topics, insole WebSocket | Started by `insole.launch.py` |
 | RealSense camera | `gressus_realsense` | Depth/RGB for the tile game | Started by `tile_game.launch.py mode:=camera|full` |
 | AprilTag calibration | `gressus_calibration` | Camera–projector homography | Standalone; used by tile game |
 | Tile game | `gressus_game` | Projector visual feedback | Legacy launch modes; optional |
@@ -75,6 +75,7 @@ All application containers use `network_mode: host` so localhost ports are share
 | `:8765` | Insole WebSocket |
 | `:8766` | Exoskeleton WebSocket |
 | `:9100` | Insole TCP ingest |
+| `:9101` | Raw EMG TCP ingest |
 
 ## Related docs
 

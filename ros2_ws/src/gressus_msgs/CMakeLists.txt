@@ -11,6 +11,7 @@ find_package(rosidl_default_generators REQUIRED)
 find_package(std_msgs REQUIRED)
 
 rosidl_generate_interfaces(${PROJECT_NAME}
+  "msg/EmgFrame.msg"
   "msg/InsolePressure.msg"
   "msg/PgearTelemetry.msg"
   "msg/PgearCalibrationStatus.msg"

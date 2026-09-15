@@ -15,7 +15,7 @@ setup(
     zip_safe=True,
     maintainer='root',
     maintainer_email='ulan.sharipov@nu.edu.kz',
-    description='Insole TCP bridge node',
+    description='Cometa insole and raw EMG TCP bridge nodes',
     license='Apache-2.0',
     extras_require={
         'test': [
@@ -24,7 +24,8 @@ setup(
     },
     entry_points={
         'console_scripts': [
-            'insole_bridge_node = gressus_insole.insole_bridge_node:main'
+            'insole_bridge_node = gressus_insole.insole_bridge_node:main',
+            'emg_bridge_node = gressus_insole.emg_bridge_node:main',
         ],
     },
 )
