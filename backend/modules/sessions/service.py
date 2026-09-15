@@ -22,6 +22,12 @@ def _now() -> datetime:
     return datetime.now(timezone.utc)
 
 
+def _session_title(title: str | None, session_number: int) -> str:
+    """Use a readable default while allowing an optional therapist label."""
+    normalized = title.strip() if title else ""
+    return normalized or f"Сеанс {session_number}"
+
+
 class SessionService:
     def __init__(self, session: AsyncSession, patients: PatientReader) -> None:
         self._repo = SessionRepository(session)
@@ -49,7 +55,8 @@ class SessionService:
             patient_id=patient_id,
             session_number=next_number,
             status=SessionStatus.ACTIVE,
-            **payload.model_dump(),
+            title=_session_title(payload.title, next_number),
+            **payload.model_dump(exclude={"title"}),
         )
         return await self._repo.add(session_obj)
 
@@ -105,6 +112,7 @@ class SessionService:
             session_number=next_number,
             status=SessionStatus.ACTIVE,
             session_date=now.date(),
+            title=_session_title(None, next_number),
             started_at=now,
             exo_profile=exo_profile,
             anthropometrics=anthropometrics,

@@ -32,6 +32,7 @@ export type TherapySession = {
   id: string
   patient_id: string
   session_number: number | null
+  title: string | null
   session_date: string | null
   status: SessionStatus
   exo_profile: Record<string, unknown> | null
@@ -47,13 +48,15 @@ export type TherapySession = {
 }
 
 export type SessionCreateBody = {
-  session_date?: string | null
+    session_date?: string | null
+  title?: string | null
   exo_profile?: Record<string, unknown> | null
   anthropometrics?: SessionAnthropometrics | null
 }
 
 export type SessionUpdate = {
   session_date?: string | null
+  title?: string | null
   exo_profile?: Record<string, unknown> | null
   anthropometrics?: SessionAnthropometrics | null
   analytics_config?: SessionAnalyticsConfig | null

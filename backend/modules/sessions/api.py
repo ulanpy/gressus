@@ -8,6 +8,7 @@ import tempfile
 from typing import Annotated
 from uuid import UUID
 import zipfile
+import re
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
 from fastapi.responses import FileResponse
@@ -25,6 +26,15 @@ from backend.modules.sessions.recording_sources import inspect_session_sources
 from backend.modules.sessions.service import SessionService
 
 router = APIRouter(prefix="/api/patients/{patient_id}/sessions", tags=["sessions"])
+
+
+def _archive_filename(title: str | None, session_number: int | None) -> str:
+    """Make a friendly download name without allowing path/header control characters."""
+    fallback = f"Сеанс {session_number}" if session_number is not None else "Сеанс"
+    candidate = (title or fallback).strip()
+    candidate = re.sub(r"[\\/\x00-\x1f\x7f]+", "-", candidate)
+    candidate = re.sub(r"\s+", " ", candidate).strip(" .-")
+    return f"{(candidate or fallback)[:160]}.zip"
 
 
 def _session_read(session_obj: object) -> SessionRead:
@@ -105,7 +115,7 @@ async def download_rosbag(
 ) -> FileResponse:
     """Download ``metadata.yaml`` and all MCAP chunks as one ZIP archive."""
 
-    await service.get_or_404(patient_id, session_id)
+    session_obj = await service.get_or_404(patient_id, session_id)
     try:
         archive_path = _build_rosbag_archive(session_id, patient_id)
     except FileNotFoundError as error:
@@ -115,7 +125,7 @@ async def download_rosbag(
     return FileResponse(
         archive_path,
         media_type="application/zip",
-        filename=f"gressus-session-{session_id}-rosbag.zip",
+        filename=_archive_filename(session_obj.title, session_obj.session_number),
         background=background_tasks,
     )
 

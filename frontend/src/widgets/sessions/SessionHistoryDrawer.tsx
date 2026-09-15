@@ -18,6 +18,7 @@ type SessionHistoryDrawerProps = {
   activeSessionId: string | null
   selectedSessionId: string | null
   onSelectSession: (sessionId: string) => void
+  onSessionUpdated?: () => void | Promise<void>
   className?: string
 }
 
@@ -27,6 +28,7 @@ export function SessionHistoryDrawer({
   activeSessionId,
   selectedSessionId,
   onSelectSession,
+  onSessionUpdated,
   className,
 }: SessionHistoryDrawerProps) {
   const { t } = useI18n()
@@ -68,6 +70,7 @@ export function SessionHistoryDrawer({
               onSelectSession(sessionId)
               setOpen(false)
             }}
+            onSessionUpdated={onSessionUpdated}
           />
         </div>
       </DrawerContent>

@@ -46,6 +46,7 @@ class RecordingSourceRead(BaseModel):
 
 class SessionBase(BaseModel):
     session_date: date | None = None
+    title: str | None = Field(default=None, max_length=160)
     exo_profile: dict[str, Any] | None = None
     anthropometrics: SessionAnthropometrics | None = None
 
@@ -56,6 +57,7 @@ class SessionCreate(SessionBase):
 
 class SessionUpdate(BaseModel):
     session_date: date | None = None
+    title: str | None = Field(default=None, max_length=160)
     exo_profile: dict[str, Any] | None = None
     anthropometrics: SessionAnthropometrics | None = None
     analytics_config: SessionAnalyticsConfig | None = None
@@ -79,6 +81,7 @@ class SessionRead(SessionBase):
     session_id: UUID = Field(validation_alias="id")
     patient_id: UUID
     session_number: int | None = None
+    title: str | None = None
     status: SessionStatus
     started_at: datetime | None = None
     ended_at: datetime | None = None

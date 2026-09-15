@@ -23,6 +23,17 @@ export function formatDateTime(value: string, language: Language = 'ru') {
   }).format(new Date(value))
 }
 
+/** Readable clinical-history label, e.g. "25 августа 2025 г., 00:15". */
+export function formatLongDateTime(value: string, language: Language = 'ru') {
+  return new Intl.DateTimeFormat(dateLocale(language), {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(new Date(value))
+}
+
 export function formatMetricValue(value: number) {
   return Number.isInteger(value) ? String(value) : value.toFixed(1)
 }

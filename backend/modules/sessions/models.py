@@ -12,6 +12,7 @@ from sqlalchemy import (
     Enum as SAEnum,
     ForeignKey,
     Integer,
+    String,
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -40,6 +41,8 @@ class Session(Base, TimestampMixin):
     )
     session_date: Mapped[date | None] = mapped_column(Date)
     session_number: Mapped[int | None] = mapped_column(Integer)
+    # Therapist-facing label. IDs and storage paths intentionally stay stable.
+    title: Mapped[str | None] = mapped_column(String(160))
     status: Mapped[SessionStatus] = mapped_column(
         SAEnum(
             SessionStatus,

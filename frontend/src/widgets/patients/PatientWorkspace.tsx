@@ -76,6 +76,7 @@ export function PatientWorkspace({
                 activeSessionId={workflow.activeSession?.id ?? null}
                 selectedSessionId={selectedSessionId}
                 onSelectSession={setSelectedSessionId}
+                onSessionUpdated={() => workflow.refreshSessions()}
               />
             </div>
           </div>
