@@ -7,6 +7,7 @@ import { updatePatientSuggestion } from '../lib/patient/suggestion'
 
 const SENSOR_COUNT = 64
 const MOCK_HZ = 20
+const LIVE_UI_HZ = 10
 
 
 export function useInsoleFrame(
@@ -82,20 +83,36 @@ export function useInsoleFrame(
     }
 
     const ws = new WebSocket(websocketUrl(size))
+    let latestMessage: string | null = null
+    let publishTimer: number | undefined
 
-    ws.onopen = () => setStatusIfChanged('подключено')
-    ws.onmessage = (event) => {
-      if (document.visibilityState !== 'visible') return
-      const nextFrame = JSON.parse(event.data) as FramePayload
+    const publishLatest = () => {
+      publishTimer = undefined
+      const raw = latestMessage
+      latestMessage = null
+      if (!raw) return
 
+      const nextFrame = JSON.parse(raw) as FramePayload
       setFrame(nextFrame)
       setPatientSuggestion(updatePatientSuggestion(patientSuggestionState.current, nextFrame))
       setStatusIfChanged('подключено')
     }
+
+    ws.onopen = () => setStatusIfChanged('подключено')
+    ws.onmessage = (event) => {
+      if (document.visibilityState !== 'visible') return
+      latestMessage = String(event.data)
+      if (publishTimer === undefined) {
+        publishTimer = window.setTimeout(publishLatest, 1000 / LIVE_UI_HZ)
+      }
+    }
     ws.onerror = () => setStatusIfChanged('ошибка сокета')
     ws.onclose = () => setStatusIfChanged('отключено')
 
-    return () => ws.close()
+    return () => {
+      if (publishTimer !== undefined) window.clearTimeout(publishTimer)
+      ws.close()
+    }
   }, [setStatus, source, size, gateOpen])
 
   return { frame, patientSuggestion }

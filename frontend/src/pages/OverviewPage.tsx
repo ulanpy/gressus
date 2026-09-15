@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react'
 import { Activity, ArrowRight, Camera, ChevronLeft, ChevronRight, ClipboardCheck, Footprints, Gamepad2, Layers3, PersonStanding, UserRound } from 'lucide-react'
-import type { FootDashboard } from '@/types/insole'
 import { useI18n } from '@/i18n/context'
-import { formatKpa } from '@/lib/format'
+import { INSOLE_SIZE } from '@/constants/insole'
+import { useGeometry } from '@/hooks/useGeometry'
+import { useFootDashboard } from '@/hooks/useFootDashboard'
 import { FootHeatmap } from '@/widgets/feet/FootHeatmap'
+import type { FramePayload } from '@/types/insole'
 import { Button } from '@/shared/ui/button'
 import pressureScenarioArt from '@/assets/scenario-pressure-analysis.png'
 import gameScenarioArt from '@/assets/scenario-game.png'
@@ -30,7 +32,54 @@ function Module({ icon: Icon, title, text }: { icon: typeof Footprints; title: s
   </article>
 }
 
-export function OverviewPage({ dashboard, onOpenSessions }: { dashboard: FootDashboard; onOpenSessions: () => void }) {
+const STATIC_PRESSURE_VALUES = Array.from({ length: 64 }, (_, index) => {
+  const heel = [0, 15, 16, 23, 24, 30, 31, 39, 46, 47, 54, 55].includes(index)
+  const toe = [1, 2, 9, 10, 17, 18, 19, 25, 26].includes(index)
+  const midfoot = [6, 7, 8, 14, 21, 22, 28, 29, 36, 37, 43, 44].includes(index)
+  return heel ? 240 : toe ? 175 : midfoot ? 70 : 0
+})
+
+const LIGHT_PRESSURE_VALUES = STATIC_PRESSURE_VALUES.map((value) => Math.round(value * 0.3))
+
+const STATIC_PRESSURE_FRAME: FramePayload = {
+  source: 'mock',
+  available: true,
+  gameRunning: false,
+  seq: 0,
+  dtMs: null,
+  connected: true,
+  ageS: null,
+  error: null,
+  leftOnline: true,
+  rightOnline: true,
+  left: LIGHT_PRESSURE_VALUES,
+  right: STATIC_PRESSURE_VALUES,
+  leftStats: { maxKpa: 72, meanKpa: 26, sumKpa: 1664, pressed: true, hasData: true },
+  rightStats: { maxKpa: 240, meanKpa: 85, sumKpa: 5440, pressed: true, hasData: true },
+}
+
+function StaticPressureDistribution({ compact = false }: { compact?: boolean }) {
+  const { geometry } = useGeometry(INSOLE_SIZE)
+  const dashboard = useFootDashboard(geometry, STATIC_PRESSURE_FRAME)
+
+  if (compact) {
+    return (
+      <>
+        <div className="w-12"><FootHeatmap frame={dashboard.leftFrame} scale={dashboard.dynamicScale} showSensors={false} silhouette={dashboard.leftSilhouette} idPrefix="overview-static-left" title="" /></div>
+        <div className="w-12"><FootHeatmap frame={dashboard.rightFrame} scale={dashboard.dynamicScale} showSensors={false} silhouette={dashboard.rightSilhouette} idPrefix="overview-static-right" title="" /></div>
+      </>
+    )
+  }
+
+  return (
+    <div className="flex items-end justify-center gap-3" role="img" aria-label="Статичное распределение давления на стельках">
+      <div className="w-[44%]"><FootHeatmap frame={dashboard.leftFrame} scale={dashboard.dynamicScale} showSensors={false} silhouette={dashboard.leftSilhouette} idPrefix="overview-static-left" title="" /></div>
+      <div className="w-[44%]"><FootHeatmap frame={dashboard.rightFrame} scale={dashboard.dynamicScale} showSensors={false} silhouette={dashboard.rightSilhouette} idPrefix="overview-static-right" title="" /></div>
+    </div>
+  )
+}
+
+export function OverviewPage({ onOpenSessions }: { onOpenSessions: () => void }) {
   const { t } = useI18n()
   const scenarios = [
     { icon: Footprints, artwork: pressureScenarioArt, title: t.overview.pressureScenarioTitle, text: t.overview.pressureScenarioText, equipment: t.overview.pressureScenarioEquipment },
@@ -69,7 +118,7 @@ export function OverviewPage({ dashboard, onOpenSessions }: { dashboard: FootDas
             <div><p className="m-0 text-xs font-semibold text-slate-400">02</p><p className="m-0 text-sm font-bold">{t.overview.visualSession}</p></div>
           </div>
           <div className="flex min-h-28 items-center gap-3 rounded-2xl border border-white/80 bg-white/80 p-4 shadow-lg backdrop-blur">
-            <div className="flex -space-x-3"><div className="w-12"><FootHeatmap frame={dashboard.leftFrame} scale={dashboard.dynamicScale} showSensors={false} silhouette={dashboard.leftSilhouette} idPrefix="overview-left" title="" /></div><div className="w-12"><FootHeatmap frame={dashboard.rightFrame} scale={dashboard.dynamicScale} showSensors={false} silhouette={dashboard.rightSilhouette} idPrefix="overview-right" title="" /></div></div>
+            <div className="flex -space-x-3"><StaticPressureDistribution compact /></div>
             <div><p className="m-0 text-xs font-semibold text-slate-400">03</p><p className="m-0 text-sm font-bold">{t.overview.visualScenarios}</p></div>
           </div>
           <div className="flex min-h-28 items-center gap-3 rounded-2xl border border-white/80 bg-white/80 p-4 shadow-lg backdrop-blur">
@@ -130,9 +179,9 @@ export function OverviewPage({ dashboard, onOpenSessions }: { dashboard: FootDas
         <p className="m-0 text-xs font-bold tracking-[0.14em] text-cyan-300 uppercase">{t.overview.demoKicker}</p>
         <h2 className="m-0 mt-4 text-3xl font-bold tracking-tight">{t.overview.demoTitle}</h2>
         <p className="m-0 mt-3 max-w-sm text-sm leading-6 text-slate-300">{t.overview.demoText}</p>
-        <div className="mt-7 flex items-end justify-center gap-4 rounded-2xl bg-white/8 p-5">
-          <div className="grid justify-items-center gap-2"><div className="w-20"><FootHeatmap frame={dashboard.leftFrame} scale={dashboard.dynamicScale} showSensors={false} silhouette={dashboard.leftSilhouette} idPrefix="overview-demo-left" title="" /></div><span className="rounded-full bg-white/10 px-2.5 py-1 text-xs font-semibold">L · {formatKpa(dashboard.leftFrame.stats.maxKpa)}</span></div>
-          <div className="grid justify-items-center gap-2"><div className="w-20"><FootHeatmap frame={dashboard.rightFrame} scale={dashboard.dynamicScale} showSensors={false} silhouette={dashboard.rightSilhouette} idPrefix="overview-demo-right" title="" /></div><span className="rounded-full bg-white/10 px-2.5 py-1 text-xs font-semibold">R · {formatKpa(dashboard.rightFrame.stats.maxKpa)}</span></div>
+        <div className="mt-7 rounded-2xl bg-white/8 p-5">
+          <StaticPressureDistribution />
+          <div className="mt-2 flex justify-center gap-2 text-xs font-semibold text-slate-300"><span>L · heel/toe</span><span>•</span><span>R · heel/toe</span></div>
         </div>
       </div>
       <div>

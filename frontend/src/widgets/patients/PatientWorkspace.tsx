@@ -1,4 +1,3 @@
-import type { ReactNode } from 'react'
 import { ArrowLeft } from 'lucide-react'
 import { useI18n } from '@/i18n/context'
 import type { PatientSessionWorkflow } from '@/hooks/usePatientSessionWorkflow'
@@ -23,28 +22,6 @@ type PatientWorkspaceProps = {
   showActiveSession?: boolean
   embedded?: boolean
   className?: string
-}
-
-function TabPanel({
-  active,
-  children,
-}: {
-  active: boolean
-  children: ReactNode
-}) {
-  return (
-    <div
-      className={cn(
-        'col-start-1 row-start-1',
-        !active && 'invisible pointer-events-none',
-      )}
-      aria-hidden={!active}
-      // Keep inactive panels in layout so tab switches don't change card height.
-      inert={!active || undefined}
-    >
-      {children}
-    </div>
-  )
 }
 
 export function PatientWorkspace({
@@ -103,22 +80,20 @@ export function PatientWorkspace({
             </div>
           </div>
 
-          <div className="grid">
-            <TabPanel active={workspaceView === 'profile'}>
-              <PatientProfilePanel patient={patient} />
-            </TabPanel>
+          <div>
+            {workspaceView === 'profile' && <PatientProfilePanel patient={patient} />}
 
-            <TabPanel active={workspaceView === 'sessions'}>
+            {workspaceView === 'sessions' && (
               <SessionsAnalyticsPanel
                 sessions={workflow.sessions}
                 selectedSessionId={selectedSessionId}
                 onSessionUpdated={() => void workflow.refreshSessions()}
               />
-            </TabPanel>
+            )}
 
-            <TabPanel active={workspaceView === 'assessments'}>
+            {workspaceView === 'assessments' && (
               <AssessmentSection workflow={workflow} embedded />
-            </TabPanel>
+            )}
           </div>
         </CardContent>
       </Card>
