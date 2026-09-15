@@ -1,8 +1,8 @@
 # Операторский runbook
 
-Штатная процедура запуска и ручной fallback. Runtime replug recovery уже
-автоматизирован двумя watchdog'ами; cold boot Linux-хоста пока начинается
-вручную через preflight.
+Штатная процедура запуска и ручной fallback. Linux VM supervisor запускает
+Windows только при подключённом Cometa receiver, а Windows watchdog запускает
+bridge после появления `01aa`.
 
 ## 1. Проверить Linux-инфраструктуру
 
@@ -20,7 +20,8 @@ systemctl is-active gressus-cometa-runtime-watchdog.service
 ```
 
 Он должен вернуть `active`. Receiver может штатно быть `4720` сразу после
-подключения: Linux watchdog переведёт его в `01aa` только при работающей VM.
+подключения: Linux VM supervisor запустит выключенную VM через preflight, а
+при уже работающей VM переведёт receiver в `01aa` live recovery.
 
 Если сеть inactive:
 
@@ -31,20 +32,23 @@ virsh -c qemu:///system net-start default
 Если PID не совпадает с закреплённым в VM, не стартуйте её вслепую: перейдите в
 [RECOVERY.md](RECOVERY.md).
 
-## 2. Запустить ROS listener
+## 2. Проверить ROS listeners
 
 ```bash
-ros2 launch gressus_bringup insole.launch.py
-ss -ltn | rg ':9100'
+docker compose ps ros2
+ss -ltn | rg ':(9100|9101)'
 ```
 
-Ожидается `0.0.0.0:9100`. Вместо этого допустим запуск игры в `mode:=full`,
-если он в вашей конфигурации уже включает insole node. Не запускайте оба:
-порт `9100` может слушать только один процесс.
+Ожидаются `0.0.0.0:9100` и `0.0.0.0:9101`, принадлежащие PID 1 ROS container.
+Не запускайте второй `insole.launch.py`: один TCP port может слушать только
+один процесс. Current Windows Task передаёт pressure и raw EMG slots `1..16`;
+детали и точная проверка — [EMG.md](EMG.md).
 
 ## 3. Запустить Windows VM
 
-После полного reboot предпочитайте cold-boot preflight из корня репозитория:
+При активном `gressus-cometa-runtime-watchdog.service` и подключённом receiver
+VM запускается автоматически. Ручной cold-boot preflight нужен только как
+диагностический fallback:
 
 ```bash
 third_party/insolex_server/wavex_bridge/cometa-cold-boot-preflight.sh
@@ -76,6 +80,7 @@ virt-viewer --connect qemu:///system gressus-insole-windows
 
 ```powershell
 Test-NetConnection 192.168.122.1 -Port 9100
+Test-NetConnection 192.168.122.1 -Port 9101
 ```
 
 Ожидание: `TcpTestSucceeded : True`.
@@ -115,6 +120,23 @@ TCP connected to 192.168.122.1:9100.
 Capturing started ... JSONL: raw FSR batches.
 ```
 
+### Raw EMG: manual fallback
+
+IMU intentionally не включён. Current physical EMG slots — `1..16`, InsoleX
+slots — `17,18`; не передавайте последние в `--emg-sensors`. Ручная проверка:
+
+```powershell
+powershell.exe -ExecutionPolicy Bypass -File .\wavex_bridge\run.ps1 --tcp 192.168.122.1 9100 --emg-tcp 192.168.122.1 9101 --emg-sensors 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16 --rf-start
+```
+
+Each binary `/emg/raw` frame preserves every sample that the SDK delivered;
+`samples_per_channel` is authoritative and may not equal a hand-calculated
+50 ms value. Stop the manual bridge before returning to the Scheduled Task;
+persist the same confirmed slots with `install-windows-bridge-watchdog-task.ps1`.
+`ros2 topic echo` shortens the long frame; validate the configured
+`sample_rate_hz` and nonempty `samples_per_channel`. Full contract:
+[EMG.md](EMG.md).
+
 Без `--rf-start` bridge может подключиться, но отправлять нули
 (`InsoleScanNumber=0`). Ручной bridge перед включением Scheduled Task
 необходимо остановить (`Ctrl+C`), иначе появятся два процесса.
@@ -124,10 +146,14 @@ Capturing started ... JSONL: raw FSR batches.
 ```bash
 ros2 topic echo /insole/pressure --once
 ros2 topic hz /insole/pressure
+ros2 topic echo /emg/raw --once
+ros2 topic hz /emg/raw
 ```
 
 Успех: `connected: true`, по 64 значения слева/справа, ненулевая частота и
-значения меняются при нажатии на стельку.
+значения меняются при нажатии на стельку. Для EMG: slots `1..16`,
+`sample_rate_hz: 2000` при saved `Emg 2kHz` и непустой
+`samples_per_channel`.
 
 ## Нормальная остановка
 
@@ -137,7 +163,11 @@ ros2 topic hz /insole/pressure
    Stop-ScheduledTask -TaskName "Gressus Cometa Bridge Watchdog"
    Get-Process wavex-bridge -ErrorAction SilentlyContinue | Stop-Process -Force
    ```
-2. Остановить ROS launch: `Ctrl+C`.
+2. Остановить ROS container (если требуется для maintenance):
+
+   ```bash
+   docker compose stop ros2
+   ```
 3. Выключить Windows из Start menu, затем проверить:
 
    ```bash

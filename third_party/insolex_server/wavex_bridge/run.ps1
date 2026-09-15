@@ -80,7 +80,12 @@ $requiredOutputFiles = @($outExe) +
     (Join-Path $outDir "WaveX.Sys.dll.config"),
     (Join-Path $outDir "wavex-bridge.exe.config")
   )
-$needsBuild = $ForceRebuild -or ($null -ne ($requiredOutputFiles | Where-Object { -not (Test-Path $_) } | Select-Object -First 1))
+$sourcePath = Join-Path $PSScriptRoot "Program.cs"
+$sourceNewer = (Test-Path $outExe) -and (
+  (Get-Item -LiteralPath $sourcePath).LastWriteTimeUtc -gt
+  (Get-Item -LiteralPath $outExe).LastWriteTimeUtc
+)
+$needsBuild = $ForceRebuild -or $sourceNewer -or ($null -ne ($requiredOutputFiles | Where-Object { -not (Test-Path $_) } | Select-Object -First 1))
 
 if ($needsBuild) {
   Write-Host "Compiling wavex-bridge..." -ForegroundColor Cyan

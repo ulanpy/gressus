@@ -1,5 +1,5 @@
 [Unit]
-Description=Recover Cometa USB receiver after runtime replug
+Description=Keep the Cometa Windows VM active while its USB receiver is connected
 After=virtqemud.socket
 Wants=virtqemud.socket
 

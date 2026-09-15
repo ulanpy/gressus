@@ -1,6 +1,6 @@
 # Инвентарь известной рабочей конфигурации
 
-Дата фиксации: 2026-09-01. Это known-good snapshot текущего ноутбука, а не
+Дата фиксации: 2026-09-11. Это known-good snapshot текущего ноутбука, а не
 универсальные значения для нового хоста.
 
 ## Linux / libvirt
@@ -40,20 +40,35 @@ Windows driver `EmgMUsb.inf` supports both IDs.
 | USB driver | `C:\insolex_server\EmgMUsb\EmgMUsb.inf`, installed by `pnputil` |
 | EMG & Motion Tools | 8.15.13, installed from `third_party/EMGandMotionTools_8.15.13.zip` |
 | Preferred WaveX runtime | `C:\Program Files\Cometa S.r.l\EMGandMotionTools` |
-| Bridge | `run.ps1 --tcp 192.168.122.1 9100 --rf-start` |
-| Automatic bridge | Scheduled Task `Gressus Cometa Bridge Watchdog`, LocalSystem; запускает `bin\\wavex-bridge.exe --rf-start` сразу после PnP-observation `01aa` |
+| Bridge | `run.ps1 --rf-start --tcp 192.168.122.1 9100 --emg-tcp 192.168.122.1 9101 --emg-sensors 1,2,...,16` |
+| Automatic bridge | Scheduled Task `Gressus Cometa Bridge Watchdog`, LocalSystem; запускает prepared EXE с `--rf-start`, pressure `:9100` и EMG `:9101` после PnP-observation `01aa` |
+
+## WaveX capture contract
+
+| Поле | Current verified value |
+| --- | --- |
+| EMG physical sensor slots | `1..16` |
+| InsoleX slots | `17,18`; исключены из `/emg/raw` |
+| EMG ROS topic | `/emg/raw` (`gressus_msgs/EmgFrame`) |
+| EMG delivery | binary TCP `192.168.122.1:9101`, 50 ms batches |
+| EMG sample rate | saved protocol `Emg 2kHz`; ROS frame length is the actual SDK `samples_per_channel`, not a fixed contract |
+| IMU | intentionally disabled/not transported |
+| Muscle label/side | configured in EMG & Motion Tools; not embedded in raw ROS message |
 
 ## Network / firewall contracts
 
 | Flow | Contract |
 | --- | --- |
-| Windows → Gressus | TCP JSONL to `192.168.122.1:9100` |
+| Windows → Gressus pressure | TCP JSONL to `192.168.122.1:9100` |
+| Windows → Gressus raw EMG | binary TCP to `192.168.122.1:9101` |
 | Gressus → frontend | WebSocket `:8765/ws/insole` |
 | VM → internet | libvirt NAT plus nftables/Docker forwarding rules |
-| Firewall scope | TCP 9100 only from `192.168.122.0/24` |
+| Firewall scope | TCP `{ 9100, 9101 }` only from `192.168.122.0/24` |
 
 `gressus-libvirt-forward.service` is the reusable Docker forwarding unit; see
 [FRESH_HOST.md](FRESH_HOST.md).
+
+See [EMG.md](EMG.md) for format, timestamp and sequence semantics.
 
 ## Back up these items
 

@@ -58,7 +58,7 @@ virt-install --connect qemu:///system --name gressus-insole-windows --osinfo win
 ```nft
 iifname "virbr0" udp dport { 53, 67 } accept comment "allow libvirt DNS and DHCP"
 iifname "virbr0" tcp dport 53 accept comment "allow libvirt DNS"
-iifname "virbr0" ip saddr 192.168.122.0/24 tcp dport 9100 accept comment "allow WaveX bridge from libvirt VM"
+iifname "virbr0" ip saddr 192.168.122.0/24 tcp dport { 9100, 9101 } accept comment "allow WaveX pressure and EMG bridge from libvirt VM"
 ```
 
 Если forward policy drop, добавьте разрешение исходящего трафика VM и ответов:
@@ -92,5 +92,8 @@ systemctl status gressus-libvirt-forward.service
 5. Пройдите [RUNBOOK.md](RUNBOOK.md), включая ручной unplug/replug test.
 6. После успешного test включите Linux runtime service по [RECOVERY.md](RECOVERY.md)
    и выполните `install-windows-bridge-watchdog-task.ps1` от Administrator.
-   Не включайте VM autostart: для полного cold boot пока нужен отдельный
-   preflight.
+   Для копии текущей known-good конфигурации используйте
+   `-EmgSensors "1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16"`; на другом
+   комплекте сначала подтвердите реальные WaveX slots. См. [EMG.md](EMG.md).
+   Не включайте libvirt VM autostart: Linux VM supervisor сам запускает
+   preflight только при подключённом receiver.

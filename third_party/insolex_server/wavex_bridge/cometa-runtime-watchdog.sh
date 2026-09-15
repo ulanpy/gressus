@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Watch a running VM for a physical Cometa USB replug.  A replug normally
-# returns the receiver as 04b4:4720; recover it live to 04b4:01aa.
+# Keep the Windows VM usable whenever the physical Cometa receiver is present.
+# A cold/replugged receiver normally appears as 04b4:4720 and must transition
+# through Windows to 04b4:01aa before WaveX can use it.
 
 set -euo pipefail
 
@@ -8,19 +9,25 @@ DOMAIN="gressus-insole-windows"
 INTERVAL_SECONDS=1
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 TRANSITION_TEST="$SCRIPT_DIR/cometa-usb-transition-test.sh"
+COLD_PREFLIGHT="$SCRIPT_DIR/cometa-cold-boot-preflight.sh"
 
 usage() {
   cat <<'EOF'
 Usage: cometa-runtime-watchdog.sh [--apply] [--domain NAME] [--interval SECONDS]
 
-Without --apply the script only reports why it would or would not recover USB.
-With --apply it loops forever. It acts only when all conditions hold:
-  - VM is running;
-  - persistent VM XML expects 04b4:01aa;
-  - host sees physical receiver as 04b4:4720.
+Without --apply the script reports the current state and intended action.
+With --apply it loops forever, but acts only while a supported physical
+receiver (04b4:01aa or 04b4:4720) is visible on the Linux host:
+  - shut off VM: runs the cold-boot preflight, which starts the VM;
+  - paused VM: resumes it;
+  - crashed/stopping VM: force-stops it, then retries cold boot next poll;
+  - running VM with 4720 and persistent XML 01aa: runs live USB recovery;
+  - running VM with 4720 and any other persistent USB mode: force-restarts it
+    through cold-boot preflight.
 
-On that transition it invokes the live-only USB recovery test. It never starts
-the VM and never changes RF configuration.
+It intentionally does nothing when no supported receiver is connected. It
+never starts WaveX or changes RF/insole configuration; the Windows Scheduled
+Task remains the sole owner of wavex-bridge.
 EOF
 }
 
@@ -53,19 +60,93 @@ read_status() {
   printf '%s|%s|%s\n' "$state" "${host_pid:-not-found}" "${saved_pid:-not-found}"
 }
 
+planned_action() {
+  local state="$1" host_pid="$2" saved_pid="$3"
+
+  if [[ "$host_pid" != "01aa" && "$host_pid" != "4720" ]]; then
+    echo "No action: no supported Cometa receiver is connected."
+    return
+  fi
+
+  case "$state" in
+    running|blocked)
+      if [[ "$host_pid" == "4720" && "$saved_pid" == "01aa" ]]; then
+        echo "Action: recover live 4720 -> 01aa."
+      elif [[ "$host_pid" == "4720" ]]; then
+        echo "Action: force-stop VM, then cold-boot it through preflight."
+      else
+        echo "No action: VM and receiver are already active."
+      fi
+      ;;
+    "shut off")
+      echo "Action: cold-boot VM through preflight."
+      ;;
+    paused)
+      echo "Action: resume VM."
+      ;;
+    pmsuspended)
+      echo "Action: wake VM from guest power management suspend."
+      ;;
+    *)
+      echo "Action: force-stop VM state '$state', then cold-boot it through preflight."
+      ;;
+  esac
+}
+
+ensure_vm_for_receiver() {
+  local state="$1" host_pid="$2" saved_pid="$3"
+
+  if [[ "$host_pid" != "01aa" && "$host_pid" != "4720" ]]; then
+    return
+  fi
+
+  case "$state" in
+    running|blocked)
+      if [[ "$host_pid" == "4720" && "$saved_pid" == "01aa" ]]; then
+        echo "Detected receiver mode 4720 while running VM expects 01aa; recovering live..."
+        if "$TRANSITION_TEST" --apply --domain "$DOMAIN"; then
+          echo "Live Cometa USB recovery completed. Windows supervisor should restart bridge on 01aa arrival."
+        else
+          echo "Live Cometa USB recovery failed; will retry on the next poll." >&2
+        fi
+      elif [[ "$host_pid" == "4720" ]]; then
+        echo "Running VM still has cold receiver mode 4720 (persistent PID: $saved_pid); forcing restart through preflight..."
+        virsh -c qemu:///system destroy "$DOMAIN" || true
+      fi
+      ;;
+    "shut off")
+      echo "Receiver $host_pid is connected while VM is shut off; starting cold-boot preflight..."
+      if "$COLD_PREFLIGHT" --apply --domain "$DOMAIN"; then
+        echo "Cold-boot preflight completed."
+      else
+        echo "Cold-boot preflight failed; will retry on the next poll." >&2
+      fi
+      ;;
+    paused)
+      echo "Receiver is connected while VM is paused; resuming VM..."
+      virsh -c qemu:///system resume "$DOMAIN" || true
+      ;;
+    pmsuspended)
+      echo "Receiver is connected while VM is guest-suspended; waking VM..."
+      virsh -c qemu:///system dompmwakeup "$DOMAIN" || \
+        virsh -c qemu:///system resume "$DOMAIN" || true
+      ;;
+    *)
+      echo "Receiver is connected while VM is '$state'; force-stopping it before cold-boot retry..."
+      virsh -c qemu:///system destroy "$DOMAIN" || true
+      ;;
+  esac
+}
+
 if [[ "$apply" != true ]]; then
   status="$(read_status)"
   IFS='|' read -r state host_pid saved_pid <<< "$status"
   printf 'VM=%s host_pid=%s persistent_pid=%s\n' "$state" "$host_pid" "$saved_pid"
-  if [[ "$state" == "running" && "$host_pid" == "4720" && "$saved_pid" == "01aa" ]]; then
-    echo "Action would be: recover live 4720 -> 01aa."
-  else
-    echo "No action is required or safe for the current state."
-  fi
+  planned_action "$state" "$host_pid" "$saved_pid"
   exit 0
 fi
 
-echo "Cometa runtime watchdog started: domain=$DOMAIN interval=${INTERVAL_SECONDS}s"
+echo "Cometa VM supervisor started: domain=$DOMAIN interval=${INTERVAL_SECONDS}s"
 last_status=""
 while true; do
   status="$(read_status)"
@@ -74,13 +155,6 @@ while true; do
     printf 'Observed: VM=%s host_pid=%s persistent_pid=%s\n' "$state" "$host_pid" "$saved_pid"
     last_status="$status"
   fi
-  if [[ "$state" == "running" && "$host_pid" == "4720" && "$saved_pid" == "01aa" ]]; then
-    echo "Detected replug/cold receiver mode 4720 while VM expects 01aa; recovering..."
-    if "$TRANSITION_TEST" --apply --domain "$DOMAIN"; then
-      echo "Live Cometa USB recovery completed. Windows supervisor should restart bridge on 01aa arrival."
-    else
-      echo "Live Cometa USB recovery failed; will retry only after the next poll." >&2
-    fi
-  fi
+  ensure_vm_for_receiver "$state" "$host_pid" "$saved_pid"
   sleep "$INTERVAL_SECONDS"
 done

@@ -5,6 +5,11 @@
 param(
   [string]$HostAddress = "192.168.122.1",
   [int]$Port = 9100,
+  # Keep EMG disabled until the actual WaveX sensor slots are confirmed in
+  # EMG & Motion Tools. Example: -EmgSensors "1,2,3,4".
+  [string]$EmgHostAddress = "192.168.122.1",
+  [int]$EmgPort = 9101,
+  [string]$EmgSensors = "",
   [int]$PollSeconds = 1,
   # The Cometa driver can briefly remove 01aa while it re-enumerates. Do not
   # kill a healthy bridge until absence itself is stable.
@@ -44,7 +49,11 @@ function Start-Bridge([int]$Attempt) {
   # Do not invoke run.ps1 here: it compiles and copies DLLs. Rebuilding while
   # an earlier bridge owns CyUSB.DLL causes the exact lock race this watchdog
   # is meant to recover from.
-  $process = Start-Process -FilePath $bridgeExe -ArgumentList @("--tcp", $HostAddress, $Port, "--rf-start") `
+  $bridgeArgs = @("--tcp", $HostAddress, $Port, "--rf-start")
+  if (-not [string]::IsNullOrWhiteSpace($EmgSensors)) {
+    $bridgeArgs += @("--emg-tcp", $EmgHostAddress, $EmgPort, "--emg-sensors", $EmgSensors)
+  }
+  $process = Start-Process -FilePath $bridgeExe -ArgumentList $bridgeArgs `
     -WorkingDirectory $bridgeRoot -RedirectStandardOutput $stdoutPath `
     -RedirectStandardError $stderrPath -WindowStyle Hidden -PassThru
   return [pscustomobject]@{
@@ -104,8 +113,13 @@ while ($true) {
       }
       $attempt++
       $bridge = Start-Bridge $attempt
+      $emgStatus = if ([string]::IsNullOrWhiteSpace($EmgSensors)) {
+        ""
+      } else {
+        " and EMG slots $EmgSensors"
+      }
       Write-WatchdogLog (
-        "Starting WaveX bridge with --rf-start; process=$($bridge.Process.Id), " +
+        "Starting WaveX bridge with --rf-start$emgStatus; process=$($bridge.Process.Id), " +
         "stdout=$($bridge.StdoutPath), stderr=$($bridge.StderrPath)."
       )
     }

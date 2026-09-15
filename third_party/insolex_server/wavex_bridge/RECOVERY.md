@@ -53,12 +53,11 @@ WaveX.Example должны быть закрыты. Скрипт передаё�
 
 ### Cold boot preflight
 
-После полной перезагрузки USB receiver обычно появляется как `4720`. Для
-штатного запуска при выключенной VM используйте
-`cometa-cold-boot-preflight.sh --apply`. В отличие от эксперимента выше, он
-временно сохраняет `4720` в XML, чтобы VM могла стартовать, а после
-подтверждённого перехода сохраняет рабочий `01aa`. Полная процедура и условия
-ошибки описаны в [RUNBOOK.md](RUNBOOK.md).
+После полной перезагрузки USB receiver обычно появляется как `4720`. При
+активном Linux VM supervisor выключенная VM автоматически проходит
+`cometa-cold-boot-preflight.sh --apply`: он временно сохраняет `4720` в XML,
+чтобы VM могла стартовать, а после подтверждённого перехода сохраняет рабочий
+`01aa`. Ручной запуск preflight остаётся диагностическим fallback.
 
 ### Runtime USB replug watchdog
 
@@ -70,10 +69,12 @@ Linux PID watchdog: 4720 -> live USB recovery -> 01aa in VM
 Windows bridge watchdog: PnP 01aa arrival -> prepared wavex-bridge.exe --rf-start
 ```
 
-Linux script `cometa-runtime-watchdog.sh` действует только когда VM `running`,
-persistent XML уже содержит `01aa`, а host видит `4720`; иначе он ничего не
-меняет. Он проверяет состояние раз в секунду. Windows также проверяет PnP раз
-в секунду и запускает prepared bridge сразу после наблюдения `01aa`; после
+Linux script `cometa-runtime-watchdog.sh` действует только при видимом
+receiver. При `shut off` он запускает cold-boot preflight, при `paused`
+возобновляет VM, а при `running` + persistent `01aa` + host `4720` выполняет
+live recovery. Если running VM остаётся в `4720` с другим persistent PID, он
+force-restart'ит VM через preflight и повторяет попытки. Windows также
+проверяет PnP раз в секунду и запускает prepared bridge сразу после наблюдения `01aa`; после
 неожиданного выхода следующая попытка выполняется на следующем poll. Краткое
 исчезновение `01aa` также debounce'ится: отсутствие до 5 секунд игнорируется, а bridge останавливается
 после 12 секунд непрерывного отсутствия устройства. Проверка без действий:
@@ -107,7 +108,7 @@ PowerShell, когда bridge не запущен:
 
 ```powershell
 Set-Location C:\insolex_server\wavex_bridge
-powershell.exe -ExecutionPolicy Bypass -File .\run.ps1 -BuildOnly
+powershell.exe -ExecutionPolicy Bypass -File .\run.ps1 -ForceRebuild -BuildOnly
 ```
 
 Сначала запустите watchdog вручную в Administrator PowerShell. Лишь после
@@ -155,15 +156,23 @@ Get-PnpDevice -PresentOnly | Where-Object { $_.InstanceId -match 'VID_04B4&PID_(
 pnputil /add-driver C:\insolex_server\EmgMUsb\EmgMUsb.inf /install
 ```
 
-## TCP 9100 недоступен из Windows
+## TCP 9100 / 9101 недоступны из Windows
 
 ```bash
-ss -ltn | rg ':9100'
+ss -ltn | rg ':(9100|9101)'
 sudo nft list chain inet filter input
 ```
 
 Сначала запустите ROS listener. Затем убедитесь, что до terminal reject/drop
-есть правило, разрешающее `virbr0`, подсеть `192.168.122.0/24` и TCP `9100`.
+есть правило, разрешающее `virbr0`, подсеть `192.168.122.0/24` и TCP `9100`
+(pressure), а при включённом EMG также `9101`.
+
+Если `/emg/raw` не приходит, сначала проверьте, что Scheduled Task был
+переустановлен с slots `1..16`, а ROS container перезапущен после добавления
+`emg_bridge_node`. InsoleX slots `17,18` не должны быть в этом параметре.
+После проверки connection ожидаются `sample_rate_hz: 2000`,
+saved `Emg 2kHz` и непустой фактический `samples_per_channel`; полный
+contract — [EMG.md](EMG.md).
 
 ## Bridge пишет `NotConnected`
 

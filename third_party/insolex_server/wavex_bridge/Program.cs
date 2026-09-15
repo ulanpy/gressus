@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Net.Sockets;
@@ -19,6 +21,189 @@ namespace WaveXBridge
             public int TcpPort;
             public bool MirrorStdout;
             public bool RfStart;
+            public string EmgTcpHost;
+            public int EmgTcpPort;
+            public int[] EmgSensorSlots;
+        }
+
+        // EMG is sent independently from the existing JSONL insole stream so
+        // the high-rate samples cannot be rounded, coalesced, or blocked by a
+        // web client.  Each frame is little-endian:
+        //   GEMG | version:u8 | reserved:u8 | channelCount:u16 |
+        //   frameSeq:u64 | sampleRateHz:u32 | samplesPerChannel:u32 |
+        //   payloadFloats:u32 | sensorSlots[channelCount]:u16 |
+        //   samples[channelCount * samplesPerChannel]:float32
+        // Samples are channel-major, in the same order as sensorSlots.
+        private sealed class EmgSink : IDisposable
+        {
+            private readonly string host;
+            private readonly int port;
+            private readonly int[] sensorSlots;
+            private readonly BlockingCollection<byte[]> queue = new BlockingCollection<byte[]>(128);
+            private readonly object connectionSync = new object();
+            private readonly Thread writerThread;
+            private TcpClient client;
+            private NetworkStream stream;
+            private DateTime lastWarningUtc = DateTime.MinValue;
+            private bool disposed;
+
+            public EmgSink(string host, int port, int[] sensorSlots)
+            {
+                this.host = host;
+                this.port = port;
+                this.sensorSlots = sensorSlots;
+                writerThread = new Thread(WriteLoop);
+                writerThread.IsBackground = true;
+                writerThread.Name = "WaveX EMG TCP writer";
+                writerThread.Start();
+            }
+
+            public void Enqueue(DataAvailableEventArgs e, ulong frameSequence, uint sampleRateHz)
+            {
+                if (disposed || e.EmgSamples == null) return;
+
+                var samples = e.EmgSamples;
+                var availableSensors = samples.GetLength(0);
+                var samplesPerChannel = samples.GetLength(1);
+                if (samplesPerChannel <= 0) return;
+                for (var i = 0; i < sensorSlots.Length; i++)
+                {
+                    if (sensorSlots[i] > availableSensors)
+                    {
+                        Warn("EMG frame skipped: configured sensor slot " + sensorSlots[i] +
+                             " is not present in EmgSamples (available slots=" + availableSensors + ").");
+                        return;
+                    }
+                }
+
+                byte[] frame;
+                try
+                {
+                    frame = BuildFrame(samples, frameSequence, sampleRateHz, samplesPerChannel);
+                }
+                catch (Exception ex)
+                {
+                    Warn("EMG frame serialization failed: " + ex.Message);
+                    return;
+                }
+
+                if (!queue.TryAdd(frame))
+                {
+                    Warn("EMG TCP queue is full; dropping one 50 ms frame. Check the Linux listener/network.");
+                }
+            }
+
+            private byte[] BuildFrame(float[,] samples, ulong frameSequence, uint sampleRateHz, int samplesPerChannel)
+            {
+                var payloadFloats = checked(sensorSlots.Length * samplesPerChannel);
+                using (var memory = new MemoryStream(28 + sensorSlots.Length * 2 + payloadFloats * 4))
+                using (var writer = new BinaryWriter(memory))
+                {
+                    writer.Write(new byte[] { (byte)'G', (byte)'E', (byte)'M', (byte)'G' });
+                    writer.Write((byte)1);
+                    writer.Write((byte)0);
+                    writer.Write((ushort)sensorSlots.Length);
+                    writer.Write(frameSequence);
+                    writer.Write(sampleRateHz);
+                    writer.Write((uint)samplesPerChannel);
+                    writer.Write((uint)payloadFloats);
+                    for (var channel = 0; channel < sensorSlots.Length; channel++)
+                        writer.Write((ushort)sensorSlots[channel]);
+                    for (var channel = 0; channel < sensorSlots.Length; channel++)
+                    {
+                        var sensorIndex = sensorSlots[channel] - 1;
+                        for (var sample = 0; sample < samplesPerChannel; sample++)
+                            writer.Write(samples[sensorIndex, sample]);
+                    }
+                    writer.Flush();
+                    return memory.ToArray();
+                }
+            }
+
+            private void WriteLoop()
+            {
+                try
+                {
+                    foreach (var frame in queue.GetConsumingEnumerable())
+                    {
+                        while (!disposed)
+                        {
+                            try
+                            {
+                                EnsureConnected();
+                                lock (connectionSync)
+                                {
+                                    if (stream == null) continue;
+                                    stream.Write(frame, 0, frame.Length);
+                                    stream.Flush();
+                                }
+                                break;
+                            }
+                            catch (Exception ex)
+                            {
+                                CloseConnection();
+                                Warn("EMG TCP connection unavailable; retaining current frame for retry. Detail: " + ex.Message);
+                                Thread.Sleep(250);
+                            }
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Warn("EMG TCP writer stopped: " + ex.Message);
+                }
+            }
+
+            private void EnsureConnected()
+            {
+                lock (connectionSync)
+                {
+                    if (stream != null) return;
+                    CloseConnectionLocked();
+                    client = new TcpClient();
+                    client.SendTimeout = 1000;
+                    client.Connect(host, port);
+                    stream = client.GetStream();
+                    Console.Error.WriteLine(string.Format("EMG TCP connected to {0}:{1}.", host, port));
+                }
+            }
+
+            private void CloseConnection()
+            {
+                lock (connectionSync) CloseConnectionLocked();
+            }
+
+            private void CloseConnectionLocked()
+            {
+                if (stream != null)
+                {
+                    try { stream.Dispose(); } catch { }
+                    stream = null;
+                }
+                if (client != null)
+                {
+                    try { client.Close(); } catch { }
+                    client = null;
+                }
+            }
+
+            private void Warn(string message)
+            {
+                var now = DateTime.UtcNow;
+                if ((now - lastWarningUtc).TotalSeconds < 15) return;
+                lastWarningUtc = now;
+                Console.Error.WriteLine(message);
+            }
+
+            public void Dispose()
+            {
+                if (disposed) return;
+                disposed = true;
+                queue.CompleteAdding();
+                CloseConnection();
+                if (writerThread.IsAlive) writerThread.Join(1000);
+                queue.Dispose();
+            }
         }
 
         private sealed class JsonSink : IDisposable
@@ -161,7 +346,7 @@ namespace WaveXBridge
         private static void PrintUsage()
         {
             Console.Error.WriteLine(
-                "Usage: wavex-bridge.exe [--rf-start] [--tcp HOST PORT | --tcp HOST:PORT] [--mirror-stdout]");
+                "Usage: wavex-bridge.exe [--rf-start] [--tcp HOST PORT | --tcp HOST:PORT] [--emg-tcp HOST PORT | --emg-tcp HOST:PORT --emg-sensors 1,2,...] [--mirror-stdout]");
             Console.Error.WriteLine(
                 "Read-only relay: uses the configuration already loaded on the WaveX receiver/sensors.");
         }
@@ -190,40 +375,19 @@ namespace WaveXBridge
                 }
                 if (string.Equals(arg, "--tcp", StringComparison.OrdinalIgnoreCase))
                 {
-                    if (i + 1 >= args.Length)
+                    if (!TryParseEndpoint(args, ref i, out options.TcpHost, out options.TcpPort, "--tcp")) return false;
+                    continue;
+                }
+                if (string.Equals(arg, "--emg-tcp", StringComparison.OrdinalIgnoreCase))
+                {
+                    if (!TryParseEndpoint(args, ref i, out options.EmgTcpHost, out options.EmgTcpPort, "--emg-tcp")) return false;
+                    continue;
+                }
+                if (string.Equals(arg, "--emg-sensors", StringComparison.OrdinalIgnoreCase))
+                {
+                    if (i + 1 >= args.Length || !TryParseSensorSlots(args[++i], out options.EmgSensorSlots))
                     {
-                        Console.Error.WriteLine("Missing value for --tcp.");
-                        return false;
-                    }
-
-                    var value = args[++i].Trim();
-                    var separator = value.LastIndexOf(':');
-                    if (separator >= 0)
-                    {
-                        options.TcpHost = value.Substring(0, separator).Trim();
-                        if (!TryParsePort(value.Substring(separator + 1), out options.TcpPort))
-                        {
-                            Console.Error.WriteLine("Invalid TCP port.");
-                            return false;
-                        }
-                    }
-                    else
-                    {
-                        if (i + 1 >= args.Length)
-                        {
-                            Console.Error.WriteLine("Expected --tcp HOST PORT or --tcp HOST:PORT.");
-                            return false;
-                        }
-                        options.TcpHost = value;
-                        if (!TryParsePort(args[++i], out options.TcpPort))
-                        {
-                            Console.Error.WriteLine("Invalid TCP port.");
-                            return false;
-                        }
-                    }
-                    if (options.TcpHost.Length == 0)
-                    {
-                        Console.Error.WriteLine("TCP host must not be empty.");
+                        Console.Error.WriteLine("Expected --emg-sensors 1,2,... (unique WaveX sensor slots 1..36).");
                         return false;
                     }
                     continue;
@@ -234,7 +398,86 @@ namespace WaveXBridge
                     ". Configuration/bootstrap options were removed to protect the loaded sensor configuration.");
                 return false;
             }
+            if ((options.EmgTcpHost == null) != (options.EmgSensorSlots == null))
+            {
+                Console.Error.WriteLine("EMG requires both --emg-tcp and --emg-sensors; it is disabled when both are omitted.");
+                return false;
+            }
             return true;
+        }
+
+        private static bool TryParseEndpoint(string[] args, ref int index, out string host, out int port, string optionName)
+        {
+            host = null;
+            port = 0;
+            if (index + 1 >= args.Length)
+            {
+                Console.Error.WriteLine("Missing value for " + optionName + ".");
+                return false;
+            }
+
+            var value = args[++index].Trim();
+            var separator = value.LastIndexOf(':');
+            if (separator >= 0)
+            {
+                host = value.Substring(0, separator).Trim();
+                if (!TryParsePort(value.Substring(separator + 1), out port))
+                {
+                    Console.Error.WriteLine("Invalid TCP port for " + optionName + ".");
+                    return false;
+                }
+            }
+            else
+            {
+                if (index + 1 >= args.Length)
+                {
+                    Console.Error.WriteLine("Expected " + optionName + " HOST PORT or " + optionName + " HOST:PORT.");
+                    return false;
+                }
+                host = value;
+                if (!TryParsePort(args[++index], out port))
+                {
+                    Console.Error.WriteLine("Invalid TCP port for " + optionName + ".");
+                    return false;
+                }
+            }
+            if (host.Length == 0)
+            {
+                Console.Error.WriteLine("TCP host must not be empty.");
+                return false;
+            }
+            return true;
+        }
+
+        private static bool TryParseSensorSlots(string value, out int[] slots)
+        {
+            slots = null;
+            var values = value.Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries);
+            if (values.Length == 0 || values.Length > 36) return false;
+            var parsed = new List<int>();
+            foreach (var raw in values)
+            {
+                int slot;
+                if (!int.TryParse(raw.Trim(), NumberStyles.None, CultureInfo.InvariantCulture, out slot) ||
+                    slot < 1 || slot > 36 || parsed.Contains(slot)) return false;
+                parsed.Add(slot);
+            }
+            slots = parsed.ToArray();
+            return true;
+        }
+
+        private static uint GetConfiguredEmgSampleRateHz(ICaptureConfiguration configuration)
+        {
+            if (configuration == null) return 0;
+            var protocol = configuration.EMG_AcqXType.ToString();
+            var normalized = protocol.Replace("_", "").Replace(" ", "").ToLowerInvariant();
+            if (normalized.Contains("4khz")) return 4000;
+            if (normalized.Contains("2khz")) return 2000;
+            if (normalized.Contains("1200") || normalized.Contains("1.2khz")) return 1200;
+            Console.Error.WriteLine(
+                "WARNING: cannot derive EMG sample rate from configured protocol '" + protocol + "'. " +
+                "Frames will retain their samples but report sample_rate_hz=0.");
+            return 0;
         }
 
         private static bool TryParsePort(string value, out int port)
@@ -496,9 +739,11 @@ namespace WaveXBridge
 
             IDaqSystem daq = null;
             JsonSink sink = null;
+            EmgSink emgSink = null;
             EventHandler<DataAvailableEventArgs> handler = null;
             EventHandler<DeviceStateChangedEventArgs> deviceStateHandler = null;
             var sequence = 0L;
+            var emgSequence = 0L;
             var lastPacketUtc = DateTime.MinValue;
             var packetLock = new object();
 
@@ -537,6 +782,8 @@ namespace WaveXBridge
                         rightEnabled ? "enabled" : "disabled",
                         captureConfiguration.Insole_RfProtocol,
                         captureConfiguration.Insole_RfAcqType));
+                    Console.Error.WriteLine(
+                        "Saved EMG acquisition protocol: " + captureConfiguration.EMG_AcqXType + ".");
                     if (!leftEnabled && !rightEnabled)
                     {
                         Console.Error.WriteLine(
@@ -553,6 +800,16 @@ namespace WaveXBridge
                 }
                 sink = new JsonSink(options.TcpHost, options.TcpPort, options.MirrorStdout);
                 if (!sink.ConnectUntil(stopEvent)) return 0;
+                if (options.EmgTcpHost != null)
+                {
+                    emgSink = new EmgSink(options.EmgTcpHost, options.EmgTcpPort, options.EmgSensorSlots);
+                    Console.Error.WriteLine(string.Format(
+                        "EMG relay enabled: slots={0}, TCP={1}:{2}, binary frames preserve every sample.",
+                        string.Join(",", options.EmgSensorSlots), options.EmgTcpHost, options.EmgTcpPort));
+                }
+                var emgSampleRateHz = emgSink == null
+                    ? 0
+                    : GetConfiguredEmgSampleRateHz(captureConfiguration);
 
                 handler = delegate(object sender, DataAvailableEventArgs e)
                 {
@@ -561,6 +818,7 @@ namespace WaveXBridge
                         var now = DateTime.UtcNow;
                         double dtMs;
                         long currentSequence;
+                        long currentEmgSequence;
                         lock (packetLock)
                         {
                             dtMs = lastPacketUtc == DateTime.MinValue
@@ -568,8 +826,11 @@ namespace WaveXBridge
                                 : (now - lastPacketUtc).TotalMilliseconds;
                             lastPacketUtc = now;
                             currentSequence = ++sequence;
+                            currentEmgSequence = ++emgSequence;
                         }
                         sink.Emit(BuildJson(e, currentSequence, now, dtMs));
+                        if (emgSink != null)
+                            emgSink.Enqueue(e, unchecked((ulong)currentEmgSequence), emgSampleRateHz);
                     }
                     catch (Exception ex)
                     {
@@ -580,7 +841,13 @@ namespace WaveXBridge
 
                 // The official WaveX example starts acquisition this way. No capture or
                 // sensor configuration is built, applied, or saved by this relay.
-                daq.StartCapturing(DataAvailableEventPeriod.ms_10);
+                // Keep the existing 10 ms pressure cadence when EMG is off. EMG
+                // requests WaveX's 50 ms delivery period. Preserve the exact
+                // number of samples that the SDK actually delivers per frame;
+                // do not infer it from host callback timing.
+                daq.StartCapturing(emgSink == null
+                    ? DataAvailableEventPeriod.ms_10
+                    : DataAvailableEventPeriod.ms_50);
                 if (options.RfStart)
                 {
                     // EMG & Motion Tools keeps the DAQ in Capturing state and its
@@ -591,7 +858,8 @@ namespace WaveXBridge
                         "RF start: internal start trigger generated (equivalent to Record).");
                 }
                 Console.Error.WriteLine(
-                    "Capturing started from the existing receiver configuration. JSONL: raw FSR batches.");
+                    "Capturing started from the existing receiver configuration. JSONL: raw FSR batches." +
+                    (emgSink == null ? " EMG relay disabled." : " EMG: binary 50 ms batches."));
 
                 // A live USB detach/reattach creates a new WaveX device while
                 // this process still owns the old DaqSystem handle.  Do not
@@ -639,6 +907,7 @@ namespace WaveXBridge
                     catch { }
                 }
                 if (sink != null) sink.Dispose();
+                if (emgSink != null) emgSink.Dispose();
                 if (daq is IDisposable) ((IDisposable)daq).Dispose();
                 stopEvent.Dispose();
                 Console.Error.WriteLine("Stopped.");

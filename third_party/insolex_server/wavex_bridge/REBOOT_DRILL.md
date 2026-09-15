@@ -7,7 +7,9 @@
 
 - [ ] При Scheduled Task: остановить task и bridge из раздела «Нормальная
   остановка» [RUNBOOK.md](RUNBOOK.md).
-- [ ] Остановить ROS launch.
+- [ ] Завершить активный clinical session и дождаться закрытия rosbag. Не
+  выполняйте `docker compose stop ros2`: для проверки `restart: unless-stopped`
+  контейнер должен быть запущен до reboot.
 - [ ] Штатно выключить Windows и получить `shut off` в
   `virsh -c qemu:///system list --all`.
 - [ ] Receiver остаётся подключённым к тому же USB-порту.
@@ -19,8 +21,8 @@
   systemctl is-enabled gressus-libvirt-forward.service
   systemctl is-enabled gressus-cometa-runtime-watchdog.service
   ```
-- [ ] Убедиться, что nftables config содержит persistent разрешение TCP 9100
-  для `192.168.122.0/24` до terminal reject/drop.
+- [ ] Убедиться, что nftables config содержит persistent разрешение TCP
+  `{ 9100, 9101 }` для `192.168.122.0/24` до terminal reject/drop.
 
 Последний пункт критичен: временное правило, добавленное командой `nft add`,
 после reboot исчезает.
@@ -36,14 +38,17 @@ sudo systemctl reboot
 Выполнить шаги из [RUNBOOK.md](RUNBOOK.md) строго по порядку:
 
 1. Проверить libvirt services, `default` network и PID receiver.
-2. При выключенной VM выполнить cold-boot preflight. Он сам обработает
-   различие `4720`/`01aa`; не пытаться запускать VM повторно вручную.
-3. Запустить ROS listener и проверить `:9100`.
-4. Запустить VM через cold-boot preflight и убедиться, что Windows получила
-   сеть.
+2. При подключённом receiver дождаться Linux VM supervisor: он сам выполнит
+   cold-boot preflight и обработает различие `4720`/`01aa`; не запускайте VM
+   повторно вручную.
+3. Дождаться autostart ROS container и проверить `:9100`, `:9101`.
+4. Подтвердить, что Linux supervisor сам завершил cold-boot preflight, VM
+   работает и Windows получила сеть.
 5. Не открывая `virt-viewer` во время работы receiver, дождаться Windows
    Scheduled Task: он сам запустит bridge после первого PnP-observation `01aa`.
 6. Подтвердить ненулевой `/insole/pressure` нажатием на обе стельки.
+7. Подтвердить `/emg/raw`: slots `1..16`, saved `Emg 2kHz` и непустой
+   `samples_per_channel`.
 
 ## Результат
 
@@ -54,9 +59,10 @@ sudo systemctl reboot
 | libvirt services and default network | pending |
 | receiver PID still matches VM XML | pending |
 | Windows can reach `192.168.122.1:9100` | pending |
+| Windows can reach `192.168.122.1:9101` when EMG enabled | pending |
 | Windows Scheduled Task starts WaveX RF bridge | pending |
 | ROS pressure is live and non-zero | pending |
+| ROS raw EMG is slots 1..16 at saved 2 kHz | pending |
 
-Пять `pass` подтверждают текущую границу: runtime replug автоматический, но
-сам cold boot всё ещё запускается оператором через preflight. Только после
-этого test можно внедрять отдельный host-boot coordinator.
+Все проверки `pass` подтверждают, что supervisor автоматически проходит cold
+boot и runtime replug при подключённом receiver.
